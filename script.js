@@ -201,13 +201,44 @@ function init() {
 // Aggressive Update Check
 function checkForUpdates() {
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistration().then(registration => {
-            if (registration) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            for (let registration of registrations) {
                 registration.update();
             }
         });
     }
 }
+
+// Force clear cache for users with old version
+window.addEventListener('load', () => {
+    // Check if we need to force clear cache (version bump)
+    const CURRENT_VERSION = '2.8'; // Increment this manually on big updates
+    const storedVersion = localStorage.getItem('app_version');
+
+    if (storedVersion !== CURRENT_VERSION) {
+        console.log('New version detected. Clearing cache...');
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                for (let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+
+        if ('caches' in window) {
+            caches.keys().then((names) => {
+                names.forEach((name) => {
+                    caches.delete(name);
+                });
+            });
+        }
+
+        localStorage.setItem('app_version', CURRENT_VERSION);
+        // Optional: Reload once to ensure fresh assets
+        // window.location.reload(); 
+    }
+});
 
 function showUpdateNotification() {
     const notification = document.createElement('div');
