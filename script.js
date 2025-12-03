@@ -169,7 +169,7 @@ function init() {
             navigator.serviceWorker.register('./sw.js')
                 .then(registration => {
                     console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    
+
                     // Check for updates
                     registration.addEventListener('updatefound', () => {
                         const newWorker = registration.installing;
@@ -184,7 +184,7 @@ function init() {
                 .catch(err => {
                     console.log('ServiceWorker registration failed: ', err);
                 });
-            
+
             // Reload when controller changes (new SW activated)
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 window.location.reload();
@@ -219,7 +219,7 @@ function showUpdateNotification() {
         </div>
         <button onclick="forceUpdate()" style="background: white; color: #4f46e5; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Обновить</button>
     `;
-    
+
     // Style directly to ensure it shows up regardless of CSS version
     Object.assign(notification.style, {
         position: 'fixed',
@@ -237,7 +237,7 @@ function showUpdateNotification() {
         gap: '20px',
         fontFamily: 'sans-serif'
     });
-    
+
     const btn = notification.querySelector('button');
     Object.assign(btn.style, {
         background: 'white',
@@ -381,6 +381,61 @@ function updateTaskStatus(id, newStatus) {
     });
 }
 
+function updateTask(id, data) {
+    if (state.role !== 'admin') return;
+
+    // Show loading state
+    const submitBtn = elements.taskForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Сохранение...';
+
+    db.collection('tasks').doc(id).update(data)
+        .then(() => {
+            console.log("✅ Задача успешно обновлена!");
+            elements.taskModal.classList.remove('active');
+            elements.taskForm.reset();
+        })
+        .catch((error) => {
+            console.error("Error updating task:", error);
+            alert("❌ Ошибка при обновлении задачи:\n\n" + error.message);
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+        });
+}
+
+function openEditTaskModal(task) {
+    elements.taskForm.reset();
+
+    // Set hidden ID
+    document.getElementById('t-id').value = task.id;
+    document.getElementById('t-status').value = task.status;
+
+    // Set fields
+    document.getElementById('t-title').value = task.title;
+    document.getElementById('t-description').value = task.description || '';
+    document.getElementById('t-deadline').value = task.deadline;
+
+    // Update modal title
+    elements.taskModal.querySelector('h2').textContent = 'Редактировать задачу';
+
+    // Populate assignees
+    populateAssigneeDropdown();
+
+    // Check assigned users
+    if (task.assigneeEmail) {
+        const emails = task.assigneeEmail.split(',').map(e => e.trim());
+        emails.forEach(email => {
+            const checkbox = document.querySelector(`input[name="assignee-select"][value="${email}"]`);
+            if (checkbox) checkbox.checked = true;
+        });
+    }
+
+    elements.taskModal.classList.add('active');
+}
+
 // Rendering
 function renderProjects() {
     elements.projectList.innerHTML = '';
@@ -508,6 +563,29 @@ function createTaskCard(task) {
         deleteTask(task.id);
     };
 
+    // Create edit button
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit-task'; // You might need to add CSS for this class if 'delete-task' has specific styles
+    // Reuse delete-task styles for simplicity or add inline styles
+    editBtn.style.background = 'none';
+    editBtn.style.border = 'none';
+    editBtn.style.color = 'var(--text-secondary)';
+    editBtn.style.cursor = 'pointer';
+    editBtn.style.padding = '0.2rem';
+    editBtn.style.marginRight = '0.5rem';
+    editBtn.style.transition = 'color 0.2s';
+
+    editBtn.onmouseover = () => editBtn.style.color = 'var(--primary)';
+    editBtn.onmouseout = () => editBtn.style.color = 'var(--text-secondary)';
+
+    const editIcon = document.createElement('i');
+    editIcon.className = 'fa-solid fa-pen';
+    editBtn.appendChild(editIcon);
+    editBtn.onclick = (e) => {
+        e.stopPropagation();
+        openEditTaskModal(task);
+    };
+
     // Create task content
     const taskTitle = document.createElement('div');
     taskTitle.className = 'task-title';
@@ -569,7 +647,7 @@ function createTaskCard(task) {
     const daysLeftSpan = document.createElement('span');
     daysLeftSpan.className = 'days-left';
     daysLeftSpan.textContent = daysLeftText;
-    
+
     // Custom style for Overdue
     if (diffDays < 0) {
         daysLeftSpan.style.color = 'var(--danger)';
@@ -624,6 +702,7 @@ function createTaskCard(task) {
     taskMeta.appendChild(deadlineDiv);
 
     div.appendChild(completeBtn); // Add complete button
+    div.appendChild(editBtn); // Add edit button
     div.appendChild(deleteBtn);
     div.appendChild(taskTitle);
     div.appendChild(taskMeta);
@@ -779,6 +858,8 @@ function setupEventListeners() {
 
     elements.addTaskBtn.addEventListener('click', () => {
         elements.taskForm.reset();
+        document.getElementById('t-id').value = ''; // Clear ID for new task
+        elements.taskModal.querySelector('h2').textContent = 'Новая задача'; // Reset title
         // Set default date to today
         document.getElementById('t-deadline').valueAsDate = new Date();
         populateAssigneeDropdown();
@@ -874,7 +955,7 @@ function setupEventListeners() {
                 // Send email to all assignees
                 const emails = assigneeEmail.split(',');
                 const names = assignee.split(', ');
-                
+
                 emails.forEach((email, index) => {
                     if (email && email.trim()) {
                         const name = names[index] || 'Коллега';
@@ -903,12 +984,13 @@ function setupEventListeners() {
         e.preventDefault();
         const title = document.getElementById('t-title').value;
         const description = document.getElementById('t-description').value;
-        
+        const taskId = document.getElementById('t-id').value;
+
         // Get selected assignees
         const checkboxes = document.querySelectorAll('input[name="assignee-select"]:checked');
         const selectedNames = [];
         const selectedEmails = [];
-        
+
         checkboxes.forEach(cb => {
             selectedNames.push(cb.dataset.name);
             selectedEmails.push(cb.value);
@@ -920,7 +1002,20 @@ function setupEventListeners() {
         const deadline = document.getElementById('t-deadline').value;
         const status = document.getElementById('t-status').value;
 
-        createTask(title, assignee, deadline, status, assigneeEmail, description);
+        if (taskId) {
+            // Update existing task
+            updateTask(taskId, {
+                title,
+                description,
+                assignee,
+                assigneeEmail,
+                deadline
+                // We don't update status here as it's handled by drag and drop
+            });
+        } else {
+            // Create new task
+            createTask(title, assignee, deadline, status, assigneeEmail, description);
+        }
     });
 
     setupDragAndDrop();
@@ -1457,21 +1552,21 @@ function populateAssigneeDropdown() {
 
     state.users.forEach(user => {
         const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
-        
+
         const div = document.createElement('div');
         div.className = 'assignee-option';
-        
+
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.name = 'assignee-select';
         checkbox.value = user.email;
         checkbox.id = `assignee-${user.id}`;
         checkbox.dataset.name = fullName;
-        
+
         const label = document.createElement('label');
         label.htmlFor = `assignee-${user.id}`;
         label.textContent = fullName;
-        
+
         div.appendChild(checkbox);
         div.appendChild(label);
         container.appendChild(div);
@@ -1558,14 +1653,14 @@ function checkReminders(tasks) {
             if (task.assigneeEmail) {
                 const emails = task.assigneeEmail.split(',');
                 const names = task.assignee.split(', ');
-                
+
                 emails.forEach((email, index) => {
                     if (email && email.trim()) {
                         const name = names[index] || 'Коллега';
                         sendReminderEmail(email.trim(), name, task.title, task.deadline);
                     }
                 });
-                
+
                 // Mark as sent
                 db.collection('tasks').doc(task.id).update({ reminderSent: true });
             }
@@ -1693,12 +1788,12 @@ document.addEventListener('DOMContentLoaded', init);
 
 function forceUpdate() {
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-            for(let registration of registrations) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            for (let registration of registrations) {
                 registration.unregister();
             }
             // Clear all caches
-            caches.keys().then(function(names) {
+            caches.keys().then(function (names) {
                 for (let name of names)
                     caches.delete(name);
             });
