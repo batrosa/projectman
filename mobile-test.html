@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Test - ProjectMan</title>
+    <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=7nINVIcIXHkqPG8_hKQUjLajYWgfYDFjUcIPw3KNsUmRmP8Z_jsIQLPKSG4QMTDJb1yYzAL4-xuGvWJ8Zce4LaFTDumefSSOK7KBJxJYYg-GXRXPTAcjZfrj31_wkI6ixoa41A2VAxDLHPQEJeMRNI12woIpkwycpC6Co45NbP1_Um7O5xv78vKH-gQ4sJ88aM3gUaqQ_HyiYFtJRhIvaq4tjXHYdKMZuHnN3AeNiC3g9KoL6-Wse4_OALEazGawAhfxUHOt4_golr7JtYoLvFtkNhNth6P_gAnCrGIAokD9SYv_GXfpmhulp5rR-UDpPTl2m9xG9MJ4sdqAxCkRcTy_hhzDw0Dq1KM9-J8dUcJ_p_cj7xGK0NTGEDxpdV2nUgnbyRGPb0IM5oKjBctMSFdPHwQyUXb9_dTjmIsUbzomAO3xk8FE_rbKNZmALoHF_Tv6kukG57HEDieICsn568YSCFkE5XrI-QwnmT9VwKyjvPfoP_FS9qSJsym7WwN-68l1jaCULdHvZJbW4k8KCkNrv_alY0LiQfJnxHv41VGtiive7nPnN_o9dYMFi914ilMp_1MUse_sPA_WBakhyngacfh0CAHG17X4Uu68NtRbFOikaxtgZpo1IGTyGRKBVY3vpaCdkTsh1oBAw-xaXVvI5Pwdp2rRp5gjggnuz7XVhvAC4IngiJ6b3_R8A9Xs3Eb5e2-iN7sPc76fT9x9rNkamNZNOqJ4vi2lMz-6HpI" charset="UTF-8"></script><style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0f172a;
+            color: white;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .test-card {
+            background: rgba(51, 65, 85, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #6366f1;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            line-height: 1.6;
+            color: #94a3b8;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid #10b981;
+        }
+
+        .info {
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid #6366f1;
+        }
+
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 5px;
+            min-height: 44px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>📱 Mobile Test - ProjectMan</h1>
+
+    <div class="test-card">
+        <h2>✅ Страница загружена</h2>
+        <p>Если вы видите этот текст, значит HTML загружается корректно.</p>
+    </div>
+
+    <div class="test-card">
+        <h2>📊 Информация об устройстве</h2>
+        <div class="status info">
+            <p><strong>Ширина экрана:</strong> <span id="width"></span>px</p>
+            <p><strong>Высота экрана:</strong> <span id="height"></span>px</p>
+            <p><strong>User Agent:</strong> <span id="ua"></span></p>
+            <p><strong>Соотношение:</strong> <span id="ratio"></span></p>
+        </div>
+    </div>
+
+    <div class="test-card">
+        <h2>🔥 Тест Firebase</h2>
+        <div id="firebase-status" class="status">
+            <p>Проверка подключения...</p>
+        </div>
+    </div>
+
+    <div class="test-card">
+        <h2>👆 Тест Touch Events</h2>
+        <div id="touch-area"
+            style="background: rgba(99, 102, 241, 0.2); padding: 40px; border-radius: 8px; text-align: center; border: 2px dashed #6366f1;">
+            Нажмите и удерживайте здесь
+        </div>
+        <div id="touch-status" class="status info" style="margin-top: 10px;">
+            <p>Ожидание касания...</p>
+        </div>
+    </div>
+
+    <div class="test-card">
+        <button onclick="window.location.href='index.html'">Открыть ProjectMan</button>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script>
+        // Display device info
+        document.getElementById('width').textContent = window.innerWidth;
+        document.getElementById('height').textContent = window.innerHeight;
+        document.getElementById('ua').textContent = navigator.userAgent.substring(0, 50) + '...';
+        const ratio = (window.innerHeight / window.innerWidth).toFixed(2);
+        document.getElementById('ratio').textContent = ratio + ' (9:16 = 1.78)';
+
+        // Test Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyBqNCgLUmlxfIKlDCwmx0-9D-JJm63RpuU",
+            authDomain: "projectman-96d3c.firebaseapp.com",
+            projectId: "projectman-96d3c",
+            storageBucket: "projectman-96d3c.firebasestorage.app",
+            messagingSenderId: "52414300696",
+            appId: "1:52414300696:web:8dd04516cfd1c9668b796d"
+        };
+
+        try {
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.firestore();
+            document.getElementById('firebase-status').innerHTML = '<p class="success">✅ Firebase подключен успешно!</p>';
+            document.getElementById('firebase-status').className = 'status success';
+        } catch (error) {
+            document.getElementById('firebase-status').innerHTML = '<p>❌ Ошибка Firebase: ' + error.message + '</p>';
+        }
+
+        // Test touch events
+        const touchArea = document.getElementById('touch-area');
+        const touchStatus = document.getElementById('touch-status');
+        let touchTimer = null;
+
+        touchArea.addEventListener('touchstart', (e) => {
+            touchStatus.innerHTML = '<p>👆 Касание обнаружено! Удерживайте...</p>';
+            touchTimer = setTimeout(() => {
+                touchStatus.innerHTML = '<p>✅ Долгое нажатие работает!</p>';
+                touchStatus.className = 'status success';
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+            }, 300);
+        }, { passive: true });
+
+        touchArea.addEventListener('touchend', () => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+            }
+        }, { passive: true });
+
+        touchArea.addEventListener('touchcancel', () => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+            }
+            touchStatus.innerHTML = '<p>⚠️ Касание отменено</p>';
+        }, { passive: true });
+    </script>
+</body>
+
+</html>

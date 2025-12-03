@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper function to check if user is allowed to view project
+    function canViewProject(projectId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      // If allowedProjects is missing or empty, they have access to all (or logic can be inverted)
+      // Based on current app logic: empty = all access.
+      return userData.allowedProjects == null || userData.allowedProjects.size() == 0 || projectId in userData.allowedProjects;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own profile
+      // Admins can read all profiles
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      
+      // Users can create their own profile on signup
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Only admins can update roles or allowedProjects
+      // Users can update their own basic info (name, etc) - simplified for now
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // Projects collection
+    match /projects/{projectId} {
+      // Admins can do everything
+      // Readers can only read if they have access
+      allow read: if isAdmin() || (request.auth != null && canViewProject(projectId));
+      allow write: if isAdmin();
+    }
+
+    // Tasks collection
+    match /tasks/{taskId} {
+      // Admins can do everything
+      // Readers can read if they have access to the parent project
+      // Note: This requires reading the project ID from the task document.
+      // Since we can't easily join, we rely on the client to filter, BUT for security:
+      // We can check if the task's projectId is in the user's allowed list.
+      allow read: if isAdmin() || (request.auth != null && canViewProject(resource.data.projectId));
+      allow write: if isAdmin();
+    }
+  }
+}

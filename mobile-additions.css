@@ -1,0 +1,300 @@
+/* Mobile Optimizations for 9:16 Format */
+
+@media (max-width: 768px) {
+
+    /* Top bar - sticky */
+    .top-bar {
+        padding: 1rem;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        position: sticky;
+        top: 0;
+        background: var(--bg-color);
+        backdrop-filter: blur(10px);
+        z-index: 100;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .actions {
+        width: 100%;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+        display: flex;
+        flex-wrap: wrap;
+    }
+
+    #add-task-btn {
+        flex: 1;
+        justify-content: center;
+        padding: 0.875rem;
+        font-size: 1rem;
+        min-height: 50px;
+    }
+
+    #help-btn {
+        flex: 0 0 auto;
+        padding: 0.875rem;
+        min-width: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #delete-project-btn {
+        flex: 0 0 auto;
+        padding: 0;
+        min-width: 50px;
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #delete-project-btn i {
+        font-size: 1.1rem;
+    }
+
+    /* Main content must have fixed height with dvh for mobile browsers */
+    .main-content {
+        height: 100dvh !important; /* Dynamic viewport height */
+        height: 100vh; /* Fallback */
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important; /* Prevent main content from scrolling */
+        position: relative !important;
+    }
+
+    /* Board container - scrollable */
+    .board-container {
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 1rem !important;
+        padding-bottom: 5rem !important; /* Extra padding for bottom scrolling */
+        gap: 2rem !important;
+        
+        /* CRITICAL SCROLLING FIXES */
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-y: contain !important; /* Prevent pull-to-refresh affecting whole page */
+        
+        flex: 1 1 auto !important; /* Grow and shrink */
+        min-height: 0 !important; /* Allow shrinking below content size */
+        height: 100% !important; /* Fill available space */
+    }
+
+    /* Ensure body doesn't scroll */
+    body {
+        position: fixed !important;
+        width: 100% !important;
+        height: 100% !important;
+        overflow: hidden !important;
+    }
+
+    .app-container {
+        height: 100dvh !important;
+        height: 100vh;
+        overflow: hidden !important;
+    }
+
+    .column {
+        min-height: 100px !important;
+        height: auto !important; /* Allow column to grow with content */
+        max-height: none !important;
+        overflow: visible !important;
+        margin-bottom: 0 !important;
+        flex: 0 0 auto !important; /* Do not stretch, let it be auto height */
+        background: rgba(15, 23, 42, 0.4);
+    }
+
+    .task-list {
+        max-height: none !important;
+        overflow-y: visible !important;
+        min-height: 50px;
+        height: auto !important;
+    }
+
+    /* Fix task layout on mobile */
+    .task-card {
+        width: 100%;
+        box-sizing: border-box;
+        /* Enable vertical pan for scrolling, disable horizontal to prevent swipe nav interference */
+        touch-action: pan-y; 
+    }
+
+    .task-title {
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+        line-height: 1.5;
+        padding-right: 5.5rem; /* Ensure enough space for delete and complete buttons */
+        word-wrap: break-word; /* Prevent long words from overflowing */
+    }
+
+    .task-meta {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center; /* Align items vertically */
+    }
+
+    .deadline {
+        flex-wrap: wrap;
+        /* Ensure text doesn't overflow if it's long like 'ПРОСРОЧЕНО' */
+        max-width: 100%;
+        gap: 0.4rem;
+    }
+
+    .days-left {
+        font-size: 0.85rem;
+        margin-right: 8px;
+        /* Ensure it wraps if needed */
+        white-space: normal; 
+    }
+
+    /* Position buttons on mobile */
+    .delete-task {
+        opacity: 1;
+        padding: 0.75rem;
+        font-size: 1.1rem;
+        top: 0.5rem;
+        right: 0.5rem;
+    }
+
+    .assignee-complete-btn {
+        top: 0.5rem;
+        right: 3.5rem; /* Position to the left of delete button */
+        padding: 0.75rem;
+        font-size: 1.3rem; /* Make checkmark larger on mobile */
+        opacity: 1; /* Always visible on mobile */
+    }
+
+    /* Login form spacing */
+    #login-form button[type="submit"],
+    #register-form button[type="submit"] {
+        margin-top: 1.5rem;
+    }
+
+    /* Modal */
+    .modal {
+        padding: 1rem;
+        align-items: flex-start;
+        padding-top: 2rem;
+    }
+
+    .modal-content {
+        width: 100%;
+        max-width: 100%;
+        padding: 1.5rem;
+        max-height: calc(100vh - 4rem);
+        overflow-y: auto;
+        margin: 0;
+        border-radius: 16px;
+    }
+
+    .modal-header {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h2 {
+        font-size: 1.3rem;
+        margin: 0;
+    }
+
+    /* Forms */
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group:last-of-type {
+        margin-bottom: 0;
+    }
+
+    label {
+        font-size: 1rem;
+        margin-bottom: 0.75rem;
+        font-weight: 500;
+        display: block;
+    }
+
+    .form-row {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    input,
+    textarea,
+    select {
+        width: 100%;
+        padding: 1rem;
+        font-size: 16px !important;
+        min-height: 52px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--card-bg);
+        color: var(--text-primary);
+    }
+
+    textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+
+    select {
+        appearance: none;
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+        background-repeat: no-repeat;
+        background-position: right 1rem center;
+        background-size: 1.2rem;
+        padding-right: 3rem;
+    }
+
+    body.light-mode select {
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    }
+
+    .modal-footer {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+        flex-direction: row;
+    }
+
+    .modal-footer button {
+        flex: 1;
+        padding: 1rem;
+        font-size: 1rem;
+        min-height: 52px;
+        justify-content: center;
+        border-radius: 8px;
+    }
+
+    .close-modal {
+        font-size: 1.5rem;
+        padding: 0.5rem;
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    @media (max-height: 700px) {
+        .column {
+            min-height: 200px !important;
+        }
+    }
+}
+
+@media (max-width: 768px) and (orientation: landscape) {
+    .modal {
+        align-items: center;
+        padding: 1rem;
+    }
+
+    .modal-content {
+        max-width: 600px;
+        max-height: calc(100vh - 2rem);
+    }
+}
