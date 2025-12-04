@@ -477,14 +477,15 @@ body.light-mode .project-info h1 {
     color: var(--danger);
 }
 
+/* Assignee Button */
 .assignee-complete-btn {
     position: absolute;
     top: 0.75rem;
-    right: 3rem; /* Further from delete button */
-    background: rgba(148, 163, 184, 0.05); /* Very subtle gray tint */
-    border: 2px solid var(--text-secondary); /* Gray border initially */
+    right: 3rem;
+    background: rgba(255, 255, 255, 0.05); /* Slight background */
+    border: 2px solid var(--text-secondary); /* Default border */
     border-radius: 50%;
-    color: var(--text-secondary); /* Gray icon initially */
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 1.1rem;
     transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -492,14 +493,25 @@ body.light-mode .project-info h1 {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px; /* Bigger touch target */
+    width: 40px;
     height: 40px;
     z-index: 5;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    opacity: 1; /* Fully visible by default if active */
 }
 
-.assignee-complete-btn:hover {
-    background: rgba(16, 185, 129, 0.1); /* Green tint on hover */
+/* Disabled state (Gray/Dimmed) */
+.assignee-complete-btn:disabled,
+.assignee-complete-btn.disabled {
+    cursor: default;
+    opacity: 0.3; /* Dimmed */
+    border-color: var(--text-secondary);
+    background: transparent;
+    box-shadow: none;
+}
+
+.assignee-complete-btn:not(:disabled):hover {
+    background: rgba(16, 185, 129, 0.1);
     border-color: var(--success);
     color: var(--success);
     transform: scale(1.05);
@@ -511,6 +523,68 @@ body.light-mode .project-info h1 {
     color: white;
     box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
     animation: popCheck 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    opacity: 1 !important; /* Always visible if completed */
+}
+
+/* Admin Button */
+.admin-complete-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 6.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid var(--text-secondary);
+    border-radius: 50%;
+    color: var(--text-secondary);
+    cursor: default;
+    font-size: 1.1rem;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    z-index: 5;
+    opacity: 0.3; /* Hidden/Dimmed by default */
+}
+
+/* Admin button active state (Assingee done) */
+.admin-complete-btn:not(:disabled) {
+    opacity: 1; /* Fully visible */
+    cursor: pointer;
+    border-color: var(--text-primary); /* Brighter border */
+    color: var(--text-primary);
+}
+
+.admin-complete-btn:not(:disabled):hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: scale(1.05);
+}
+
+.admin-complete-btn.completed {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+    animation: popCheck 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    opacity: 1 !important;
+}
+
+/* Pulse animation for admin button when ready */
+.admin-complete-btn.ready-for-admin {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.05);
+    animation: pulseBorder 2s infinite;
+    opacity: 1;
+}
+
+@keyframes pulseBorder {
+    0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+    70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
 }
 
 @keyframes popCheck {
