@@ -407,7 +407,6 @@ function deleteTask(id) {
 }
 
 function updateTaskStatus(id, newStatus) {
-    if (state.role !== 'admin') return;
     db.collection('tasks').doc(id).update({
         status: newStatus
     });
@@ -812,10 +811,6 @@ function formatDate(dateString) {
 let draggedTaskId = null;
 
 function handleDragStart(e) {
-    if (state.role !== 'admin') {
-        e.preventDefault();
-        return;
-    }
     draggedTaskId = this.dataset.id;
     e.dataTransfer.effectAllowed = 'move';
     setTimeout(() => this.style.opacity = '0.5', 0);
@@ -826,13 +821,11 @@ function setupDragAndDrop() {
 
     columns.forEach(col => {
         col.parentElement.addEventListener('dragover', e => {
-            if (state.role !== 'admin') return; // Disable drag for guests
             e.preventDefault(); // Allow drop
             e.dataTransfer.dropEffect = 'move';
         });
 
         col.parentElement.addEventListener('drop', e => {
-            if (state.role !== 'admin') return; // Disable drop for guests
             e.preventDefault();
             const status = col.parentElement.dataset.status;
 
@@ -1299,6 +1292,9 @@ function finishAuth(role) {
 
     if (state.projects.length > 0 && !state.activeProjectId) {
         selectProject(state.projects[0].id);
+    } else if (state.activeProjectId) {
+        // Re-render board with correct permissions if project is already active
+        renderBoard();
     }
 }
 
@@ -1375,8 +1371,6 @@ function setupTouchDragAndDrop(taskCard) {
     let startY = 0;
 
     taskCard.addEventListener('touchstart', (e) => {
-        if (state.role !== 'admin') return;
-
         const touch = e.touches[0];
         startY = touch.clientY;
         touchDragState.draggedElement = taskCard;
