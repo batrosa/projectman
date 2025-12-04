@@ -1276,6 +1276,7 @@ async function loadUserRole(user) {
 }
 
 function finishAuth(role) {
+    console.log("Auth finished. Role:", role); // Debug
     state.role = role;
     state.currentUser.role = role;
 
@@ -1290,10 +1291,14 @@ function finishAuth(role) {
     // Setup admin panel if admin
     setupAdminPanel();
 
+    // Always try to select first project if none active
     if (state.projects.length > 0 && !state.activeProjectId) {
         selectProject(state.projects[0].id);
-    } else if (state.activeProjectId) {
-        // Re-render board with correct permissions if project is already active
+    } 
+    
+    // Force re-render of everything now that we have permissions
+    renderProjects();
+    if (state.activeProjectId) {
         renderBoard();
     }
 }
