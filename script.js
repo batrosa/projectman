@@ -25,7 +25,7 @@ const emailConfig = {
 
 // Sound Effect
 const clickSound = new Audio('button.mp3');
-clickSound.volume = 0.2; // 20% volume (Very subtle)
+clickSound.volume = 0.1; // 10% volume (Ultra subtle)
 
 function playClickSound() {
     clickSound.currentTime = 0;
@@ -571,10 +571,21 @@ function createTaskCard(task) {
 
     // Check if current user is assignee - USE EMAIL for reliable check
     let isAssignee = false;
-    if (state.currentUser && state.currentUser.email && task.assigneeEmail) {
-        // Check if user's email is in the comma-separated list of assignee emails
-        const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
-        isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
+    if (state.currentUser) {
+        // 1. Try checking by Email (Reliable)
+        if (state.currentUser.email && task.assigneeEmail) {
+            const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
+            isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
+        }
+        
+        // 2. Fallback: Check by Name (For old tasks without email)
+        if (!isAssignee && !task.assigneeEmail && task.assignee) {
+            const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
+            const assigneeNames = task.assignee.split(',').map(n => n.trim());
+            if (currentUserFullName && assigneeNames.includes(currentUserFullName)) {
+                isAssignee = true;
+            }
+        }
     }
 
     if (task.assigneeCompleted) {
@@ -587,8 +598,13 @@ function createTaskCard(task) {
         completeBtn.title = 'Отметить как выполненное';
     }
 
-    // Show button for assignee regardless of status (can mark done anytime)
-    if (isAssignee) {
+    // Show button for assignee OR Admin regardless of status
+    if (isAssignee || state.role === 'admin') {
+        completeBtn.disabled = false; // Ensure enabled
+        completeBtn.addEventListener('touchstart', (e) => {
+            e.stopPropagation(); // Prevent drag start on mobile when clicking button
+        }, { passive: true });
+
         completeBtn.onclick = (e) => {
             e.stopPropagation();
             playClickSound(); // Sound effect
@@ -819,9 +835,11 @@ function createTaskCard(task) {
 function toggleAssigneeCompletion(taskId, currentStatus) {
     db.collection('tasks').doc(taskId).update({
         assigneeCompleted: !currentStatus
+    }).then(() => {
+        console.log("Task completion status updated");
     }).catch(error => {
         console.error("Error updating task completion:", error);
-        alert("Ошибка при обновлении статуса задачи");
+        alert("Ошибка при обновлении статуса задачи: " + error.message);
     });
 }
 
