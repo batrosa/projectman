@@ -159,14 +159,39 @@
     }
 
     .check-btn {
-        width: 40px; /* Larger for touch */
+        width: 40px; /* Slightly larger than PC (36px) for touch, but visually similar */
         height: 40px;
-        font-size: 1.2rem;
-        opacity: 0.6; /* More visibility */
+        font-size: 1.2rem; /* Matches PC proportion */
+        
+        /* Force PC visual style */
+        -webkit-appearance: none;
+        appearance: none;
+        background: rgba(148, 163, 184, 0.05) !important;
+        border: 2px solid var(--text-secondary) !important;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        margin: 0;
+        
+        opacity: 0.8; /* Slightly more visible on mobile than PC's 0.5 */
     }
 
     .check-btn.interactive {
         opacity: 1;
+        background: rgba(99, 102, 241, 0.1) !important;
+        border-color: var(--primary) !important;
+        color: var(--primary) !important;
+    }
+    
+    .check-btn.completed {
+        background: var(--success) !important;
+        border-color: var(--success) !important;
+        color: white !important;
+        opacity: 1 !important;
     }
 
     .assignee-complete-btn {
