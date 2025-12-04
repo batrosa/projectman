@@ -225,7 +225,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '2.8'; // Increment this manually on big updates
+    const CURRENT_VERSION = '2.10'; // Increment this manually on big updates
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -823,13 +823,34 @@ function createTaskCard(task) {
         div.appendChild(extrasDiv);
     }
 
-    // Desktop drag and drop
-    div.addEventListener('dragstart', handleDragStart);
+    // Desktop drag and drop removed
+    // div.addEventListener('dragstart', handleDragStart);
 
-    // Mobile touch drag and drop
-    setupTouchDragAndDrop(div);
+    // Mobile touch drag and drop removed
+    // setupTouchDragAndDrop(div);
 
     return div;
+}
+
+function toggleAdminCompletion(taskId, currentStatus, assigneeStatus) {
+    const updates = {
+        adminCompleted: !currentStatus
+    };
+
+    // If Admin checks AND Assignee checked -> Move to Done
+    if (!currentStatus && assigneeStatus) {
+        updates.status = 'done';
+    } else {
+        // If Admin unchecks, move back to in-progress
+        updates.status = 'in-progress';
+    }
+
+    db.collection('tasks').doc(taskId).update(updates).then(() => {
+        playClickSound();
+    }).catch(error => {
+        console.error("Error updating admin completion:", error);
+        alert("Ошибка: " + error.message);
+    });
 }
 
 function toggleAssigneeCompletion(taskId, currentStatus) {
@@ -848,49 +869,10 @@ function formatDate(dateString) {
     return new Date(dateString).toLocaleDateString('ru-RU', options);
 }
 
-// Drag and Drop
-let draggedTaskId = null;
-
-function handleDragStart(e) {
-    draggedTaskId = this.dataset.id;
-    e.dataTransfer.effectAllowed = 'move';
-    setTimeout(() => this.style.opacity = '0.5', 0);
-}
-
-function setupDragAndDrop() {
-    const columns = [elements.listInProgress, elements.listDone];
-
-    columns.forEach(col => {
-        col.parentElement.addEventListener('dragover', e => {
-            e.preventDefault(); // Allow drop
-            e.dataTransfer.dropEffect = 'move';
-        });
-
-        col.parentElement.addEventListener('drop', e => {
-            e.preventDefault();
-            const status = col.parentElement.dataset.status;
-
-            if (status === 'done') {
-                const task = state.tasks.find(t => t.id === draggedTaskId);
-                if (task && !task.assigneeCompleted) {
-                    alert('Исполнитель должен отметить задачу как выполненную перед перемещением в "Готово"!');
-                    return;
-                }
-            }
-
-            if (draggedTaskId) {
-                updateTaskStatus(draggedTaskId, status);
-            }
-        });
-
-        col.parentElement.addEventListener('dragend', (e) => {
-            // Reset opacity
-            const card = document.querySelector(`.task-card[data-id="${draggedTaskId}"]`);
-            if (card) card.style.opacity = '1';
-            draggedTaskId = null;
-        });
-    });
-}
+// Drag and Drop removed as per new requirements
+// function handleDragStart(e) { ... }
+// function setupDragAndDrop() { ... }
+// function setupTouchDragAndDrop(taskCard) { ... }
 
 // Theme
 function loadTheme() {
@@ -1092,7 +1074,7 @@ function setupEventListeners() {
         }
     });
 
-    setupDragAndDrop();
+    // setupDragAndDrop(); // Removed
 
     elements.themeToggle.addEventListener('click', () => {
         playClickSound();
@@ -1428,131 +1410,12 @@ function getAuthErrorMessage(errorCode) {
     }
 }
 
-// Touch Drag and Drop for Mobile
-let touchDragState = {
-    isDragging: false,
-    draggedElement: null,
-    clone: null
-};
-
-function setupTouchDragAndDrop(taskCard) {
-    let longPressTimer = null;
-    let startY = 0;
-
-    taskCard.addEventListener('touchstart', (e) => {
-        const touch = e.touches[0];
-        startY = touch.clientY;
-        touchDragState.draggedElement = taskCard;
-
-        // Long press to start dragging
-        longPressTimer = setTimeout(() => {
-            startTouchDrag(taskCard, touch);
-        }, 300);
-    }, { passive: true });
-
-    taskCard.addEventListener('touchmove', (e) => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-
-        if (touchDragState.isDragging && touchDragState.draggedElement === taskCard) {
-            e.preventDefault();
-            const touch = e.touches[0];
-
-            if (touchDragState.clone) {
-                touchDragState.clone.style.left = touch.clientX - 50 + 'px';
-                touchDragState.clone.style.top = touch.clientY - 50 + 'px';
-            }
-        }
-    });
-
-    taskCard.addEventListener('touchend', (e) => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-
-        if (touchDragState.isDragging && touchDragState.draggedElement === taskCard) {
-            endTouchDrag(e.changedTouches[0]);
-        }
-    }, { passive: true });
-
-    taskCard.addEventListener('touchcancel', () => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-        }
-        if (touchDragState.isDragging) {
-            cancelTouchDrag();
-        }
-    }, { passive: true });
-}
-
-function startTouchDrag(element, touch) {
-    touchDragState.isDragging = true;
-
-    // Create visual clone
-    const clone = element.cloneNode(true);
-    clone.style.position = 'fixed';
-    clone.style.left = touch.clientX - 50 + 'px';
-    clone.style.top = touch.clientY - 50 + 'px';
-    clone.style.width = element.offsetWidth + 'px';
-    clone.style.opacity = '0.8';
-    clone.style.zIndex = '10000';
-    clone.style.pointerEvents = 'none';
-    clone.style.transform = 'scale(1.05)';
-
-    document.body.appendChild(clone);
-    touchDragState.clone = clone;
-    element.style.opacity = '0.3';
-
-    // Haptic feedback
-    if (navigator.vibrate) {
-        navigator.vibrate(50);
-    }
-}
-
-function endTouchDrag(touch) {
-    const x = touch.clientX;
-    const y = touch.clientY;
-
-    // Find which column we're over
-    const columns = document.querySelectorAll('.column');
-    let targetColumn = null;
-
-    columns.forEach(col => {
-        const rect = col.getBoundingClientRect();
-        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-            targetColumn = col;
-        }
-    });
-
-    if (targetColumn && touchDragState.draggedElement) {
-        const newStatus = targetColumn.dataset.status;
-        const taskId = touchDragState.draggedElement.dataset.id;
-        updateTaskStatus(taskId, newStatus);
-
-        if (navigator.vibrate) {
-            navigator.vibrate(30);
-        }
-    }
-
-    cancelTouchDrag();
-}
-
-function cancelTouchDrag() {
-    if (touchDragState.clone) {
-        touchDragState.clone.remove();
-    }
-
-    if (touchDragState.draggedElement) {
-        touchDragState.draggedElement.style.opacity = '1';
-    }
-
-    touchDragState.isDragging = false;
-    touchDragState.draggedElement = null;
-    touchDragState.clone = null;
-}
+// Touch Drag and Drop for Mobile removed
+// let touchDragState = { ... };
+// function setupTouchDragAndDrop(taskCard) { ... }
+// function startTouchDrag(element, touch) { ... }
+// function endTouchDrag(touch) { ... }
+// function cancelTouchDrag() { ... }
 
 // Admin Panel Functions
 function setupAdminPanel() {
