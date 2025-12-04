@@ -480,34 +480,58 @@ body.light-mode .project-info h1 {
 .assignee-complete-btn {
     position: absolute;
     top: 0.75rem;
-    right: 2.5rem;
-    background: none;
-    border: none;
-    color: var(--text-secondary);
+    right: 3rem; /* Further from delete button */
+    background: rgba(148, 163, 184, 0.05); /* Very subtle gray tint */
+    border: 2px solid var(--text-secondary); /* Gray border initially */
+    border-radius: 50%;
+    color: var(--text-secondary); /* Gray icon initially */
     cursor: pointer;
-    font-size: 1.2rem;
-    transition: color 0.2s;
+    font-size: 1.1rem;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 40px; /* Bigger touch target */
+    height: 40px;
     z-index: 5;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.assignee-complete-btn:hover {
+    background: rgba(16, 185, 129, 0.1); /* Green tint on hover */
+    border-color: var(--success);
+    color: var(--success);
+    transform: scale(1.05);
 }
 
 .assignee-complete-btn.completed {
-    color: var(--success);
+    border-color: var(--success);
+    background: var(--success);
+    color: white;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    animation: popCheck 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popCheck {
+    0% { transform: scale(0.8); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
 }
 
 .assignee-complete-btn.interactive:hover {
-    color: var(--primary);
+    color: white;
+    background: var(--success);
     transform: scale(1.1);
 }
 
 .assignee-complete-btn.disabled {
     cursor: default;
-    opacity: 0.5;
+    opacity: 0.3;
+    background: transparent;
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+    box-shadow: none;
 }
 
 /* Modals */

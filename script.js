@@ -23,6 +23,15 @@ const emailConfig = {
     }
 })();
 
+// Sound Effect
+const clickSound = new Audio('button.mp3');
+clickSound.volume = 0.5; // 50% volume
+
+function playClickSound() {
+    clickSound.currentTime = 0;
+    clickSound.play().catch(e => console.log('Audio play failed (user interaction needed first):', e));
+}
+
 // Initialize Firebase when ready
 let db;
 let auth;
@@ -483,7 +492,10 @@ function renderProjects() {
             <i class="fa-solid fa-folder"></i>
             <span>${project.name}</span>
         `;
-        li.onclick = () => selectProject(project.id);
+        li.onclick = () => {
+            playClickSound();
+            selectProject(project.id);
+        };
         elements.projectList.appendChild(li);
     });
 }
@@ -507,7 +519,10 @@ function renderBoard() {
     elements.projectDesc.textContent = activeProject.description || '';
     elements.addTaskBtn.disabled = false;
     elements.deleteProjectBtn.style.display = 'flex';
-    elements.deleteProjectBtn.onclick = () => deleteProject(activeProject.id);
+    elements.deleteProjectBtn.onclick = () => {
+        playClickSound();
+        deleteProject(activeProject.id);
+    };
 
     // Clear lists
     // Clear lists
@@ -567,7 +582,8 @@ function createTaskCard(task) {
         completeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
         completeBtn.title = 'Выполнено исполнителем';
     } else {
-        completeBtn.innerHTML = '<i class="fa-regular fa-circle"></i>';
+        // Use check icon but rely on CSS to style it (outlined/transparent)
+        completeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
         completeBtn.title = 'Отметить как выполненное';
     }
 
@@ -575,6 +591,7 @@ function createTaskCard(task) {
     if (isAssignee) {
         completeBtn.onclick = (e) => {
             e.stopPropagation();
+            playClickSound(); // Sound effect
             toggleAssigneeCompletion(task.id, task.assigneeCompleted);
         };
         completeBtn.style.cursor = 'pointer';
@@ -595,6 +612,7 @@ function createTaskCard(task) {
     deleteBtn.appendChild(deleteIcon);
     deleteBtn.onclick = (e) => {
         e.stopPropagation();
+        playClickSound();
         deleteTask(task.id);
     };
 
@@ -618,6 +636,7 @@ function createTaskCard(task) {
     editBtn.appendChild(editIcon);
     editBtn.onclick = (e) => {
         e.stopPropagation();
+        playClickSound();
         openEditTaskModal(task);
     };
 
@@ -883,11 +902,13 @@ function updateThemeIcon(isLight) {
 function setupEventListeners() {
     // Modals
     elements.addProjectBtn.addEventListener('click', () => {
+        playClickSound();
         elements.projectForm.reset();
         elements.projectModal.classList.add('active');
     });
 
     elements.addTaskBtn.addEventListener('click', () => {
+        playClickSound();
         elements.taskForm.reset();
         document.getElementById('t-id').value = ''; // Clear ID for new task
         elements.taskModal.querySelector('h2').textContent = 'Новая задача'; // Reset title
@@ -899,11 +920,13 @@ function setupEventListeners() {
 
     // Help button
     elements.helpBtn.addEventListener('click', () => {
+        playClickSound();
         elements.helpModal.classList.add('active');
     });
 
     elements.closeModalBtns.forEach(btn => {
         btn.addEventListener('click', () => {
+            playClickSound();
             const modal = btn.closest('.modal');
             if (modal) {
                 modal.classList.remove('active');
@@ -921,6 +944,7 @@ function setupEventListeners() {
     // Forms
     elements.projectForm.addEventListener('submit', (e) => {
         e.preventDefault();
+        playClickSound();
         const name = document.getElementById('p-name').value;
         const desc = document.getElementById('p-desc').value;
         createProject(name, desc);
@@ -1013,6 +1037,7 @@ function setupEventListeners() {
     // ...
     elements.taskForm.addEventListener('submit', (e) => {
         e.preventDefault();
+        playClickSound();
         const title = document.getElementById('t-title').value;
         const description = document.getElementById('t-description').value;
         const taskId = document.getElementById('t-id').value;
@@ -1051,10 +1076,14 @@ function setupEventListeners() {
 
     setupDragAndDrop();
 
-    elements.themeToggle.addEventListener('click', toggleTheme);
+    elements.themeToggle.addEventListener('click', () => {
+        playClickSound();
+        toggleTheme();
+    });
 
     // Auth - Login/Register toggle
     document.getElementById('show-register').addEventListener('click', (e) => {
+        playClickSound();
         e.preventDefault();
         elements.loginForm.style.display = 'none';
         elements.registerForm.style.display = 'block';
@@ -1063,6 +1092,7 @@ function setupEventListeners() {
     });
 
     document.getElementById('show-login').addEventListener('click', (e) => {
+        playClickSound();
         e.preventDefault();
         elements.registerForm.style.display = 'none';
         elements.loginForm.style.display = 'block';
@@ -1072,6 +1102,7 @@ function setupEventListeners() {
 
     // Login form
     elements.loginForm.addEventListener('submit', async (e) => {
+        playClickSound();
         e.preventDefault();
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
@@ -1087,6 +1118,7 @@ function setupEventListeners() {
 
     // Register form
     elements.registerForm.addEventListener('submit', async (e) => {
+        playClickSound();
         e.preventDefault();
         const firstName = document.getElementById('register-first-name').value.trim();
         const lastName = document.getElementById('register-last-name').value.trim();
@@ -1144,17 +1176,22 @@ function setupEventListeners() {
     // Logout
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
-        logoutBtn.addEventListener('click', logout);
+        logoutBtn.addEventListener('click', () => {
+            playClickSound();
+            logout();
+        });
     }
 
     // Mobile Menu
     elements.mobileMenuBtn.addEventListener('click', () => {
+        playClickSound();
         elements.sidebar.classList.add('active');
         elements.sidebarOverlay.classList.add('active');
     });
 
     // Close sidebar when clicking overlay
     elements.sidebarOverlay.addEventListener('click', () => {
+        playClickSound();
         elements.sidebar.classList.remove('active');
         elements.sidebarOverlay.classList.remove('active');
     });
@@ -1162,6 +1199,7 @@ function setupEventListeners() {
     // Admin Panel
     if (elements.adminPanelBtn) {
         elements.adminPanelBtn.addEventListener('click', () => {
+            playClickSound();
             elements.adminPanelModal.classList.add('active');
         });
     }
@@ -1169,6 +1207,7 @@ function setupEventListeners() {
     // Admin Panel Tabs
     document.querySelectorAll('.admin-tab').forEach(tab => {
         tab.addEventListener('click', () => {
+            playClickSound();
             const tabName = tab.dataset.tab;
 
             // Update active tab
@@ -1225,7 +1264,10 @@ function setupEventListeners() {
 
     // Save access button
     if (elements.saveAccessBtn) {
-        elements.saveAccessBtn.addEventListener('click', saveUserAccess);
+        elements.saveAccessBtn.addEventListener('click', () => {
+            playClickSound();
+            saveUserAccess();
+        });
     }
 }
 
@@ -1549,7 +1591,10 @@ function renderUsersList() {
         // Add delete handler
         const deleteBtn = userItem.querySelector('.delete-user-btn');
         if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => deleteUser(user.id, fullName));
+            deleteBtn.addEventListener('click', () => {
+                playClickSound();
+                deleteUser(user.id, fullName);
+            });
         }
 
         elements.usersList.appendChild(userItem);
