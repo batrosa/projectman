@@ -402,6 +402,7 @@ function createTask(title, assignee, deadline, status, assigneeEmail) {
 
 function deleteTask(id) {
     if (state.role !== 'admin') return;
+    if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     db.collection('tasks').doc(id).delete();
 }
 
@@ -733,8 +734,10 @@ function createTaskCard(task) {
     taskMeta.appendChild(deadlineDiv);
 
     div.appendChild(completeBtn); // Add complete button
-    div.appendChild(editBtn); // Add edit button
-    div.appendChild(deleteBtn);
+    if (state.role === 'admin') {
+        div.appendChild(editBtn); // Add edit button
+        div.appendChild(deleteBtn);
+    }
     div.appendChild(taskTitle);
     div.appendChild(taskMeta);
 
@@ -1114,6 +1117,7 @@ function setupEventListeners() {
                 email: email,
                 firstName: firstName,
                 lastName: lastName,
+                role: 'reader', // Force role to reader
                 allowedProjects: [], // Empty means access to all projects
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
@@ -1126,33 +1130,8 @@ function setupEventListeners() {
         }
     });
 
-    // Role selection
-    document.getElementById('select-reader-btn').addEventListener('click', () => {
-        selectRole('reader');
-    });
+    // Role selection listeners removed (deprecated)
 
-    document.getElementById('select-admin-btn').addEventListener('click', () => {
-        // Show admin password verification
-        elements.roleScreen.style.display = 'none';
-        elements.adminVerifyScreen.style.display = 'block';
-        document.getElementById('admin-verify-password').value = '';
-        elements.adminVerifyError.style.display = 'none';
-    });
-
-    // Admin password verification
-    document.getElementById('admin-verify-submit').addEventListener('click', () => {
-        const password = document.getElementById('admin-verify-password').value;
-        if (password === '301098') {
-            selectRole('admin');
-        } else {
-            elements.adminVerifyError.style.display = 'block';
-        }
-    });
-
-    document.getElementById('admin-verify-cancel').addEventListener('click', () => {
-        elements.adminVerifyScreen.style.display = 'none';
-        elements.roleScreen.style.display = 'block';
-    });
 
     // Back to Auth (Login/Register) from Role Screen
     const backToAuthBtn = document.getElementById('back-to-auth-btn');
@@ -1271,44 +1250,41 @@ async function loadUserRole(user) {
     state.currentUser = {
         uid: user.uid,
         email: user.email,
-        role: null
+        role: 'reader' // Default
     };
 
-    // Fetch user profile to get name
+    // Timeout promise to prevent infinite loading
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out')), 5000)
+    );
+
+    // Fetch user profile to get name and role
     try {
-        const userDoc = await db.collection('users').doc(user.uid).get();
+        const userDocPromise = db.collection('users').doc(user.uid).get();
+        
+        // Race between fetch and timeout
+        const userDoc = await Promise.race([userDocPromise, timeoutPromise]);
+
         if (userDoc.exists) {
             const userData = userDoc.data();
             state.currentUser.firstName = userData.firstName;
             state.currentUser.lastName = userData.lastName;
             state.currentUser.fullName = `${userData.firstName} ${userData.lastName}`.trim();
+            state.currentUser.role = userData.role || 'reader'; // Get role from DB
+            state.currentUser.allowedProjects = userData.allowedProjects || [];
         }
     } catch (e) {
-        console.error("Error fetching user profile", e);
+        console.error("Error fetching user profile (using default role):", e);
+        // Even on error, we proceed with default 'reader' role to unblock UI
     }
 
-    // Always show role selection - don't auto-login with saved role
-    // User must choose and verify role each time
-    showRoleSelection(user.email);
+    // Always finish auth
+    finishAuth(state.currentUser.role);
 }
 
-async function selectRole(role) {
-    if (!state.currentUser) return;
-
-    // Set role in current session
-    state.currentUser.role = role;
+function finishAuth(role) {
     state.role = role;
-
-    // Save role to Firestore for persistence
-    try {
-        await db.collection('users').doc(state.currentUser.uid).set({
-            email: state.currentUser.email,
-            role: role,
-            lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-    } catch (error) {
-        console.error('Error saving user role:', error);
-    }
+    state.currentUser.role = role;
 
     hideAuthScreen();
 
@@ -1328,27 +1304,34 @@ async function selectRole(role) {
 
 function showAuthScreen() {
     const loader = document.getElementById('loading-overlay');
-    if (loader) loader.classList.add('hidden');
+    if (loader) {
+        loader.classList.add('hidden');
+        setTimeout(() => {
+            loader.style.display = 'none';
+        }, 500);
+    }
 
     elements.authOverlay.style.display = 'flex';
     elements.authScreen.style.display = 'block';
-    elements.roleScreen.style.display = 'none';
-    elements.adminVerifyScreen.style.display = 'none';
+    if (elements.roleScreen) elements.roleScreen.style.display = 'none';
+    if (elements.adminVerifyScreen) elements.adminVerifyScreen.style.display = 'none';
 }
 
-function showRoleSelection(email) {
-    const loader = document.getElementById('loading-overlay');
-    if (loader) loader.classList.add('hidden');
+// showRoleSelection removed as it's no longer used
 
-    elements.authOverlay.style.display = 'flex';
-    elements.authScreen.style.display = 'none';
-    elements.roleScreen.style.display = 'block';
-    elements.adminVerifyScreen.style.display = 'none';
-    elements.userEmailDisplay.textContent = email;
-}
 
 function hideAuthScreen() {
     elements.authOverlay.style.display = 'none';
+    
+    // Also hide the initial loading overlay if it's still visible
+    const loader = document.getElementById('loading-overlay');
+    if (loader) {
+        loader.classList.add('hidden');
+        // Remove it from DOM after transition to prevent clicks blocking
+        setTimeout(() => {
+            loader.style.display = 'none';
+        }, 500);
+    }
 }
 
 async function logout() {

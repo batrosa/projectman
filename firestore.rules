@@ -2,53 +2,64 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if user is admin
+    // Функция: Проверка, что пользователь Админ
     function isAdmin() {
       return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Helper function to check if user is allowed to view project
+    // Функция: Проверка, что пользователь не меняет защищенные поля (роль и доступы)
+    function notUpdatingRestrictedFields() {
+      return (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects']));
+    }
+
+    // Функция: Проверка прав на проект
     function canViewProject(projectId) {
       let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-      // If allowedProjects is missing or empty, they have access to all (or logic can be inverted)
-      // Based on current app logic: empty = all access.
       return userData.allowedProjects == null || userData.allowedProjects.size() == 0 || projectId in userData.allowedProjects;
     }
 
-    // Users collection
+    // Коллекция Users
     match /users/{userId} {
-      // Users can read their own profile
-      // Admins can read all profiles
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Читать могут все авторизованные (нужно для списков assignee), 
+      // но лучше ограничить: каждый себя или Админ всех. 
+      // Для простоты пока оставим: Админ или владелец.
+      // (ВАЖНО: Для выпадающего списка "assignee" нам нужно, чтобы пользователи могли видеть список коллег.
+      // Поэтому разрешим читать список пользователей всем авторизованным)
+      allow read: if request.auth != null;
       
-      // Users can create their own profile on signup
-      allow create: if request.auth != null && request.auth.uid == userId;
+      // Создавать профиль может только сам пользователь при регистрации (и роль должна быть 'reader' или отсутствовать)
+      allow create: if request.auth != null && request.auth.uid == userId 
+        && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader');
       
-      // Only admins can update roles or allowedProjects
-      // Users can update their own basic info (name, etc) - simplified for now
-      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Обновлять: Владелец (но БЕЗ смены роли) ИЛИ Админ (все поля)
+      allow update: if (request.auth != null && request.auth.uid == userId && notUpdatingRestrictedFields()) 
+                    || isAdmin();
       
-      // Only admins can delete users
+      // Удалять: Только Админ
       allow delete: if isAdmin();
     }
 
-    // Projects collection
+    // Коллекция Projects
     match /projects/{projectId} {
-      // Admins can do everything
-      // Readers can only read if they have access
       allow read: if isAdmin() || (request.auth != null && canViewProject(projectId));
-      allow write: if isAdmin();
+      allow write: if isAdmin(); // Создание/Редактирование/Удаление только Админ
     }
 
-    // Tasks collection
+    // Коллекция Tasks
     match /tasks/{taskId} {
-      // Admins can do everything
-      // Readers can read if they have access to the parent project
-      // Note: This requires reading the project ID from the task document.
-      // Since we can't easily join, we rely on the client to filter, BUT for security:
-      // We can check if the task's projectId is in the user's allowed list.
+      // Чтение: Админ или если есть доступ к проекту (тут сложно проверить проект без лишнего get, 
+      // но мы проверим через поле projectId в самой задаче)
       allow read: if isAdmin() || (request.auth != null && canViewProject(resource.data.projectId));
-      allow write: if isAdmin();
+      
+      // Запись: 
+      // 1. Админ может всё.
+      // 2. Обычный пользователь (Reader) может только ОБНОВЛЯТЬ статус задачи (drag & drop) 
+      // и ставить галочку "assigneeCompleted", но НЕ менять название/дедлайн/удалять.
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() 
+        || (request.auth != null 
+            && canViewProject(resource.data.projectId) 
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assigneeCompleted', 'reminderSent']));
     }
   }
 }
