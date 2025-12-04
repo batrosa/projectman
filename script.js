@@ -25,7 +25,7 @@ const emailConfig = {
 
 // Sound Effect
 const clickSound = new Audio('button.mp3');
-clickSound.volume = 0.5; // 50% volume
+clickSound.volume = 0.2; // 20% volume (Very subtle)
 
 function playClickSound() {
     clickSound.currentTime = 0;
