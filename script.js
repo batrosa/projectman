@@ -27,15 +27,19 @@ const emailConfig = {
 let db;
 let auth;
 let firebaseInitAttempts = 0;
+let isFirebaseInitialized = false;
 let taskListenerUnsubscribe = null; // To manage real-time listener for tasks
 
 function initFirebase() {
+    if (isFirebaseInitialized) return; // Prevent double init
+
     if (typeof firebase !== 'undefined' && firebase.app) {
         // Check if already initialized
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
 
+        isFirebaseInitialized = true;
         db = firebase.firestore();
         auth = firebase.auth();
 
@@ -1682,6 +1686,8 @@ function checkReminders(tasks) {
 }
 
 async function deleteUser(userId, userName) {
+    if (state.role !== 'admin') return;
+
     if (!confirm(`Вы уверены, что хотите удалить пользователя "${userName}"?\n\nЭто действие удалит данные пользователя из приложения, но технический аккаунт останется.`)) {
         return;
     }
