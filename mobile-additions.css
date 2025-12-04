@@ -127,7 +127,7 @@
         font-size: 1.1rem;
         margin-bottom: 1rem;
         line-height: 1.5;
-        padding-right: 5.5rem; /* Ensure enough space for delete and complete buttons */
+        padding-right: 9.5rem; /* Ensure enough space for DOUBLE check buttons */
         word-wrap: break-word; /* Prevent long words from overflowing */
     }
 
@@ -152,20 +152,25 @@
     }
 
     /* Position buttons on mobile */
-    .delete-task {
+    .task-actions {
+        top: 0.75rem;
+        right: 4rem; /* More space for two buttons */
+        gap: 0.75rem; /* More space between buttons on touch */
+    }
+
+    .check-btn {
+        width: 40px; /* Larger for touch */
+        height: 40px;
+        font-size: 1.2rem;
+        opacity: 0.6; /* More visibility */
+    }
+
+    .check-btn.interactive {
         opacity: 1;
-        padding: 0.75rem;
-        font-size: 1.1rem;
-        top: 0.5rem;
-        right: 0.5rem;
     }
 
     .assignee-complete-btn {
-        top: 0.5rem;
-        right: 3.5rem; /* Position to the left of delete button */
-        padding: 0.75rem;
-        font-size: 1.3rem; /* Make checkmark larger on mobile */
-        opacity: 1; /* Always visible on mobile */
+        display: none; /* Hide old one just in case */
     }
 
     /* Login form spacing */

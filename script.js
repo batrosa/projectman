@@ -592,7 +592,7 @@ function createTaskCard(task) {
         assigneeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
         assigneeBtn.title = 'Исполнитель выполнил';
     } else {
-        assigneeBtn.innerHTML = '<i class="fa-solid fa-user"></i>';
+        assigneeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
         assigneeBtn.title = 'Отметить выполнение (Исполнитель)';
     }
 
@@ -616,10 +616,10 @@ function createTaskCard(task) {
 
     if (task.adminCompleted) {
         adminBtn.classList.add('completed');
-        adminBtn.innerHTML = '<i class="fa-solid fa-check-double"></i>';
+        adminBtn.innerHTML = '<i class="fa-solid fa-check"></i>'; // Changed from fa-check-double
         adminBtn.title = 'Администратор подтвердил';
     } else {
-        adminBtn.innerHTML = '<i class="fa-solid fa-shield-halved"></i>';
+        adminBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
         adminBtn.title = 'Подтвердить выполнение (Админ)';
     }
 
