@@ -225,7 +225,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '2.10'; // Increment this manually on big updates
+    const CURRENT_VERSION = '3.0'; // Increment this manually on big updates
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -525,7 +525,6 @@ function renderBoard() {
     };
 
     // Clear lists
-    // Clear lists
     elements.listInProgress.innerHTML = '';
     elements.listDone.innerHTML = '';
 
@@ -539,7 +538,6 @@ function renderBoard() {
         return 0;
     });
 
-    // Update counts
     // Update counts
     elements.countInProgress.textContent = projectTasks.filter(t => t.status === 'in-progress').length;
     elements.countDone.textContent = projectTasks.filter(t => t.status === 'done').length;
@@ -559,26 +557,27 @@ function createTaskCard(task) {
     } else if (task.status === 'in-progress') {
         div.classList.add('in-progress');
     }
-    div.draggable = true;
     div.dataset.id = task.id;
 
-    // Parse multiple assignees (comma-separated)
+    // Parse multiple assignees
     const assignees = task.assignee.split(',').map(name => name.trim()).filter(name => name.length > 0);
 
-    // Create completion button
-    const completeBtn = document.createElement('button');
-    completeBtn.className = 'assignee-complete-btn';
+    // --- Task Actions (Double Checkbox) ---
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'task-actions';
 
-    // Check if current user is assignee - USE EMAIL for reliable check
+    // 1. Assignee Checkbox (Right)
+    const assigneeBtn = document.createElement('button');
+    assigneeBtn.className = 'check-btn assignee-check';
+    
+    // Check if current user is assignee
     let isAssignee = false;
     if (state.currentUser) {
-        // 1. Try checking by Email (Reliable)
         if (state.currentUser.email && task.assigneeEmail) {
             const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
             isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
         }
-        
-        // 2. Fallback: Check by Name (For old tasks without email)
+        // Fallback by name
         if (!isAssignee && !task.assigneeEmail && task.assignee) {
             const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
             const assigneeNames = task.assignee.split(',').map(n => n.trim());
@@ -589,36 +588,65 @@ function createTaskCard(task) {
     }
 
     if (task.assigneeCompleted) {
-        completeBtn.classList.add('completed');
-        completeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
-        completeBtn.title = 'Выполнено исполнителем';
+        assigneeBtn.classList.add('completed');
+        assigneeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+        assigneeBtn.title = 'Исполнитель выполнил';
     } else {
-        // Use check icon but rely on CSS to style it (outlined/transparent)
-        completeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
-        completeBtn.title = 'Отметить как выполненное';
+        assigneeBtn.innerHTML = '<i class="fa-solid fa-user"></i>';
+        assigneeBtn.title = 'Отметить выполнение (Исполнитель)';
     }
 
-    // Show button for assignee OR Admin regardless of status
-    if (isAssignee || state.role === 'admin') {
-        completeBtn.disabled = false; // Ensure enabled
-        completeBtn.addEventListener('touchstart', (e) => {
-            e.stopPropagation(); // Prevent drag start on mobile when clicking button
-        }, { passive: true });
-
-        completeBtn.onclick = (e) => {
+    if (isAssignee) {
+        assigneeBtn.classList.add('interactive');
+        assigneeBtn.onclick = (e) => {
             e.stopPropagation();
-            playClickSound(); // Sound effect
+            playClickSound();
             toggleAssigneeCompletion(task.id, task.assigneeCompleted);
         };
-        completeBtn.style.cursor = 'pointer';
+        // Fix mobile touch conflict
+        assigneeBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
     } else {
-        // Not assignee - show as disabled
-        completeBtn.disabled = true;
-        completeBtn.style.cursor = 'default';
-        if (!task.assigneeCompleted) {
-            completeBtn.style.opacity = '0.3';
-        }
+        assigneeBtn.disabled = true;
+        // Keep it gray/disabled style
     }
+
+    // 2. Admin Checkbox (Left)
+    const adminBtn = document.createElement('button');
+    adminBtn.className = 'check-btn admin-check';
+
+    if (task.adminCompleted) {
+        adminBtn.classList.add('completed');
+        adminBtn.innerHTML = '<i class="fa-solid fa-check-double"></i>';
+        adminBtn.title = 'Администратор подтвердил';
+    } else {
+        adminBtn.innerHTML = '<i class="fa-solid fa-shield-halved"></i>';
+        adminBtn.title = 'Подтвердить выполнение (Админ)';
+    }
+
+    const isAdmin = state.role === 'admin';
+    const canAdminCheck = isAdmin && task.assigneeCompleted;
+
+    if (isAdmin) {
+        if (canAdminCheck) {
+            adminBtn.classList.add('interactive');
+            adminBtn.onclick = (e) => {
+                e.stopPropagation();
+                playClickSound();
+                toggleAdminCompletion(task.id, task.adminCompleted, task.assigneeCompleted);
+            };
+            adminBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        } else {
+            adminBtn.disabled = true;
+            adminBtn.title = 'Сначала исполнитель должен отметить выполнение';
+        }
+    } else {
+        adminBtn.disabled = true;
+    }
+
+    actionsDiv.appendChild(adminBtn);
+    actionsDiv.appendChild(assigneeBtn);
+    div.appendChild(actionsDiv);
+    // --------------------------------------
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -634,8 +662,7 @@ function createTaskCard(task) {
 
     // Create edit button
     const editBtn = document.createElement('button');
-    editBtn.className = 'edit-task'; // You might need to add CSS for this class if 'delete-task' has specific styles
-    // Reuse delete-task styles for simplicity or add inline styles
+    editBtn.className = 'edit-task';
     editBtn.style.background = 'none';
     editBtn.style.border = 'none';
     editBtn.style.color = 'var(--text-secondary)';
@@ -771,7 +798,8 @@ function createTaskCard(task) {
     taskMeta.appendChild(assigneeDiv);
     taskMeta.appendChild(deadlineDiv);
 
-    div.appendChild(completeBtn); // Add complete button
+    // div.appendChild(completeBtn); // REMOVED (Replaced by actionsDiv)
+    
     if (state.role === 'admin') {
         div.appendChild(editBtn); // Add edit button
         div.appendChild(deleteBtn);
@@ -823,12 +851,6 @@ function createTaskCard(task) {
         div.appendChild(extrasDiv);
     }
 
-    // Desktop drag and drop removed
-    // div.addEventListener('dragstart', handleDragStart);
-
-    // Mobile touch drag and drop removed
-    // setupTouchDragAndDrop(div);
-
     return div;
 }
 
@@ -854,9 +876,19 @@ function toggleAdminCompletion(taskId, currentStatus, assigneeStatus) {
 }
 
 function toggleAssigneeCompletion(taskId, currentStatus) {
-    db.collection('tasks').doc(taskId).update({
+    const updates = {
         assigneeCompleted: !currentStatus
-    }).then(() => {
+    };
+    
+    // If Assignee unchecks, we might want to revert status if it was done,
+    // OR we might want to force Admin to uncheck first.
+    // For simplicity: If Assignee unchecks, we also set status to in-progress just in case.
+    if (currentStatus) { // Was true, becoming false
+        updates.status = 'in-progress';
+        updates.adminCompleted = false; // Reset admin approval if assignee backtracks
+    }
+
+    db.collection('tasks').doc(taskId).update(updates).then(() => {
         console.log("Task completion status updated");
     }).catch(error => {
         console.error("Error updating task completion:", error);
@@ -869,10 +901,17 @@ function formatDate(dateString) {
     return new Date(dateString).toLocaleDateString('ru-RU', options);
 }
 
-// Drag and Drop removed as per new requirements
-// function handleDragStart(e) { ... }
-// function setupDragAndDrop() { ... }
-// function setupTouchDragAndDrop(taskCard) { ... }
+// Drag and Drop - DISABLED
+let draggedTaskId = null;
+
+function handleDragStart(e) {
+    // Disabled
+    e.preventDefault();
+}
+
+function setupDragAndDrop() {
+    // Disabled - Empty function to prevent errors if called
+}
 
 // Theme
 function loadTheme() {
@@ -1074,7 +1113,7 @@ function setupEventListeners() {
         }
     });
 
-    // setupDragAndDrop(); // Removed
+    setupDragAndDrop();
 
     elements.themeToggle.addEventListener('click', () => {
         playClickSound();
@@ -1410,12 +1449,24 @@ function getAuthErrorMessage(errorCode) {
     }
 }
 
-// Touch Drag and Drop for Mobile removed
-// let touchDragState = { ... };
-// function setupTouchDragAndDrop(taskCard) { ... }
-// function startTouchDrag(element, touch) { ... }
-// function endTouchDrag(touch) { ... }
-// function cancelTouchDrag() { ... }
+// Touch Drag and Drop for Mobile - DISABLED (Empty functions)
+let touchDragState = {};
+
+function setupTouchDragAndDrop(taskCard) {
+    // Disabled
+}
+
+function startTouchDrag(element, touch) {
+    // Disabled
+}
+
+function endTouchDrag(touch) {
+    // Disabled
+}
+
+function cancelTouchDrag() {
+    // Disabled
+}
 
 // Admin Panel Functions
 function setupAdminPanel() {
