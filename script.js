@@ -571,7 +571,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.2'; // FIXED POSITION MENU
+    const CURRENT_VERSION = '4.3'; // HOTFIX MISSING VARIABLE
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -982,6 +982,9 @@ function createTaskCard(task) {
     
     // Determine current subStatus
     let currentSubStatus = task.subStatus || 'assigned';
+
+    // Get assignees list for avatars later
+    const assignees = task.assignee.split(',').map(name => name.trim()).filter(name => name.length > 0);
     
     // Migration logic
     if (!task.subStatus) {
