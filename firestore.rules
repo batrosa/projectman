@@ -59,7 +59,7 @@ service cloud.firestore {
       allow update: if isAdmin() 
         || (request.auth != null 
             && canViewProject(resource.data.projectId) 
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assigneeCompleted', 'reminderSent']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assigneeCompleted', 'reminderSent', 'subStatus', 'attachments']));
     }
   }
 }

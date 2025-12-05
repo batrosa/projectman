@@ -15,17 +15,6 @@ const emailConfig = {
     publicKey: "LaM7YOc0hZIkPFIFl" // Updated
 };
 
-// Cloudinary Config for file uploads
-const cloudinaryConfig = {
-    cloudName: "dwoa1lqz1",
-    uploadPreset: "projectman",
-    maxFileSize: 10 * 1024 * 1024, // 10 MB
-    maxFiles: 2
-};
-
-// Pending attachments for new/edited task
-let pendingAttachments = [];
-
 // Initialize EmailJS
 (function () {
     // We check if emailjs is loaded to avoid errors if script fails
@@ -42,283 +31,6 @@ function playClickSound() {
     clickSound.currentTime = 0;
     clickSound.play().catch(e => console.log('Audio play failed (user interaction needed first):', e));
 }
-
-// ========== FILE ATTACHMENT FUNCTIONS ==========
-
-// Get file type category
-function getFileType(filename) {
-    const ext = filename.split('.').pop().toLowerCase();
-    if (['pdf'].includes(ext)) return 'pdf';
-    if (['doc', 'docx'].includes(ext)) return 'word';
-    if (['xls', 'xlsx'].includes(ext)) return 'excel';
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
-    if (['zip', 'rar', '7z'].includes(ext)) return 'archive';
-    return 'other';
-}
-
-// Get icon for file type
-function getFileIcon(fileType) {
-    const icons = {
-        pdf: 'fa-file-pdf',
-        word: 'fa-file-word',
-        excel: 'fa-file-excel',
-        image: 'fa-file-image',
-        archive: 'fa-file-zipper',
-        other: 'fa-file'
-    };
-    return icons[fileType] || 'fa-file';
-}
-
-// Format file size
-function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-// Upload file to Cloudinary
-async function uploadToCloudinary(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-    formData.append('folder', 'projectman');
-    
-    const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
-        { method: 'POST', body: formData }
-    );
-    
-    if (!response.ok) {
-        throw new Error('Ошибка загрузки файла');
-    }
-    
-    return await response.json();
-}
-
-// Handle file selection
-async function handleFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    // Reset input
-    event.target.value = '';
-    
-    // Check file count
-    if (pendingAttachments.length >= cloudinaryConfig.maxFiles) {
-        alert(`Максимум ${cloudinaryConfig.maxFiles} файла на задачу`);
-        return;
-    }
-    
-    // Check file size
-    if (file.size > cloudinaryConfig.maxFileSize) {
-        alert(`Файл слишком большой. Максимум ${formatFileSize(cloudinaryConfig.maxFileSize)}`);
-        return;
-    }
-    
-    // Create temp attachment item
-    const tempId = 'temp_' + Date.now();
-    const fileType = getFileType(file.name);
-    const tempAttachment = {
-        id: tempId,
-        name: file.name,
-        size: file.size,
-        type: fileType,
-        uploading: true
-    };
-    
-    pendingAttachments.push(tempAttachment);
-    renderAttachmentsList();
-    updateAddAttachmentBtn();
-    
-    try {
-        // Upload to Cloudinary
-        const result = await uploadToCloudinary(file);
-        
-        // Update attachment with real data
-        const index = pendingAttachments.findIndex(a => a.id === tempId);
-        if (index !== -1) {
-            pendingAttachments[index] = {
-                name: file.name,
-                url: result.secure_url,
-                type: fileType,
-                size: file.size,
-                publicId: result.public_id,
-                uploadedAt: new Date().toISOString()
-            };
-        }
-        
-        renderAttachmentsList();
-        playClickSound();
-    } catch (error) {
-        console.error('Upload error:', error);
-        alert('Ошибка при загрузке файла: ' + error.message);
-        
-        // Remove failed attachment
-        pendingAttachments = pendingAttachments.filter(a => a.id !== tempId);
-        renderAttachmentsList();
-        updateAddAttachmentBtn();
-    }
-}
-
-// Render attachments list in modal
-function renderAttachmentsList() {
-    const list = document.getElementById('attachments-list');
-    if (!list) return;
-    
-    list.innerHTML = '';
-    
-    pendingAttachments.forEach((attachment, index) => {
-        const item = document.createElement('div');
-        item.className = 'attachment-item' + (attachment.uploading ? ' uploading' : '');
-        
-        const iconClass = getFileIcon(attachment.type);
-        
-        item.innerHTML = `
-            <div class="attachment-icon ${attachment.type}">
-                <i class="fa-solid ${iconClass}"></i>
-            </div>
-            <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
-                <div class="attachment-size">${attachment.uploading ? 'Загрузка...' : formatFileSize(attachment.size)}</div>
-            </div>
-            ${!attachment.uploading ? `
-                <button type="button" class="attachment-remove" data-index="${index}">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            ` : ''}
-        `;
-        
-        list.appendChild(item);
-    });
-    
-    // Add remove handlers
-    list.querySelectorAll('.attachment-remove').forEach(btn => {
-        btn.onclick = (e) => {
-            e.preventDefault();
-            const index = parseInt(btn.dataset.index);
-            pendingAttachments.splice(index, 1);
-            renderAttachmentsList();
-            updateAddAttachmentBtn();
-            playClickSound();
-        };
-    });
-}
-
-// Update add attachment button state
-function updateAddAttachmentBtn() {
-    const btn = document.getElementById('add-attachment-btn');
-    if (!btn) return;
-    
-    if (pendingAttachments.length >= cloudinaryConfig.maxFiles) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-check"></i> Максимум файлов';
-    } else {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-plus"></i> Прикрепить файл';
-    }
-}
-
-// Open file preview
-function openFilePreview(attachment) {
-    const modal = document.getElementById('file-preview-modal');
-    const container = document.getElementById('file-preview-container');
-    const fileNameEl = document.getElementById('preview-file-name');
-    const downloadBtn = document.getElementById('preview-download-btn');
-    
-    if (!modal || !container) return;
-    
-    fileNameEl.textContent = attachment.name;
-    downloadBtn.href = attachment.url;
-    downloadBtn.download = attachment.name;
-    
-    // Clear previous content
-    container.innerHTML = '<div class="preview-loading"><div class="spinner"></div><p>Загрузка файла...</p></div>';
-    
-    modal.classList.add('active');
-    playClickSound();
-    
-    // Determine preview type
-    const fileType = attachment.type || getFileType(attachment.name);
-    
-    if (fileType === 'image') {
-        const img = document.createElement('img');
-        img.src = attachment.url;
-        img.alt = attachment.name;
-        img.onload = () => {
-            container.innerHTML = '';
-            container.appendChild(img);
-        };
-        img.onerror = () => {
-            showNoPreview(container, attachment);
-        };
-    } else if (fileType === 'pdf') {
-        // For PDF, use Cloudinary's PDF viewer or Google Docs viewer
-        const iframe = document.createElement('iframe');
-        // Use Google Docs viewer for better compatibility
-        iframe.src = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=true`;
-        container.innerHTML = '';
-        container.appendChild(iframe);
-    } else {
-        // For other files, show download option
-        showNoPreview(container, attachment);
-    }
-}
-
-// Show no preview available
-function showNoPreview(container, attachment) {
-    const fileType = attachment.type || getFileType(attachment.name);
-    const iconClass = getFileIcon(fileType);
-    
-    container.innerHTML = `
-        <div class="no-preview">
-            <i class="fa-solid ${iconClass}"></i>
-            <p>Предпросмотр недоступен для этого типа файла</p>
-            <a href="${attachment.url}" download="${attachment.name}" class="primary-btn">
-                <i class="fa-solid fa-download"></i> Скачать файл
-            </a>
-        </div>
-    `;
-}
-
-// Open files list modal for task
-function openFilesListModal(attachments) {
-    const modal = document.getElementById('files-list-modal');
-    const list = document.getElementById('files-modal-list');
-    
-    if (!modal || !list) return;
-    
-    list.innerHTML = '';
-    
-    attachments.forEach(attachment => {
-        const fileType = attachment.type || getFileType(attachment.name);
-        const iconClass = getFileIcon(fileType);
-        
-        const item = document.createElement('div');
-        item.className = 'file-list-item';
-        item.innerHTML = `
-            <div class="attachment-icon ${fileType}">
-                <i class="fa-solid ${iconClass}"></i>
-            </div>
-            <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
-                <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
-            </div>
-            <i class="fa-solid fa-eye"></i>
-        `;
-        
-        item.onclick = () => {
-            modal.classList.remove('active');
-            openFilePreview(attachment);
-        };
-        
-        list.appendChild(item);
-    });
-    
-    modal.classList.add('active');
-    playClickSound();
-}
-
-// ========== END FILE ATTACHMENT FUNCTIONS ==========
 
 // Initialize Firebase when ready
 let db;
@@ -513,7 +225,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.5'; // FILE ATTACHMENTS FEATURE
+    const CURRENT_VERSION = '2.10'; // Increment this manually on big updates
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -536,6 +248,8 @@ window.addEventListener('load', () => {
         }
 
         localStorage.setItem('app_version', CURRENT_VERSION);
+        // Optional: Reload once to ensure fresh assets
+        // window.location.reload(); 
     }
 });
 
@@ -584,6 +298,9 @@ function showUpdateNotification() {
 
 // Persistence - NOW FIREBASE
 function setupRealtimeListeners() {
+    // Show loading state if needed
+    // elements.projectList.innerHTML = '<li style="padding: 1rem; color: var(--text-secondary);">Загрузка...</li>';
+
     // Listen for Projects
     db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
         const projects = [];
@@ -625,9 +342,18 @@ function setupRealtimeListeners() {
     });
 }
 
+// Removed local storage functions
+// function loadState() { ... }
+// function saveState() { ... }
+// function seedData() { ... }
+
 function generateId() {
     return Math.random().toString(36).substr(2, 9);
 }
+
+// Logic - Functions moved to bottom to avoid duplicates
+// createProject and deleteProject are now defined later
+
 
 function selectProject(id) {
     state.activeProjectId = id;
@@ -669,10 +395,34 @@ function subscribeToProjectTasks(projectId) {
         });
 }
 
+function createTask(title, assignee, deadline, status, assigneeEmail) {
+    if (state.role !== 'admin') return;
+    if (!state.activeProjectId) return;
+
+    db.collection('tasks').add({
+        projectId: state.activeProjectId,
+        title,
+        assignee: assignee || 'Не назначен',
+        deadline,
+        status,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(() => {
+        if (assigneeEmail) {
+            sendEmailNotification(assigneeEmail, assignee, title, deadline);
+        }
+    });
+}
+
 function deleteTask(id) {
     if (state.role !== 'admin') return;
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     db.collection('tasks').doc(id).delete();
+}
+
+function updateTaskStatus(id, newStatus) {
+    db.collection('tasks').doc(id).update({
+        status: newStatus
+    });
 }
 
 function updateTask(id, data) {
@@ -726,11 +476,6 @@ function openEditTaskModal(task) {
             if (checkbox) checkbox.checked = true;
         });
     }
-    
-    // Load existing attachments
-    pendingAttachments = task.attachments ? [...task.attachments] : [];
-    renderAttachmentsList();
-    updateAddAttachmentBtn();
 
     elements.taskModal.classList.add('active');
 }
@@ -780,6 +525,7 @@ function renderBoard() {
     };
 
     // Clear lists
+    // Clear lists
     elements.listInProgress.innerHTML = '';
     elements.listDone.innerHTML = '';
 
@@ -794,6 +540,7 @@ function renderBoard() {
     });
 
     // Update counts
+    // Update counts
     elements.countInProgress.textContent = projectTasks.filter(t => t.status === 'in-progress').length;
     elements.countDone.textContent = projectTasks.filter(t => t.status === 'done').length;
 
@@ -804,7 +551,6 @@ function renderBoard() {
     });
 }
 
-// --- NEW TASK CARD WITH STATUS BADGES ---
 function createTaskCard(task) {
     const div = document.createElement('div');
     div.className = 'task-card';
@@ -813,87 +559,28 @@ function createTaskCard(task) {
     } else if (task.status === 'in-progress') {
         div.classList.add('in-progress');
     }
+    div.draggable = true;
     div.dataset.id = task.id;
 
-    // --- Status Badge System ---
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'task-actions';
-    
-    // Determine current subStatus
-    let currentSubStatus = task.subStatus || 'assigned';
-    
-    // Migration logic
-    if (!task.subStatus) {
-        if (task.assigneeCompleted) currentSubStatus = 'completed';
-        else currentSubStatus = 'assigned';
-    }
-    
-    // Override if global status is done
-    if (task.status === 'done') {
-        currentSubStatus = 'done'; 
-    }
-
-    // Badge configuration
-    const badge = document.createElement('div');
-    badge.className = 'status-badge';
-    
-    let badgeText = '';
-    let badgeIcon = '';
-    let badgeClass = '';
-
-    switch(currentSubStatus) {
-        case 'assigned':
-            badgeText = 'Задача поставлена';
-            badgeIcon = '<i class="fa-solid fa-circle-exclamation"></i>';
-            badgeClass = 'status-assigned';
-            break;
-        case 'in_work':
-            badgeText = 'В работе';
-            badgeIcon = '<i class="fa-solid fa-person-digging"></i>';
-            badgeClass = 'status-in-work';
-            break;
-        case 'completed':
-            badgeText = 'Задача завершена';
-            badgeIcon = '<i class="fa-solid fa-check"></i>';
-            badgeClass = 'status-completed';
-            break;
-        case 'done':
-            badgeText = 'Готово (Архив)';
-            badgeIcon = '<i class="fa-solid fa-check-double"></i>';
-            badgeClass = 'status-completed'; // Keep green
-            break;
-        default:
-            badgeText = 'Задача поставлена';
-            badgeIcon = '<i class="fa-solid fa-circle-exclamation"></i>';
-            badgeClass = 'status-assigned';
-    }
-
-    badge.classList.add(badgeClass);
-    badge.innerHTML = `${badgeIcon} <span>${badgeText}</span>`;
-    
-    // Dropdown Container
-    const dropdownContainer = document.createElement('div');
-    dropdownContainer.className = 'status-dropdown-container';
-    dropdownContainer.appendChild(badge);
-
-    // Dropdown Menu
-    const dropdown = document.createElement('div');
-    dropdown.className = 'status-dropdown';
-    
-    // Logic for available actions
-    let canInteract = false;
-    const isAdmin = state.role === 'admin';
-    
-    // Check assignee
+    // Parse multiple assignees (comma-separated)
     const assignees = task.assignee.split(',').map(name => name.trim()).filter(name => name.length > 0);
+
+    // Create completion button
+    const completeBtn = document.createElement('button');
+    completeBtn.className = 'assignee-complete-btn';
+
+    // Check if current user is assignee - USE EMAIL for reliable check
     let isAssignee = false;
     if (state.currentUser) {
+        // 1. Try checking by Email (Reliable)
         if (state.currentUser.email && task.assigneeEmail) {
             const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
             isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
         }
+        
+        // 2. Fallback: Check by Name (For old tasks without email)
         if (!isAssignee && !task.assigneeEmail && task.assignee) {
-             const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
+            const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
             const assigneeNames = task.assignee.split(',').map(n => n.trim());
             if (currentUserFullName && assigneeNames.includes(currentUserFullName)) {
                 isAssignee = true;
@@ -901,87 +588,37 @@ function createTaskCard(task) {
         }
     }
 
-    // Menu Options Generator
-    const addOption = (label, icon, newStatus) => {
-        const opt = document.createElement('div');
-        opt.className = 'status-option';
-        opt.innerHTML = `${icon} ${label}`;
-        opt.onclick = (e) => {
-            e.stopPropagation();
-            playClickSound();
-            updateTaskSubStatus(task.id, newStatus);
-            dropdown.classList.remove('active');
-        };
-        dropdown.appendChild(opt);
-    };
-
-    // Permission Logic
-    if (currentSubStatus !== 'done') {
-        // Assignee Logic
-        if (isAssignee) {
-            if (currentSubStatus === 'assigned') {
-                canInteract = true;
-                addOption('Принять в работу', '<i class="fa-solid fa-person-digging"></i>', 'in_work');
-            } else if (currentSubStatus === 'in_work') {
-                canInteract = true;
-                addOption('Задача завершена', '<i class="fa-solid fa-check"></i>', 'completed');
-                // Removed revert option
-            } else if (currentSubStatus === 'completed') {
-                 // Removed revert option for assignee. Only admin can revert.
-                 canInteract = false; 
-            }
-        }
-        
-        // Admin Logic (If not assignee, or overriding assignee logic if needed - merging)
-        // Admin should mostly wait for 'completed'
-        if (isAdmin) {
-             if (currentSubStatus === 'completed') {
-                 canInteract = true;
-                 // Add separator if options already exist (from assignee role)
-                 // simple append works
-                 addOption('Подтвердить (В архив)', '<i class="fa-solid fa-check-double"></i>', 'done');
-                 addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
-             } 
-             // Admin doesn't touch 'assigned' or 'in_work' unless he is the assignee
-        }
+    if (task.assigneeCompleted) {
+        completeBtn.classList.add('completed');
+        completeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+        completeBtn.title = 'Выполнено исполнителем';
     } else {
-        // Status is DONE (Archive)
-        if (isAdmin) {
-            canInteract = true;
-            addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
-        }
+        // Use check icon but rely on CSS to style it (outlined/transparent)
+        completeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+        completeBtn.title = 'Отметить как выполненное';
     }
 
-    if (canInteract) {
-        badge.onclick = (e) => {
-            e.stopPropagation();
-            playClickSound();
-            // Close other dropdowns
-            document.querySelectorAll('.status-dropdown.active').forEach(d => {
-                d.classList.remove('active');
-                // Remove z-index fix from parent cards
-                const parentCard = d.closest('.task-card');
-                if (parentCard) parentCard.classList.remove('active-dropdown');
-            });
-            
-            dropdown.classList.toggle('active');
-            
-            // Toggle z-index on parent card
-            if (dropdown.classList.contains('active')) {
-                div.classList.add('active-dropdown');
-            } else {
-                div.classList.remove('active-dropdown');
-            }
-        };
-        
-        dropdownContainer.appendChild(dropdown);
-    } else {
-        badge.style.cursor = 'default';
-        badge.style.opacity = '0.9';
-    }
+    // Show button for assignee OR Admin regardless of status
+    if (isAssignee || state.role === 'admin') {
+        completeBtn.disabled = false; // Ensure enabled
+        completeBtn.addEventListener('touchstart', (e) => {
+            e.stopPropagation(); // Prevent drag start on mobile when clicking button
+        }, { passive: true });
 
-    actionsDiv.appendChild(dropdownContainer);
-    div.appendChild(actionsDiv);
+        completeBtn.onclick = (e) => {
+            e.stopPropagation();
+            playClickSound(); // Sound effect
+            toggleAssigneeCompletion(task.id, task.assigneeCompleted);
+        };
+        completeBtn.style.cursor = 'pointer';
+    } else {
+        // Not assignee - show as disabled
+        completeBtn.disabled = true;
+        completeBtn.style.cursor = 'default';
+        if (!task.assigneeCompleted) {
+            completeBtn.style.opacity = '0.3';
+        }
+    }
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -997,7 +634,8 @@ function createTaskCard(task) {
 
     // Create edit button
     const editBtn = document.createElement('button');
-    editBtn.className = 'edit-task';
+    editBtn.className = 'edit-task'; // You might need to add CSS for this class if 'delete-task' has specific styles
+    // Reuse delete-task styles for simplicity or add inline styles
     editBtn.style.background = 'none';
     editBtn.style.border = 'none';
     editBtn.style.color = 'var(--text-secondary)';
@@ -1035,8 +673,9 @@ function createTaskCard(task) {
         const avatar = document.createElement('div');
         avatar.className = 'avatar';
         avatar.textContent = initials;
-        avatar.title = assignee; 
+        avatar.title = assignee; // Tooltip with full name
 
+        // Offset multiple avatars slightly
         if (index > 0) {
             avatar.style.marginLeft = '-8px';
         }
@@ -1044,6 +683,7 @@ function createTaskCard(task) {
         assigneeDiv.appendChild(avatar);
     });
 
+    // Show assignee names
     const assigneeName = document.createElement('span');
     assigneeName.textContent = assignees.join(', ');
     assigneeDiv.appendChild(assigneeName);
@@ -1051,8 +691,11 @@ function createTaskCard(task) {
     const deadlineDiv = document.createElement('div');
     deadlineDiv.className = 'deadline';
 
+    // Calculate time percentage for color
     const now = new Date();
     const deadlineDate = new Date(task.deadline);
+
+    // Reset time part for accurate day calculation
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const targetDate = new Date(task.deadline);
@@ -1070,21 +713,47 @@ function createTaskCard(task) {
         daysLeftText = `${diffDays} дн.`;
     }
 
+    // Add days left element
     const daysLeftSpan = document.createElement('span');
     daysLeftSpan.className = 'days-left';
     daysLeftSpan.textContent = daysLeftText;
 
+    // Custom style for Overdue
     if (diffDays < 0) {
         daysLeftSpan.style.color = 'var(--danger)';
         daysLeftSpan.style.fontWeight = '700';
+        daysLeftSpan.style.letterSpacing = '0.05em';
     }
 
     deadlineDiv.appendChild(daysLeftSpan);
 
+    // Existing color logic...
+    let createdAtDate;
+    if (task.createdAt && task.createdAt.toDate) {
+        createdAtDate = task.createdAt.toDate();
+    } else if (task.createdAt) {
+        createdAtDate = new Date(task.createdAt);
+    } else {
+        createdAtDate = new Date(); // Fallback
+    }
+
+    const totalDuration = deadlineDate - createdAtDate;
     const timeLeft = deadlineDate - now;
+    let percentage = 100;
+
+    if (totalDuration > 0) {
+        percentage = (timeLeft / totalDuration) * 100;
+    }
+
+    // Logic: 
+    // < 0 time left (overdue) -> Red
+    // < 50% time left -> Yellow/Orange
+    // >= 50% time left -> Green
     if (task.status !== 'done') {
         if (timeLeft < 0) {
             deadlineDiv.classList.add('deadline-red');
+        } else if (percentage < 50) {
+            deadlineDiv.classList.add('deadline-orange');
         } else {
             deadlineDiv.classList.add('deadline-green');
         }
@@ -1101,26 +770,12 @@ function createTaskCard(task) {
 
     taskMeta.appendChild(assigneeDiv);
     taskMeta.appendChild(deadlineDiv);
-    
+
+    div.appendChild(completeBtn); // Add complete button
     if (state.role === 'admin') {
-        div.appendChild(editBtn); 
+        div.appendChild(editBtn); // Add edit button
         div.appendChild(deleteBtn);
     }
-    
-    // Add attachment badge if task has files
-    if (task.attachments && task.attachments.length > 0) {
-        const attachBadge = document.createElement('span');
-        attachBadge.className = 'task-attachment-badge';
-        attachBadge.innerHTML = `<i class="fa-solid fa-paperclip"></i> ${task.attachments.length}`;
-        attachBadge.title = 'Прикрепленные файлы';
-        attachBadge.onclick = (e) => {
-            e.stopPropagation();
-            playClickSound();
-            openFilesListModal(task.attachments);
-        };
-        div.appendChild(attachBadge);
-    }
-    
     div.appendChild(taskTitle);
     div.appendChild(taskMeta);
 
@@ -1168,36 +823,44 @@ function createTaskCard(task) {
         div.appendChild(extrasDiv);
     }
 
+    // Desktop drag and drop removed
+    // div.addEventListener('dragstart', handleDragStart);
+
+    // Mobile touch drag and drop removed
+    // setupTouchDragAndDrop(div);
+
     return div;
 }
 
-// Update SubStatus Function
-function updateTaskSubStatus(taskId, newSubStatus) {
+function toggleAdminCompletion(taskId, currentStatus, assigneeStatus) {
     const updates = {
-        subStatus: newSubStatus
+        adminCompleted: !currentStatus
     };
 
-    if (newSubStatus === 'done') {
+    // If Admin checks AND Assignee checked -> Move to Done
+    if (!currentStatus && assigneeStatus) {
         updates.status = 'done';
-        updates.subStatus = 'completed'; // Keep visual state but move to done list
     } else {
+        // If Admin unchecks, move back to in-progress
         updates.status = 'in-progress';
-    }
-    
-    // Sync legacy fields for backward compatibility if needed, 
-    // but new UI relies on subStatus mostly.
-    if (newSubStatus === 'completed') {
-        updates.assigneeCompleted = true;
-    } else {
-        updates.assigneeCompleted = false;
     }
 
     db.collection('tasks').doc(taskId).update(updates).then(() => {
         playClickSound();
-        console.log("Status updated to:", newSubStatus);
     }).catch(error => {
-        console.error("Error updating status:", error);
+        console.error("Error updating admin completion:", error);
         alert("Ошибка: " + error.message);
+    });
+}
+
+function toggleAssigneeCompletion(taskId, currentStatus) {
+    db.collection('tasks').doc(taskId).update({
+        assigneeCompleted: !currentStatus
+    }).then(() => {
+        console.log("Task completion status updated");
+    }).catch(error => {
+        console.error("Error updating task completion:", error);
+        alert("Ошибка при обновлении статуса задачи: " + error.message);
     });
 }
 
@@ -1206,17 +869,10 @@ function formatDate(dateString) {
     return new Date(dateString).toLocaleDateString('ru-RU', options);
 }
 
-// Drag and Drop - DISABLED
-let draggedTaskId = null;
-
-function handleDragStart(e) {
-    // Disabled
-    e.preventDefault();
-}
-
-function setupDragAndDrop() {
-    // Disabled - Empty function to prevent errors if called
-}
+// Drag and Drop removed as per new requirements
+// function handleDragStart(e) { ... }
+// function setupDragAndDrop() { ... }
+// function setupTouchDragAndDrop(taskCard) { ... }
 
 // Theme
 function loadTheme() {
@@ -1259,41 +915,13 @@ function setupEventListeners() {
         // Set default date to today
         document.getElementById('t-deadline').valueAsDate = new Date();
         populateAssigneeDropdown();
-        
-        // Reset attachments
-        pendingAttachments = [];
-        renderAttachmentsList();
-        updateAddAttachmentBtn();
-        
         elements.taskModal.classList.add('active');
     });
-
-    // File attachment handlers
-    const fileInput = document.getElementById('file-input');
-    const addAttachmentBtn = document.getElementById('add-attachment-btn');
-    
-    if (fileInput) {
-        fileInput.addEventListener('change', handleFileSelect);
-    }
-    
-    if (addAttachmentBtn) {
-        addAttachmentBtn.addEventListener('click', () => {
-            playClickSound();
-            fileInput.click();
-        });
-    }
 
     // Help button
     elements.helpBtn.addEventListener('click', () => {
         playClickSound();
         elements.helpModal.classList.add('active');
-    });
-    
-    // Close dropdowns when clicking outside
-    window.addEventListener('click', () => {
-        document.querySelectorAll('.status-dropdown.active').forEach(d => {
-            d.classList.remove('active');
-        });
     });
 
     elements.closeModalBtns.forEach(btn => {
@@ -1366,9 +994,6 @@ function setupEventListeners() {
         submitBtn.textContent = 'Сохранение...';
 
         try {
-            // Prepare attachments (filter out any still uploading)
-            const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
-            
             await db.collection('tasks').add({
                 projectId: state.activeProjectId,
                 title,
@@ -1377,9 +1002,7 @@ function setupEventListeners() {
                 assigneeEmail: assigneeEmail || '',
                 deadline,
                 status,
-                subStatus: 'assigned', // Default status for new system
                 assigneeCompleted: false,
-                attachments: attachments, // Add attachments array
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
 
@@ -1436,17 +1059,14 @@ function setupEventListeners() {
         const status = document.getElementById('t-status').value;
 
         if (taskId) {
-            // Prepare attachments (filter out any still uploading)
-            const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
-            
             // Update existing task
             updateTask(taskId, {
                 title,
                 description,
                 assignee,
                 assigneeEmail,
-                deadline,
-                attachments // Include attachments when updating
+                deadline
+                // We don't update status here as it's handled by drag and drop
             });
         } else {
             // Create new task
@@ -1454,7 +1074,7 @@ function setupEventListeners() {
         }
     });
 
-    setupDragAndDrop();
+    // setupDragAndDrop(); // Removed
 
     elements.themeToggle.addEventListener('click', () => {
         playClickSound();
@@ -1790,24 +1410,12 @@ function getAuthErrorMessage(errorCode) {
     }
 }
 
-// Touch Drag and Drop for Mobile - DISABLED (Empty functions)
-let touchDragState = {};
-
-function setupTouchDragAndDrop(taskCard) {
-    // Disabled
-}
-
-function startTouchDrag(element, touch) {
-    // Disabled
-}
-
-function endTouchDrag(touch) {
-    // Disabled
-}
-
-function cancelTouchDrag() {
-    // Disabled
-}
+// Touch Drag and Drop for Mobile removed
+// let touchDragState = { ... };
+// function setupTouchDragAndDrop(taskCard) { ... }
+// function startTouchDrag(element, touch) { ... }
+// function endTouchDrag(touch) { ... }
+// function cancelTouchDrag() { ... }
 
 // Admin Panel Functions
 function setupAdminPanel() {

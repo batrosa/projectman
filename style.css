@@ -362,10 +362,22 @@ body.light-mode .project-info h1 {
     border: var(--glass-border);
     border-radius: var(--radius);
     padding: 1rem;
-    cursor: default; /* Changed from grab to default */
+    cursor: default;
     transition: all 0.2s;
     position: relative;
     backdrop-filter: blur(4px);
+    z-index: 1; /* Base z-index */
+}
+
+/* Ensure card is on top when dropdown is open */
+.task-card:has(.status-dropdown.active) {
+    z-index: 100 !important;
+    transform: translateY(-2px); /* Optional visual feedback */
+}
+
+/* Fallback for browsers not supporting :has */
+.task-card.active-dropdown {
+    z-index: 100 !important;
 }
 
 /* .task-card:hover {
@@ -951,30 +963,30 @@ body.read-only .task-card:hover {
     }
 
     .board-container {
-        grid-template-columns: 1fr;
-        /* Stack columns vertically */
-        padding: 0 1rem 5rem;
-        /* Extra bottom padding for scroll */
-        gap: 1.5rem;
-        overflow-y: auto;
-        overflow-x: hidden;
-        flex: 1; /* Let flexbox handle height */
-        height: auto; /* Override fixed calculation */
-        min-height: 0; /* Important for flex scrolling */
+        display: grid;
+        grid-template-columns: repeat(2, 85vw); /* Широкие колонки с возможностью скролла */
+        padding: 0 1rem 2rem;
+        gap: 1rem;
+        overflow-x: auto; /* Горизонтальный скролл */
+        overflow-y: hidden;
+        flex: 1;
+        height: auto;
+        min-height: 0;
         -webkit-overflow-scrolling: touch;
         scroll-behavior: smooth;
+        scroll-snap-type: x mandatory; /* Прилипание */
     }
 
     .column {
         min-height: auto;
         max-height: none;
         background: rgba(15, 23, 42, 0.4);
-        /* Slightly darker for contrast */
+        scroll-snap-align: center; /* Центрирование при скролле */
     }
 
     .task-list {
         max-height: none;
-        overflow-y: visible;
+        overflow-y: auto; /* Скролл внутри колонки */
         min-height: 100px;
     }
 
@@ -1404,4 +1416,399 @@ body.light-mode .projects-checkboxes {
 
 body.light-mode .project-checkbox-item:hover {
     background: rgba(0, 0, 0, 0.02);
+}
+
+/* New Status Badges System */
+:root {
+  --status-assigned: #e67e22;
+  --status-in-work: #f39c12;
+  --status-completed: #27ae60;
+}
+
+.status-badge {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    user-select: none;
+    border: 1px solid transparent;
+    width: fit-content;
+}
+
+.status-badge:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
+.status-assigned {
+    background: rgba(230, 126, 34, 0.15);
+    color: #e67e22;
+    border-color: rgba(230, 126, 34, 0.3);
+}
+
+.status-in-work {
+    background: rgba(243, 156, 18, 0.15);
+    color: #f39c12;
+    border-color: rgba(243, 156, 18, 0.3);
+}
+
+.status-completed {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border-color: rgba(46, 204, 113, 0.3);
+}
+
+/* Status Dropdown */
+.status-dropdown-container {
+    position: relative;
+    display: inline-block;
+}
+
+.status-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--card-bg);
+    border: var(--glass-border);
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: var(--shadow);
+    z-index: 100;
+    display: none;
+    min-width: 200px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.status-dropdown.active {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.status-option {
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+.status-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.status-option i {
+    width: 20px;
+    text-align: center;
+}
+
+/* Override old task actions position */
+.task-actions {
+    position: absolute;
+    top: 0.75rem;
+    right: 3.5rem;
+    display: flex;
+    align-items: center;
+}
+
+/* Hide old check buttons if any remain */
+.check-btn {
+    display: none !important;
+}
+
+/* Mobile fix for status badge */
+@media (max-width: 768px) {
+    .task-actions {
+        right: 3rem; /* More space on mobile */
+    }
+    
+    .status-badge {
+        font-size: 0.8rem;
+        padding: 4px 8px;
+    }
+}
+
+/* ========== FILE ATTACHMENTS ========== */
+
+/* Attachments Container in Task Modal */
+.attachments-container {
+    background: rgba(15, 23, 42, 0.3);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.attachments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.attachments-list:empty {
+    display: none;
+}
+
+.attachment-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.attachment-item:hover {
+    border-color: var(--primary);
+}
+
+.attachment-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.attachment-icon.pdf { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.attachment-icon.word { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.attachment-icon.excel { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.attachment-icon.image { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+.attachment-icon.archive { background: rgba(234, 179, 8, 0.15); color: #eab308; }
+.attachment-icon.other { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+.attachment-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.attachment-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.attachment-size {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.attachment-remove {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.attachment-remove:hover {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.add-attachment-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--font-family);
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.add-attachment-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.add-attachment-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.attachment-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.5rem;
+    text-align: center;
+}
+
+/* Uploading State */
+.attachment-item.uploading {
+    opacity: 0.7;
+}
+
+.attachment-item.uploading .attachment-icon {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Attachment Badge on Task Card */
+.task-attachment-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-right: 0.5rem;
+}
+
+.task-attachment-badge:hover {
+    background: rgba(99, 102, 241, 0.2);
+}
+
+/* Files Modal List */
+.files-modal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem 0;
+}
+
+.file-list-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.file-list-item:hover {
+    border-color: var(--primary);
+    transform: translateX(4px);
+}
+
+.file-list-item .attachment-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 1.4rem;
+}
+
+.file-list-item .attachment-info {
+    flex: 1;
+}
+
+.file-list-item .attachment-name {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.file-list-item .attachment-size {
+    font-size: 0.85rem;
+}
+
+.file-list-item i.fa-external-link-alt,
+.file-list-item i.fa-eye {
+    color: var(--text-secondary);
+    font-size: 1rem;
+}
+
+/* File Preview Modal */
+.file-preview-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    width: 900px;
+}
+
+.file-preview-container {
+    width: 100%;
+    height: 70vh;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-preview-container iframe,
+.file-preview-container img {
+    width: 100%;
+    height: 100%;
+    border: none;
+    object-fit: contain;
+}
+
+.file-preview-container .preview-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    color: var(--text-secondary);
+}
+
+.file-preview-container .no-preview {
+    text-align: center;
+    padding: 2rem;
+}
+
+.file-preview-container .no-preview i {
+    font-size: 4rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.file-preview-container .no-preview p {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+/* Light mode */
+body.light-mode .attachments-container {
+    background: rgba(241, 245, 249, 0.5);
+}
+
+body.light-mode .attachment-item {
+    background: #ffffff;
+}
+
+body.light-mode .file-list-item {
+    background: #ffffff;
+}
+
+body.light-mode .file-preview-container {
+    background: rgba(0, 0, 0, 0.05);
 }

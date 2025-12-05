@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=2.8" as="style">
-    <link rel="stylesheet" href="style.css?v=2.8">
-    <link rel="stylesheet" href="mobile-additions.css?v=2.8">
+    <link rel="preload" href="style.css?v=3.5" as="style">
+    <link rel="stylesheet" href="style.css?v=3.5">
+    <link rel="stylesheet" href="mobile-additions.css?v=3.5">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -92,7 +92,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=2.9" defer></script>
+    <script src="script.js?v=3.5" defer></script>
 </head>
 
 <body>
@@ -342,6 +342,22 @@
                     </div>
                 </div>
 
+                <!-- File Attachments Section -->
+                <div class="form-group">
+                    <label><i class="fa-solid fa-paperclip"></i> Прикрепленные файлы (макс. 2)</label>
+                    <div id="attachments-container" class="attachments-container">
+                        <div id="attachments-list" class="attachments-list">
+                            <!-- Attached files will appear here -->
+                        </div>
+                        <button type="button" id="add-attachment-btn" class="add-attachment-btn">
+                            <i class="fa-solid fa-plus"></i> Прикрепить файл
+                        </button>
+                        <input type="file" id="file-input" style="display: none;" 
+                               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar">
+                        <p class="attachment-hint">PDF, Word, Excel, изображения, архивы. Макс. 10 MB</p>
+                    </div>
+                </div>
+
                 <!-- Status hidden, defaults to in-progress -->
                 <input type="hidden" id="t-status" value="in-progress">
                 <input type="hidden" id="t-id">
@@ -386,15 +402,28 @@
                 </div>
 
                 <div class="help-section">
-                    <h3><i class="fa-solid fa-check"></i> Процесс выполнения</h3>
-                    <p>Задача считается выполненной только после проверки Админом:</p>
+                    <h3><i class="fa-solid fa-list-check"></i> Статусы задач</h3>
+                    <p>Теперь вместо галочек используются статусы:</p>
                     <ul style="list-style: none; padding-left: 0;">
-                        <li style="margin-bottom: 0.5rem;"><i class="fa-solid fa-check" style="color: var(--text-secondary)"></i> <strong>1. Шаг Исполнителя (Правая галочка):</strong> Сотрудник нажимает правую кнопку. Она становится зеленой.</li>
-                        <li style="margin-bottom: 0.5rem;"><i class="fa-solid fa-check" style="color: var(--primary)"></i> <strong>2. Шаг Админа (Левая галочка):</strong> Админ проверяет работу и нажимает левую кнопку.</li>
-                        <li><strong>Финал:</strong> Задача перемещается в "Готово".</li>
+                        <li style="margin-bottom: 0.5rem;">
+                            <span style="color: #e67e22; font-weight: bold;"><i class="fa-solid fa-circle-exclamation"></i> Задача поставлена:</span>
+                            Новая задача от Админа.
+                        </li>
+                        <li style="margin-bottom: 0.5rem;">
+                            <span style="color: #f39c12; font-weight: bold;"><i class="fa-solid fa-person-digging"></i> В работе:</span>
+                            Сотрудник принял задачу.
+                        </li>
+                        <li style="margin-bottom: 0.5rem;">
+                            <span style="color: #2ecc71; font-weight: bold;"><i class="fa-solid fa-check"></i> Задача завершена:</span>
+                            Сотрудник выполнил работу.
+                        </li>
+                        <li>
+                            <span style="color: #2ecc71; font-weight: bold;"><i class="fa-solid fa-check-double"></i> Готово (Архив):</span>
+                            Админ подтвердил выполнение.
+                        </li>
                     </ul>
                     <div class="help-note">
-                        <i class="fa-solid fa-info-circle"></i> Левая галочка (Админа) заблокирована, пока сотрудник не нажмет правую.
+                        <i class="fa-solid fa-info-circle"></i> Нажмите на статус задачи, чтобы изменить его (например, "Принять в работу").
                     </div>
                 </div>
 
@@ -413,6 +442,43 @@
 
     <!-- Admin Panel Modal -->
     <div id="admin-panel-modal" class="modal">
+
+    <!-- File Preview Modal -->
+    <div id="file-preview-modal" class="modal">
+        <div class="modal-content file-preview-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-file"></i> <span id="preview-file-name">Файл</span></h2>
+                <div style="display: flex; gap: 0.5rem;">
+                    <a id="preview-download-btn" href="#" download class="secondary-btn" style="padding: 0.5rem 1rem;">
+                        <i class="fa-solid fa-download"></i>
+                    </a>
+                    <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <div id="file-preview-container" class="file-preview-container">
+                <!-- Preview content will be injected here -->
+                <div class="preview-loading">
+                    <div class="spinner"></div>
+                    <p>Загрузка файла...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Files List Modal (for task card) -->
+    <div id="files-list-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-paperclip"></i> Прикрепленные файлы</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="files-modal-list" class="files-modal-list">
+                <!-- Files will be listed here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
         <div class="modal-content" style="max-width: 900px;">
             <div class="modal-header">
                 <h2><i class="fa-solid fa-user-shield"></i> Админ панель</h2>
