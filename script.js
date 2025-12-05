@@ -313,11 +313,21 @@ function openFilesListModal(attachments) {
                 <div class="attachment-name">${attachment.name}</div>
                 <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
             </div>
-            <i class="fa-solid fa-eye"></i>
+            <div class="file-actions" style="display: flex; gap: 10px;">
+                <i class="fa-solid fa-eye" title="Просмотреть" style="cursor: pointer;"></i>
+                <a href="${attachment.url}" download target="_blank" class="download-link" style="color: inherit;">
+                    <i class="fa-solid fa-download" title="Скачать"></i>
+                </a>
+            </div>
         `;
         
-        item.onclick = () => {
-            console.log('File item clicked:', attachment); // Debug
+        // Click on item (except download link) opens preview
+        item.onclick = (e) => {
+            if (e.target.closest('.download-link')) {
+                e.stopPropagation();
+                return;
+            }
+            console.log('File item clicked:', attachment);
             modal.classList.remove('active');
             openFilePreview(attachment);
         };
