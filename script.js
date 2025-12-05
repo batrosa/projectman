@@ -305,12 +305,10 @@ function openFilesListModal(attachments) {
         
         const item = document.createElement('div');
         item.className = 'file-list-item';
-        // Force download URL
-        let downloadUrl = attachment.url;
-        if (downloadUrl.includes('upload/')) {
-            downloadUrl = downloadUrl.replace('upload/', 'upload/fl_attachment/');
-        }
-
+        // Remove click handler (no preview anymore)
+        item.onclick = null;
+        
+        // Construct item content (without button first)
         item.innerHTML = `
             <div class="attachment-icon ${fileType}">
                 <i class="fa-solid ${iconClass}"></i>
@@ -319,13 +317,57 @@ function openFilesListModal(attachments) {
                 <div class="attachment-name">${attachment.name}</div>
                 <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
             </div>
-            <a href="${downloadUrl}" class="primary-btn" style="padding: 8px 16px; text-decoration: none; flex-shrink: 0;">
-                <i class="fa-solid fa-download"></i> Скачать
-            </a>
         `;
         
-        // Remove click handler (no preview anymore)
-        item.onclick = null;
+        // Create smart download button
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'primary-btn';
+        downloadBtn.style.cssText = 'padding: 8px 16px; flex-shrink: 0; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.9rem;';
+        downloadBtn.innerHTML = '<i class="fa-solid fa-download"></i> Скачать';
+        
+        downloadBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            const originalHTML = btn.innerHTML;
+            
+            // Show loading state
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            
+            try {
+                // 1. Fetch file data as Blob (bypasses browser viewer)
+                const response = await fetch(attachment.url);
+                if (!response.ok) throw new Error('Network error');
+                
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                
+                // 2. Create invisible link to trigger save
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = blobUrl;
+                a.download = attachment.name; // Browser respects this for Blobs
+                document.body.appendChild(a);
+                a.click();
+                
+                // 3. Cleanup
+                window.URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+            } catch (error) {
+                console.error('Download failed:', error);
+                alert('Не удалось скачать файл напрямую. Проверьте VPN или Интернет.\nПопытка открыть прямую ссылку...');
+                
+                // Fallback: Try direct link if blob fails
+                window.open(downloadUrl, '_blank');
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        };
+        
+        item.appendChild(downloadBtn);
         
         list.appendChild(item);
     });
@@ -529,7 +571,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.9'; // DIRECT DOWNLOAD BTN ONLY
+    const CURRENT_VERSION = '4.0'; // BLOB DOWNLOADER
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
