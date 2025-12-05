@@ -225,7 +225,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.2'; // BUMPED TO 3.2 FOR NEW STATUS LOGIC
+    const CURRENT_VERSION = '3.3'; // BUMPED FOR MOBILE STATUS FIX
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {

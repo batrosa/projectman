@@ -153,49 +153,134 @@
 
     /* Position buttons on mobile */
     .task-actions {
-        top: 0.75rem;
-        right: 4rem; /* More space for two buttons */
-        gap: 0.75rem; /* More space between buttons on touch */
+        position: absolute;
+        top: 0.5rem;
+        right: 2.5rem; /* Space for delete/edit buttons */
+        z-index: 5;
     }
 
-    .check-btn {
-        width: 40px; /* Slightly larger than PC (36px) for touch, but visually similar */
-        height: 40px;
-        font-size: 1.2rem; /* Matches PC proportion */
+    /* Status Badge - Same as PC */
+    .status-badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+        user-select: none;
+        border: 1px solid transparent;
+        width: fit-content;
+        min-height: 36px; /* Ensure touch target */
         
-        /* Force PC visual style */
+        /* Force consistent appearance */
         -webkit-appearance: none;
         appearance: none;
-        background: rgba(148, 163, 184, 0.05) !important;
-        border: 2px solid var(--text-secondary) !important;
-        border-radius: 50%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        margin: 0;
-        
-        opacity: 0.8; /* Slightly more visible on mobile than PC's 0.5 */
     }
 
-    .check-btn.interactive {
-        opacity: 1;
-        background: rgba(99, 102, 241, 0.1) !important;
-        border-color: var(--primary) !important;
-        color: var(--primary) !important;
+    .status-badge:hover,
+    .status-badge:active {
+        transform: translateY(-1px);
+        filter: brightness(1.1);
     }
-    
-    .check-btn.completed {
-        background: var(--success) !important;
-        border-color: var(--success) !important;
-        color: white !important;
-        opacity: 1 !important;
+
+    .status-assigned {
+        background: rgba(230, 126, 34, 0.15) !important;
+        color: #e67e22 !important;
+        border-color: rgba(230, 126, 34, 0.3) !important;
+    }
+
+    .status-in-work {
+        background: rgba(243, 156, 18, 0.15) !important;
+        color: #f39c12 !important;
+        border-color: rgba(243, 156, 18, 0.3) !important;
+    }
+
+    .status-completed {
+        background: rgba(46, 204, 113, 0.15) !important;
+        color: #2ecc71 !important;
+        border-color: rgba(46, 204, 113, 0.3) !important;
+    }
+
+    /* Dropdown Container */
+    .status-dropdown-container {
+        position: relative;
+        display: inline-block;
+    }
+
+    /* Status Dropdown - Same as PC */
+    .status-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 4px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        z-index: 1000; /* Very high to be above everything */
+        display: none;
+        min-width: 200px;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+
+    .status-dropdown.active {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .status-option {
+        padding: 12px 14px; /* Larger padding for touch */
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-secondary);
+        transition: all 0.2s;
+        font-size: 0.95rem;
+        min-height: 44px; /* Touch target */
+        
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .status-option:active {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--text-primary);
+    }
+
+    .status-option i {
+        width: 20px;
+        text-align: center;
+        font-size: 1rem;
+    }
+
+    /* Task card z-index fix for dropdown */
+    .task-card.active-dropdown {
+        z-index: 100 !important;
+    }
+
+    /* Task title padding for status badge */
+    .task-title {
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+        line-height: 1.5;
+        padding-right: 2rem; /* Less padding needed now, badge is on separate line visually */
+        word-wrap: break-word;
+    }
+
+    /* Hide old check buttons completely */
+    .check-btn {
+        display: none !important;
     }
 
     .assignee-complete-btn {
-        display: none; /* Hide old one just in case */
+        display: none !important;
     }
 
     /* Login form spacing */
