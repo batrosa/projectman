@@ -1713,16 +1713,15 @@ body.light-mode .project-checkbox-item:hover {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.5rem 0.75rem;
+    padding: 6px 12px;
     background: rgba(99, 102, 241, 0.15);
     color: var(--primary);
     border: 1px solid rgba(99, 102, 241, 0.3);
     border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: 500;
+    font-size: 0.85rem;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
-    margin-bottom: 0.75rem;
 }
 
 .task-attachment-badge:hover {
