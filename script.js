@@ -1137,6 +1137,16 @@ function createTaskCard(task) {
         attachBadge.title = 'Прикрепленные файлы';
         attachBadge.onclick = (e) => {
             e.stopPropagation();
+            e.preventDefault();
+            console.log('Attachment badge clicked!', task.attachments); // Debug
+            playClickSound();
+            openFilesListModal(task.attachments);
+        };
+        // Also add touch handler for mobile
+        attachBadge.ontouchend = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            console.log('Attachment badge touched!', task.attachments); // Debug
             playClickSound();
             openFilesListModal(task.attachments);
         };
