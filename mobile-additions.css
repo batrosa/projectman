@@ -125,10 +125,9 @@
 
     .task-title {
         font-size: 1.1rem;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
         line-height: 1.5;
-        padding-right: 9.5rem; /* Ensure enough space for DOUBLE check buttons */
-        word-wrap: break-word; /* Prevent long words from overflowing */
+        word-wrap: break-word;
     }
 
     .task-meta {
@@ -151,12 +150,18 @@
         white-space: normal; 
     }
 
-    /* Position buttons on mobile */
-    .task-actions {
-        position: absolute;
-        top: 0.5rem;
-        right: 2.5rem; /* Space for delete/edit buttons */
-        z-index: 5;
+    /* Toolbar styles for mobile */
+    .task-toolbar {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .toolbar-left {
+        gap: 0.4rem;
+    }
+    
+    .task-separator {
+        margin-bottom: 0.5rem;
     }
 
     /* Status Badge - Same as PC */
@@ -265,12 +270,11 @@
         z-index: 100 !important;
     }
 
-    /* Task title padding for status badge */
+    /* Task title - no padding needed with toolbar */
     .task-title {
         font-size: 1.1rem;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
         line-height: 1.5;
-        padding-right: 2rem; /* Less padding needed now, badge is on separate line visually */
         word-wrap: break-word;
     }
 

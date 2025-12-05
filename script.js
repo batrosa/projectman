@@ -535,7 +535,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.6'; // FIX FILE PREVIEW
+    const CURRENT_VERSION = '3.7'; // TOOLBAR LAYOUT
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -1002,8 +1002,7 @@ function createTaskCard(task) {
         badge.style.opacity = '0.9';
     }
 
-    actionsDiv.appendChild(dropdownContainer);
-    div.appendChild(actionsDiv);
+    // Note: dropdownContainer is added to toolbar later
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -1124,10 +1123,14 @@ function createTaskCard(task) {
     taskMeta.appendChild(assigneeDiv);
     taskMeta.appendChild(deadlineDiv);
     
-    if (state.role === 'admin') {
-        div.appendChild(editBtn); 
-        div.appendChild(deleteBtn);
-    }
+    // === CREATE TOOLBAR ROW ===
+    const toolbar = document.createElement('div');
+    toolbar.className = 'task-toolbar';
+    
+    // Left side: Status badge
+    const toolbarLeft = document.createElement('div');
+    toolbarLeft.className = 'toolbar-left';
+    toolbarLeft.appendChild(dropdownContainer);
     
     // Add attachment badge if task has files
     if (task.attachments && task.attachments.length > 0) {
@@ -1138,21 +1141,41 @@ function createTaskCard(task) {
         attachBadge.onclick = (e) => {
             e.stopPropagation();
             e.preventDefault();
-            console.log('Attachment badge clicked!', task.attachments); // Debug
+            console.log('Attachment badge clicked!', task.attachments);
             playClickSound();
             openFilesListModal(task.attachments);
         };
-        // Also add touch handler for mobile
         attachBadge.ontouchend = (e) => {
             e.stopPropagation();
             e.preventDefault();
-            console.log('Attachment badge touched!', task.attachments); // Debug
+            console.log('Attachment badge touched!', task.attachments);
             playClickSound();
             openFilesListModal(task.attachments);
         };
-        div.appendChild(attachBadge);
+        toolbarLeft.appendChild(attachBadge);
     }
     
+    // Right side: Edit & Delete buttons (admin only)
+    const toolbarRight = document.createElement('div');
+    toolbarRight.className = 'toolbar-right';
+    
+    if (state.role === 'admin') {
+        toolbarRight.appendChild(editBtn);
+        toolbarRight.appendChild(deleteBtn);
+    }
+    
+    toolbar.appendChild(toolbarLeft);
+    toolbar.appendChild(toolbarRight);
+    
+    // === BUILD CARD STRUCTURE ===
+    div.appendChild(toolbar);
+    
+    // Separator line
+    const separator = document.createElement('div');
+    separator.className = 'task-separator';
+    div.appendChild(separator);
+    
+    // Task content
     div.appendChild(taskTitle);
     div.appendChild(taskMeta);
 

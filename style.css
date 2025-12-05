@@ -407,8 +407,7 @@ body.light-mode .project-info h1 {
     margin-bottom: 0.75rem;
     line-height: 1.4;
     color: var(--text-primary);
-    padding-right: 8.5rem; /* Increased from 4.5rem to make space for double check buttons */
-    word-wrap: break-word; /* Ensure long words break */
+    word-wrap: break-word;
 }
 
 .task-meta {
@@ -470,35 +469,64 @@ body.light-mode .project-info h1 {
     font-weight: 700;
 }
 
-.delete-task {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    opacity: 0;
-    transition: opacity 0.2s;
+.delete-task,
+.edit-task {
     background: none;
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-}
-
-.task-card:hover .delete-task {
-    opacity: 1;
+    padding: 0.4rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .delete-task:hover {
     color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
 }
 
-/* Task Actions - Two Buttons */
-.task-actions {
-    position: absolute;
-    top: 0.75rem;
-    right: 3.5rem; /* Adjusted for double button */
+.edit-task:hover {
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+/* Task Toolbar - Top row with controls */
+.task-toolbar {
     display: flex;
-    gap: 0.5rem;
-    z-index: 5;
+    justify-content: space-between;
     align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* Task Separator Line */
+.task-separator {
+    height: 1px;
+    background: var(--border);
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+}
+
+/* Old task-actions - no longer used */
+.task-actions {
+    display: none;
 }
 
 .check-btn {
@@ -1084,13 +1112,11 @@ body.read-only .task-card:hover {
         font-size: 0.9rem;
     }
 
-    /* Always show delete button on mobile */
-    .delete-task {
-        opacity: 1;
-        padding: 0.75rem;
-        font-size: 1.1rem;
-        top: 0.5rem;
-        right: 0.5rem;
+    /* Delete/Edit buttons on mobile */
+    .delete-task,
+    .edit-task {
+        padding: 0.5rem;
+        font-size: 1rem;
     }
 
     /* Larger form inputs */
@@ -1514,13 +1540,9 @@ body.light-mode .project-checkbox-item:hover {
     text-align: center;
 }
 
-/* Override old task actions position */
+/* Override old task actions position - no longer used */
 .task-actions {
-    position: absolute;
-    top: 0.75rem;
-    right: 3.5rem;
-    display: flex;
-    align-items: center;
+    display: none;
 }
 
 /* Hide old check buttons if any remain */
@@ -1528,15 +1550,24 @@ body.light-mode .project-checkbox-item:hover {
     display: none !important;
 }
 
-/* Mobile fix for status badge */
+/* Mobile fix for toolbar */
 @media (max-width: 768px) {
-    .task-actions {
-        right: 3rem; /* More space on mobile */
+    .task-toolbar {
+        gap: 0.5rem;
+    }
+    
+    .toolbar-left {
+        gap: 0.4rem;
     }
     
     .status-badge {
         font-size: 0.8rem;
         padding: 4px 8px;
+    }
+    
+    .task-attachment-badge {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.85rem;
     }
 }
 
