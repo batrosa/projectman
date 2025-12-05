@@ -571,7 +571,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.1'; // FIX DROPDOWN UI
+    const CURRENT_VERSION = '4.2'; // FIXED POSITION MENU
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -863,6 +863,109 @@ function renderBoard() {
 }
 
 // --- NEW TASK CARD WITH STATUS BADGES ---
+// Global Status Menu
+let globalStatusMenu = null;
+
+function createGlobalStatusMenu() {
+    if (globalStatusMenu) return;
+    
+    globalStatusMenu = document.createElement('div');
+    globalStatusMenu.className = 'status-dropdown global-dropdown';
+    globalStatusMenu.style.position = 'fixed';
+    globalStatusMenu.style.zIndex = '10000';
+    globalStatusMenu.style.marginTop = '0';
+    globalStatusMenu.style.minWidth = '220px';
+    document.body.appendChild(globalStatusMenu);
+    
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+        if (globalStatusMenu && globalStatusMenu.style.display !== 'none' && !globalStatusMenu.contains(e.target) && !e.target.closest('.status-badge')) {
+            globalStatusMenu.style.display = 'none';
+        }
+    });
+    
+    // Close on scroll
+    window.addEventListener('scroll', () => {
+        if (globalStatusMenu) globalStatusMenu.style.display = 'none';
+    }, { capture: true, passive: true });
+}
+
+function openStatusMenu(event, task, currentSubStatus) {
+    event.stopPropagation();
+    playClickSound();
+    createGlobalStatusMenu();
+    
+    // Clear previous options
+    globalStatusMenu.innerHTML = '';
+    globalStatusMenu.style.display = 'flex';
+    
+    const isAdmin = state.role === 'admin';
+    
+    // Determine assignee status again
+    let isAssignee = false;
+    if (state.currentUser) {
+        if (state.currentUser.email && task.assigneeEmail) {
+            const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
+            isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
+        }
+        if (!isAssignee && !task.assigneeEmail && task.assignee) {
+             const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
+            const assigneeNames = task.assignee.split(',').map(n => n.trim());
+            if (currentUserFullName && assigneeNames.includes(currentUserFullName)) {
+                isAssignee = true;
+            }
+        }
+    }
+    
+    const addOption = (label, icon, newStatus) => {
+        const opt = document.createElement('div');
+        opt.className = 'status-option';
+        opt.innerHTML = `${icon} ${label}`;
+        opt.onclick = (e) => {
+            e.stopPropagation();
+            playClickSound();
+            updateTaskSubStatus(task.id, newStatus);
+            globalStatusMenu.style.display = 'none';
+        };
+        globalStatusMenu.appendChild(opt);
+    };
+
+    // Populate options based on permissions
+    if (currentSubStatus !== 'done') {
+        if (isAssignee) {
+            if (currentSubStatus === 'assigned') {
+                addOption('Принять в работу', '<i class="fa-solid fa-person-digging"></i>', 'in_work');
+            } else if (currentSubStatus === 'in_work') {
+                addOption('Задача завершена', '<i class="fa-solid fa-check"></i>', 'completed');
+            }
+        }
+        
+        if (isAdmin) {
+             if (currentSubStatus === 'completed') {
+                 addOption('Подтвердить (В архив)', '<i class="fa-solid fa-check-double"></i>', 'done');
+                 addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
+             } 
+        }
+    } else {
+        if (isAdmin) {
+            addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
+        }
+    }
+    
+    // Position menu
+    const badge = event.target.closest('.status-badge');
+    const rect = badge.getBoundingClientRect();
+    
+    globalStatusMenu.style.top = (rect.bottom + 6) + 'px';
+    globalStatusMenu.style.left = rect.left + 'px';
+    
+    // Ensure it doesn't go off screen right
+    const menuWidth = 220;
+    if (rect.left + menuWidth > window.innerWidth) {
+        globalStatusMenu.style.left = (window.innerWidth - menuWidth - 10) + 'px';
+    }
+}
+
 function createTaskCard(task) {
     const div = document.createElement('div');
     div.className = 'task-card';
@@ -929,21 +1032,16 @@ function createTaskCard(task) {
     badge.classList.add(badgeClass);
     badge.innerHTML = `${badgeIcon} <span>${badgeText}</span>`;
     
-    // Dropdown Container
+    // Dropdown Container (now just a wrapper for badge)
     const dropdownContainer = document.createElement('div');
     dropdownContainer.className = 'status-dropdown-container';
     dropdownContainer.appendChild(badge);
 
-    // Dropdown Menu
-    const dropdown = document.createElement('div');
-    dropdown.className = 'status-dropdown';
-    
-    // Logic for available actions
+    // Check interactions for badge cursor style
     let canInteract = false;
     const isAdmin = state.role === 'admin';
     
-    // Check assignee
-    const assignees = task.assignee.split(',').map(name => name.trim()).filter(name => name.length > 0);
+    // Check assignee logic for interactivity check
     let isAssignee = false;
     if (state.currentUser) {
         if (state.currentUser.email && task.assigneeEmail) {
@@ -959,86 +1057,24 @@ function createTaskCard(task) {
         }
     }
 
-    // Menu Options Generator
-    const addOption = (label, icon, newStatus) => {
-        const opt = document.createElement('div');
-        opt.className = 'status-option';
-        opt.innerHTML = `${icon} ${label}`;
-        opt.onclick = (e) => {
-            e.stopPropagation();
-            playClickSound();
-            updateTaskSubStatus(task.id, newStatus);
-            dropdown.classList.remove('active');
-        };
-        dropdown.appendChild(opt);
-    };
-
-    // Permission Logic
+    // Simplify permission check just for cursor style
     if (currentSubStatus !== 'done') {
-        // Assignee Logic
         if (isAssignee) {
-            if (currentSubStatus === 'assigned') {
-                canInteract = true;
-                addOption('Принять в работу', '<i class="fa-solid fa-person-digging"></i>', 'in_work');
-            } else if (currentSubStatus === 'in_work') {
-                canInteract = true;
-                addOption('Задача завершена', '<i class="fa-solid fa-check"></i>', 'completed');
-                // Removed revert option
-            } else if (currentSubStatus === 'completed') {
-                 // Removed revert option for assignee. Only admin can revert.
-                 canInteract = false; 
-            }
+            if (currentSubStatus === 'assigned' || currentSubStatus === 'in_work') canInteract = true;
         }
-        
-        // Admin Logic (If not assignee, or overriding assignee logic if needed - merging)
-        // Admin should mostly wait for 'completed'
-        if (isAdmin) {
-             if (currentSubStatus === 'completed') {
-                 canInteract = true;
-                 // Add separator if options already exist (from assignee role)
-                 // simple append works
-                 addOption('Подтвердить (В архив)', '<i class="fa-solid fa-check-double"></i>', 'done');
-                 addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
-             } 
-             // Admin doesn't touch 'assigned' or 'in_work' unless he is the assignee
-        }
+        if (isAdmin && currentSubStatus === 'completed') canInteract = true;
     } else {
-        // Status is DONE (Archive)
-        if (isAdmin) {
-            canInteract = true;
-            addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
-        }
+        if (isAdmin) canInteract = true;
     }
 
     if (canInteract) {
         badge.onclick = (e) => {
-            e.stopPropagation();
-            playClickSound();
-            // Close other dropdowns
-            document.querySelectorAll('.status-dropdown.active').forEach(d => {
-                d.classList.remove('active');
-                // Remove z-index fix from parent cards
-                const parentCard = d.closest('.task-card');
-                if (parentCard) parentCard.classList.remove('active-dropdown');
-            });
-            
-            dropdown.classList.toggle('active');
-            
-            // Toggle z-index on parent card
-            if (dropdown.classList.contains('active')) {
-                div.classList.add('active-dropdown');
-            } else {
-                div.classList.remove('active-dropdown');
-            }
+            openStatusMenu(e, task, currentSubStatus);
         };
-        
-        dropdownContainer.appendChild(dropdown);
     } else {
         badge.style.cursor = 'default';
         badge.style.opacity = '0.9';
     }
-
-    // Note: dropdownContainer is added to toolbar later
 
     // Create delete button
     const deleteBtn = document.createElement('button');

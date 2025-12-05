@@ -1496,9 +1496,10 @@ body.light-mode .project-checkbox-item:hover {
 .status-dropdown {
     position: absolute;
     top: 100%;
-    left: 4px; /* Shifted slightly right */
+    left: 0;
+    margin-left: 12px; /* Shifted more to the right */
     right: auto;
-    margin-top: 6px;
+    margin-top: 8px;
     background: #1e293b; /* Solid dark background */
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
