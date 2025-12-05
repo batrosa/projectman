@@ -307,8 +307,13 @@ function openFilesListModal(attachments) {
         item.className = 'file-list-item';
         // Force download URL with Cloudinary flag
         let downloadUrl = attachment.url;
-        if (downloadUrl.includes('upload/') && !downloadUrl.includes('fl_attachment')) {
-            downloadUrl = downloadUrl.replace('upload/', 'upload/fl_attachment/');
+        
+        // FOR PDF: Keep original URL (adding fl_attachment breaks it for some networks)
+        // For others: Force download
+        if (fileType !== 'pdf') {
+            if (downloadUrl.includes('upload/') && !downloadUrl.includes('fl_attachment')) {
+                downloadUrl = downloadUrl.replace('upload/', 'upload/fl_attachment/');
+            }
         }
 
         item.innerHTML = `
@@ -529,7 +534,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.4'; // SIMPLE DOWNLOAD LINK
+    const CURRENT_VERSION = '4.5'; // CLEAN PDF URL
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
