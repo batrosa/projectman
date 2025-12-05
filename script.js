@@ -83,9 +83,6 @@ async function uploadToCloudinary(file) {
     formData.append('upload_preset', cloudinaryConfig.uploadPreset);
     // Folder is already defined in the Preset settings
     
-    // Force public access
-    formData.append('access_mode', 'public');
-    
     const response = await fetch(
         `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
         { method: 'POST', body: formData }
@@ -536,7 +533,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.6'; // FORCE PUBLIC ACCESS
+    const CURRENT_VERSION = '4.7'; // REVERT ACCESS MODE
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
