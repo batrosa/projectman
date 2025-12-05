@@ -225,7 +225,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.0'; // Increment this manually on big updates
+    const CURRENT_VERSION = '3.2'; // BUMPED TO 3.2 FOR NEW STATUS LOGIC
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -248,8 +248,6 @@ window.addEventListener('load', () => {
         }
 
         localStorage.setItem('app_version', CURRENT_VERSION);
-        // Optional: Reload once to ensure fresh assets
-        // window.location.reload(); 
     }
 });
 
@@ -298,9 +296,6 @@ function showUpdateNotification() {
 
 // Persistence - NOW FIREBASE
 function setupRealtimeListeners() {
-    // Show loading state if needed
-    // elements.projectList.innerHTML = '<li style="padding: 1rem; color: var(--text-secondary);">Загрузка...</li>';
-
     // Listen for Projects
     db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
         const projects = [];
@@ -342,18 +337,9 @@ function setupRealtimeListeners() {
     });
 }
 
-// Removed local storage functions
-// function loadState() { ... }
-// function saveState() { ... }
-// function seedData() { ... }
-
 function generateId() {
     return Math.random().toString(36).substr(2, 9);
 }
-
-// Logic - Functions moved to bottom to avoid duplicates
-// createProject and deleteProject are now defined later
-
 
 function selectProject(id) {
     state.activeProjectId = id;
@@ -395,34 +381,10 @@ function subscribeToProjectTasks(projectId) {
         });
 }
 
-function createTask(title, assignee, deadline, status, assigneeEmail) {
-    if (state.role !== 'admin') return;
-    if (!state.activeProjectId) return;
-
-    db.collection('tasks').add({
-        projectId: state.activeProjectId,
-        title,
-        assignee: assignee || 'Не назначен',
-        deadline,
-        status,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(() => {
-        if (assigneeEmail) {
-            sendEmailNotification(assigneeEmail, assignee, title, deadline);
-        }
-    });
-}
-
 function deleteTask(id) {
     if (state.role !== 'admin') return;
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     db.collection('tasks').doc(id).delete();
-}
-
-function updateTaskStatus(id, newStatus) {
-    db.collection('tasks').doc(id).update({
-        status: newStatus
-    });
 }
 
 function updateTask(id, data) {
@@ -549,6 +511,7 @@ function renderBoard() {
     });
 }
 
+// --- NEW TASK CARD WITH STATUS BADGES ---
 function createTaskCard(task) {
     const div = document.createElement('div');
     div.className = 'task-card';
@@ -559,27 +522,85 @@ function createTaskCard(task) {
     }
     div.dataset.id = task.id;
 
-    // Parse multiple assignees
-    const assignees = task.assignee.split(',').map(name => name.trim()).filter(name => name.length > 0);
-
-    // --- Task Actions (Double Checkbox) ---
+    // --- Status Badge System ---
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'task-actions';
-
-    // 1. Assignee Checkbox (Right)
-    const assigneeBtn = document.createElement('button');
-    assigneeBtn.className = 'check-btn assignee-check';
     
-    // Check if current user is assignee
+    // Determine current subStatus
+    let currentSubStatus = task.subStatus || 'assigned';
+    
+    // Migration logic
+    if (!task.subStatus) {
+        if (task.assigneeCompleted) currentSubStatus = 'completed';
+        else currentSubStatus = 'assigned';
+    }
+    
+    // Override if global status is done
+    if (task.status === 'done') {
+        currentSubStatus = 'done'; 
+    }
+
+    // Badge configuration
+    const badge = document.createElement('div');
+    badge.className = 'status-badge';
+    
+    let badgeText = '';
+    let badgeIcon = '';
+    let badgeClass = '';
+
+    switch(currentSubStatus) {
+        case 'assigned':
+            badgeText = 'Задача поставлена';
+            badgeIcon = '<i class="fa-solid fa-circle-exclamation"></i>';
+            badgeClass = 'status-assigned';
+            break;
+        case 'in_work':
+            badgeText = 'В работе';
+            badgeIcon = '<i class="fa-solid fa-person-digging"></i>';
+            badgeClass = 'status-in-work';
+            break;
+        case 'completed':
+            badgeText = 'Задача завершена';
+            badgeIcon = '<i class="fa-solid fa-check"></i>';
+            badgeClass = 'status-completed';
+            break;
+        case 'done':
+            badgeText = 'Готово (Архив)';
+            badgeIcon = '<i class="fa-solid fa-check-double"></i>';
+            badgeClass = 'status-completed'; // Keep green
+            break;
+        default:
+            badgeText = 'Задача поставлена';
+            badgeIcon = '<i class="fa-solid fa-circle-exclamation"></i>';
+            badgeClass = 'status-assigned';
+    }
+
+    badge.classList.add(badgeClass);
+    badge.innerHTML = `${badgeIcon} <span>${badgeText}</span>`;
+    
+    // Dropdown Container
+    const dropdownContainer = document.createElement('div');
+    dropdownContainer.className = 'status-dropdown-container';
+    dropdownContainer.appendChild(badge);
+
+    // Dropdown Menu
+    const dropdown = document.createElement('div');
+    dropdown.className = 'status-dropdown';
+    
+    // Logic for available actions
+    let canInteract = false;
+    const isAdmin = state.role === 'admin';
+    
+    // Check assignee
+    const assignees = task.assignee.split(',').map(name => name.trim()).filter(name => name.length > 0);
     let isAssignee = false;
     if (state.currentUser) {
         if (state.currentUser.email && task.assigneeEmail) {
             const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
             isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
         }
-        // Fallback by name
         if (!isAssignee && !task.assigneeEmail && task.assignee) {
-            const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
+             const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
             const assigneeNames = task.assignee.split(',').map(n => n.trim());
             if (currentUserFullName && assigneeNames.includes(currentUserFullName)) {
                 isAssignee = true;
@@ -587,66 +608,87 @@ function createTaskCard(task) {
         }
     }
 
-    if (task.assigneeCompleted) {
-        assigneeBtn.classList.add('completed');
-        assigneeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
-        assigneeBtn.title = 'Исполнитель выполнил';
-    } else {
-        assigneeBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
-        assigneeBtn.title = 'Отметить выполнение (Исполнитель)';
-    }
-
-    if (isAssignee) {
-        assigneeBtn.classList.add('interactive');
-        assigneeBtn.onclick = (e) => {
+    // Menu Options Generator
+    const addOption = (label, icon, newStatus) => {
+        const opt = document.createElement('div');
+        opt.className = 'status-option';
+        opt.innerHTML = `${icon} ${label}`;
+        opt.onclick = (e) => {
             e.stopPropagation();
             playClickSound();
-            toggleAssigneeCompletion(task.id, task.assigneeCompleted);
+            updateTaskSubStatus(task.id, newStatus);
+            dropdown.classList.remove('active');
         };
-        // Fix mobile touch conflict
-        assigneeBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-    } else {
-        assigneeBtn.disabled = true;
-        // Keep it gray/disabled style
-    }
+        dropdown.appendChild(opt);
+    };
 
-    // 2. Admin Checkbox (Left)
-    const adminBtn = document.createElement('button');
-    adminBtn.className = 'check-btn admin-check';
-
-    if (task.adminCompleted) {
-        adminBtn.classList.add('completed');
-        adminBtn.innerHTML = '<i class="fa-solid fa-check"></i>'; // Changed from fa-check-double
-        adminBtn.title = 'Администратор подтвердил';
-    } else {
-        adminBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
-        adminBtn.title = 'Подтвердить выполнение (Админ)';
-    }
-
-    const isAdmin = state.role === 'admin';
-    const canAdminCheck = isAdmin && task.assigneeCompleted;
-
-    if (isAdmin) {
-        if (canAdminCheck) {
-            adminBtn.classList.add('interactive');
-            adminBtn.onclick = (e) => {
-                e.stopPropagation();
-                playClickSound();
-                toggleAdminCompletion(task.id, task.adminCompleted, task.assigneeCompleted);
-            };
-            adminBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-        } else {
-            adminBtn.disabled = true;
-            adminBtn.title = 'Сначала исполнитель должен отметить выполнение';
+    // Permission Logic
+    if (currentSubStatus !== 'done') {
+        // Assignee Logic
+        if (isAssignee) {
+            if (currentSubStatus === 'assigned') {
+                canInteract = true;
+                addOption('Принять в работу', '<i class="fa-solid fa-person-digging"></i>', 'in_work');
+            } else if (currentSubStatus === 'in_work') {
+                canInteract = true;
+                addOption('Задача завершена', '<i class="fa-solid fa-check"></i>', 'completed');
+                // Removed revert option
+            } else if (currentSubStatus === 'completed') {
+                 // Removed revert option for assignee. Only admin can revert.
+                 canInteract = false; 
+            }
+        }
+        
+        // Admin Logic (If not assignee, or overriding assignee logic if needed - merging)
+        // Admin should mostly wait for 'completed'
+        if (isAdmin) {
+             if (currentSubStatus === 'completed') {
+                 canInteract = true;
+                 // Add separator if options already exist (from assignee role)
+                 // simple append works
+                 addOption('Подтвердить (В архив)', '<i class="fa-solid fa-check-double"></i>', 'done');
+                 addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
+             } 
+             // Admin doesn't touch 'assigned' or 'in_work' unless he is the assignee
         }
     } else {
-        adminBtn.disabled = true;
+        // Status is DONE (Archive)
+        if (isAdmin) {
+            canInteract = true;
+            addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
+        }
     }
 
-    actionsDiv.appendChild(adminBtn);
-    actionsDiv.appendChild(assigneeBtn);
+    if (canInteract) {
+        badge.onclick = (e) => {
+            e.stopPropagation();
+            playClickSound();
+            // Close other dropdowns
+            document.querySelectorAll('.status-dropdown.active').forEach(d => {
+                d.classList.remove('active');
+                // Remove z-index fix from parent cards
+                const parentCard = d.closest('.task-card');
+                if (parentCard) parentCard.classList.remove('active-dropdown');
+            });
+            
+            dropdown.classList.toggle('active');
+            
+            // Toggle z-index on parent card
+            if (dropdown.classList.contains('active')) {
+                div.classList.add('active-dropdown');
+            } else {
+                div.classList.remove('active-dropdown');
+            }
+        };
+        
+        dropdownContainer.appendChild(dropdown);
+    } else {
+        badge.style.cursor = 'default';
+        badge.style.opacity = '0.9';
+    }
+
+    actionsDiv.appendChild(dropdownContainer);
     div.appendChild(actionsDiv);
-    // --------------------------------------
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -700,9 +742,8 @@ function createTaskCard(task) {
         const avatar = document.createElement('div');
         avatar.className = 'avatar';
         avatar.textContent = initials;
-        avatar.title = assignee; // Tooltip with full name
+        avatar.title = assignee; 
 
-        // Offset multiple avatars slightly
         if (index > 0) {
             avatar.style.marginLeft = '-8px';
         }
@@ -710,7 +751,6 @@ function createTaskCard(task) {
         assigneeDiv.appendChild(avatar);
     });
 
-    // Show assignee names
     const assigneeName = document.createElement('span');
     assigneeName.textContent = assignees.join(', ');
     assigneeDiv.appendChild(assigneeName);
@@ -718,11 +758,8 @@ function createTaskCard(task) {
     const deadlineDiv = document.createElement('div');
     deadlineDiv.className = 'deadline';
 
-    // Calculate time percentage for color
     const now = new Date();
     const deadlineDate = new Date(task.deadline);
-
-    // Reset time part for accurate day calculation
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const targetDate = new Date(task.deadline);
@@ -740,47 +777,21 @@ function createTaskCard(task) {
         daysLeftText = `${diffDays} дн.`;
     }
 
-    // Add days left element
     const daysLeftSpan = document.createElement('span');
     daysLeftSpan.className = 'days-left';
     daysLeftSpan.textContent = daysLeftText;
 
-    // Custom style for Overdue
     if (diffDays < 0) {
         daysLeftSpan.style.color = 'var(--danger)';
         daysLeftSpan.style.fontWeight = '700';
-        daysLeftSpan.style.letterSpacing = '0.05em';
     }
 
     deadlineDiv.appendChild(daysLeftSpan);
 
-    // Existing color logic...
-    let createdAtDate;
-    if (task.createdAt && task.createdAt.toDate) {
-        createdAtDate = task.createdAt.toDate();
-    } else if (task.createdAt) {
-        createdAtDate = new Date(task.createdAt);
-    } else {
-        createdAtDate = new Date(); // Fallback
-    }
-
-    const totalDuration = deadlineDate - createdAtDate;
     const timeLeft = deadlineDate - now;
-    let percentage = 100;
-
-    if (totalDuration > 0) {
-        percentage = (timeLeft / totalDuration) * 100;
-    }
-
-    // Logic: 
-    // < 0 time left (overdue) -> Red
-    // < 50% time left -> Yellow/Orange
-    // >= 50% time left -> Green
     if (task.status !== 'done') {
         if (timeLeft < 0) {
             deadlineDiv.classList.add('deadline-red');
-        } else if (percentage < 50) {
-            deadlineDiv.classList.add('deadline-orange');
         } else {
             deadlineDiv.classList.add('deadline-green');
         }
@@ -797,11 +808,9 @@ function createTaskCard(task) {
 
     taskMeta.appendChild(assigneeDiv);
     taskMeta.appendChild(deadlineDiv);
-
-    // div.appendChild(completeBtn); // REMOVED (Replaced by actionsDiv)
     
     if (state.role === 'admin') {
-        div.appendChild(editBtn); // Add edit button
+        div.appendChild(editBtn); 
         div.appendChild(deleteBtn);
     }
     div.appendChild(taskTitle);
@@ -854,45 +863,33 @@ function createTaskCard(task) {
     return div;
 }
 
-function toggleAdminCompletion(taskId, currentStatus, assigneeStatus) {
+// Update SubStatus Function
+function updateTaskSubStatus(taskId, newSubStatus) {
     const updates = {
-        adminCompleted: !currentStatus
+        subStatus: newSubStatus
     };
 
-    // If Admin checks AND Assignee checked -> Move to Done
-    if (!currentStatus && assigneeStatus) {
+    if (newSubStatus === 'done') {
         updates.status = 'done';
+        updates.subStatus = 'completed'; // Keep visual state but move to done list
     } else {
-        // If Admin unchecks, move back to in-progress
         updates.status = 'in-progress';
+    }
+    
+    // Sync legacy fields for backward compatibility if needed, 
+    // but new UI relies on subStatus mostly.
+    if (newSubStatus === 'completed') {
+        updates.assigneeCompleted = true;
+    } else {
+        updates.assigneeCompleted = false;
     }
 
     db.collection('tasks').doc(taskId).update(updates).then(() => {
         playClickSound();
+        console.log("Status updated to:", newSubStatus);
     }).catch(error => {
-        console.error("Error updating admin completion:", error);
+        console.error("Error updating status:", error);
         alert("Ошибка: " + error.message);
-    });
-}
-
-function toggleAssigneeCompletion(taskId, currentStatus) {
-    const updates = {
-        assigneeCompleted: !currentStatus
-    };
-    
-    // If Assignee unchecks, we might want to revert status if it was done,
-    // OR we might want to force Admin to uncheck first.
-    // For simplicity: If Assignee unchecks, we also set status to in-progress just in case.
-    if (currentStatus) { // Was true, becoming false
-        updates.status = 'in-progress';
-        updates.adminCompleted = false; // Reset admin approval if assignee backtracks
-    }
-
-    db.collection('tasks').doc(taskId).update(updates).then(() => {
-        console.log("Task completion status updated");
-    }).catch(error => {
-        console.error("Error updating task completion:", error);
-        alert("Ошибка при обновлении статуса задачи: " + error.message);
     });
 }
 
@@ -961,6 +958,13 @@ function setupEventListeners() {
     elements.helpBtn.addEventListener('click', () => {
         playClickSound();
         elements.helpModal.classList.add('active');
+    });
+    
+    // Close dropdowns when clicking outside
+    window.addEventListener('click', () => {
+        document.querySelectorAll('.status-dropdown.active').forEach(d => {
+            d.classList.remove('active');
+        });
     });
 
     elements.closeModalBtns.forEach(btn => {
@@ -1041,6 +1045,7 @@ function setupEventListeners() {
                 assigneeEmail: assigneeEmail || '',
                 deadline,
                 status,
+                subStatus: 'assigned', // Default status for new system
                 assigneeCompleted: false,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
