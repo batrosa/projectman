@@ -1496,24 +1496,23 @@ body.light-mode .project-checkbox-item:hover {
 .status-dropdown {
     position: absolute;
     top: 100%;
-    left: 0; /* Align to left side since badge is on left */
+    left: 4px; /* Shifted slightly right */
     right: auto;
     margin-top: 6px;
     background: #1e293b; /* Solid dark background */
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     padding: 4px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); /* Stronger shadow */
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); /* Very strong shadow */
     z-index: 9999; /* Always on top */
     display: none;
     min-width: 220px;
-    /* Removed transparency/blur for better visibility */
 }
 
 body.light-mode .status-dropdown {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
 
 .status-dropdown.active {

@@ -219,23 +219,22 @@
     .status-dropdown {
         position: absolute;
         top: 100%;
-        left: 0; /* Align left on mobile too */
+        left: 4px; /* Shifted right */
         right: auto;
         margin-top: 6px;
         background: #1e293b; /* Solid background */
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 8px;
         padding: 4px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        z-index: 9999; /* Very high to be above everything */
+        box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+        z-index: 9999;
         display: none;
         min-width: 220px;
-        /* Removed blur */
     }
 
     body.light-mode .status-dropdown {
         background: #ffffff;
-        border: 1px solid #e2e8f0;
+        border: 1px solid #cbd5e1;
     }
 
     .status-dropdown.active {
