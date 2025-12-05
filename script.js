@@ -81,7 +81,8 @@ async function uploadToCloudinary(file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-    formData.append('folder', 'projectman');
+    // Folder is already defined in the Preset settings, removing manual append to avoid conflicts
+    // formData.append('folder', 'projectman'); 
     
     const response = await fetch(
         `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
@@ -89,7 +90,9 @@ async function uploadToCloudinary(file) {
     );
     
     if (!response.ok) {
-        throw new Error('Ошибка загрузки файла');
+        const errorData = await response.json();
+        console.error('Cloudinary error:', errorData);
+        throw new Error('Ошибка загрузки файла: ' + (errorData.error?.message || response.statusText));
     }
     
     return await response.json();
@@ -239,22 +242,23 @@ function openFilePreview(attachment) {
     const fileType = attachment.type || getFileType(attachment.name);
     console.log('File type:', fileType);
     console.log('File URL:', attachment.url);
-    
-    // Show URL to user for debugging
-    if (!attachment.url.startsWith('http')) {
-        alert('Ошибка: неверный URL файла');
+
+    // 1. OFFICE DOCUMENTS (Word, Excel) -> Google Docs Viewer
+    if (['word', 'excel'].includes(fileType)) {
+        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=false`;
+        window.open(viewerUrl, '_blank');
+        playClickSound();
         return;
     }
     
-    // For Cloudinary, add fl_attachment for download if PDF fails to display
-    let url = attachment.url;
+    // 2. IMAGES & PDF -> Direct in new tab
+    // 3. ARCHIVES/OTHERS -> Direct (will trigger download)
     
     // Try opening directly
-    const newWindow = window.open(url, '_blank');
+    const newWindow = window.open(attachment.url, '_blank');
     
     if (!newWindow) {
-        // Popup blocked, try alternative
-        alert('Не удалось открыть файл. Попробуйте скачать:\n' + url);
+        alert('Не удалось открыть файл. Возможно, заблокировано всплывающее окно.');
     }
     
     playClickSound();
@@ -520,7 +524,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.7'; // TOOLBAR LAYOUT
+    const CURRENT_VERSION = '3.8'; // FIX UPLOAD FOLDER & DOCS VIEW
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
