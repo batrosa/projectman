@@ -305,6 +305,12 @@ function openFilesListModal(attachments) {
         
         const item = document.createElement('div');
         item.className = 'file-list-item';
+        // Add download flag to Cloudinary URL if possible
+        let downloadUrl = attachment.url;
+        if (downloadUrl.includes('upload/')) {
+            downloadUrl = downloadUrl.replace('upload/', 'upload/fl_attachment/');
+        }
+
         item.innerHTML = `
             <div class="attachment-icon ${fileType}">
                 <i class="fa-solid ${iconClass}"></i>
@@ -313,20 +319,32 @@ function openFilesListModal(attachments) {
                 <div class="attachment-name">${attachment.name}</div>
                 <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
             </div>
-            <div class="file-actions" style="display: flex; gap: 10px;">
-                <i class="fa-solid fa-eye" title="Просмотреть" style="cursor: pointer;"></i>
-                <a href="${attachment.url}" download target="_blank" class="download-link" style="color: inherit;">
-                    <i class="fa-solid fa-download" title="Скачать"></i>
+            <div class="file-actions" style="display: flex; gap: 15px; align-items: center;">
+                <div class="action-btn view-btn" title="Просмотреть">
+                    <i class="fa-solid fa-eye"></i>
+                </div>
+                <a href="${downloadUrl}" download="${attachment.name}" target="_blank" class="action-btn download-link" title="Скачать">
+                    <i class="fa-solid fa-download"></i>
                 </a>
             </div>
         `;
         
-        // Click on item (except download link) opens preview
+        // Click on item (except actions) opens preview
         item.onclick = (e) => {
+            // Handle view button click
+            if (e.target.closest('.view-btn')) {
+                e.stopPropagation();
+                modal.classList.remove('active');
+                openFilePreview(attachment);
+                return;
+            }
+            
+            // Handle download link click - let it propagate naturally but stop item click
             if (e.target.closest('.download-link')) {
                 e.stopPropagation();
                 return;
             }
+
             console.log('File item clicked:', attachment);
             modal.classList.remove('active');
             openFilePreview(attachment);

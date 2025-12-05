@@ -1775,10 +1775,21 @@ body.light-mode .project-checkbox-item:hover {
     font-size: 0.85rem;
 }
 
-.file-list-item i.fa-external-link-alt,
-.file-list-item i.fa-eye {
+.file-actions .action-btn {
     color: var(--text-secondary);
-    font-size: 1rem;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 5px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-actions .action-btn:hover {
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
 }
 
 /* File Preview Modal */
