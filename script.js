@@ -81,8 +81,10 @@ async function uploadToCloudinary(file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-    // Folder is already defined in the Preset settings, removing manual append to avoid conflicts
-    // formData.append('folder', 'projectman'); 
+    // Folder is already defined in the Preset settings
+    
+    // Force public access
+    formData.append('access_mode', 'public');
     
     const response = await fetch(
         `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
@@ -534,7 +536,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.5'; // CLEAN PDF URL
+    const CURRENT_VERSION = '4.6'; // FORCE PUBLIC ACCESS
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
