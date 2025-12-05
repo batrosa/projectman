@@ -97,8 +97,14 @@ async function uploadToCloudinary(file) {
 
 // Handle file selection
 async function handleFileSelect(event) {
+    console.log('handleFileSelect called');
     const file = event.target.files[0];
-    if (!file) return;
+    if (!file) {
+        console.log('No file selected');
+        return;
+    }
+    
+    console.log('File selected:', file.name, file.size);
     
     // Reset input
     event.target.value = '';
@@ -131,8 +137,10 @@ async function handleFileSelect(event) {
     updateAddAttachmentBtn();
     
     try {
+        console.log('Uploading to Cloudinary...');
         // Upload to Cloudinary
         const result = await uploadToCloudinary(file);
+        console.log('Upload result:', result);
         
         // Update attachment with real data
         const index = pendingAttachments.findIndex(a => a.id === tempId);
@@ -220,17 +228,7 @@ function updateAddAttachmentBtn() {
 
 // Open file preview
 function openFilePreview(attachment) {
-    console.log('Opening file preview:', attachment); // Debug
-    
-    const modal = document.getElementById('file-preview-modal');
-    const container = document.getElementById('file-preview-container');
-    const fileNameEl = document.getElementById('preview-file-name');
-    const downloadBtn = document.getElementById('preview-download-btn');
-    
-    if (!modal || !container) {
-        console.error('Preview modal elements not found');
-        return;
-    }
+    console.log('Opening file preview:', attachment);
     
     if (!attachment || !attachment.url) {
         console.error('Invalid attachment or missing URL:', attachment);
@@ -238,41 +236,13 @@ function openFilePreview(attachment) {
         return;
     }
     
-    fileNameEl.textContent = attachment.name;
-    downloadBtn.href = attachment.url;
-    downloadBtn.download = attachment.name;
-    
-    // Clear previous content
-    container.innerHTML = '<div class="preview-loading"><div class="spinner"></div><p>Загрузка файла...</p></div>';
-    
-    modal.classList.add('active');
-    playClickSound();
-    
-    // Determine preview type
     const fileType = attachment.type || getFileType(attachment.name);
-    console.log('File type:', fileType); // Debug
+    console.log('File type:', fileType);
     
-    if (fileType === 'image') {
-        const img = document.createElement('img');
-        img.src = attachment.url;
-        img.alt = attachment.name;
-        img.onload = () => {
-            container.innerHTML = '';
-            container.appendChild(img);
-        };
-        img.onerror = () => {
-            showNoPreview(container, attachment);
-        };
-    } else if (fileType === 'pdf') {
-        // For PDF, use Google Docs viewer for better compatibility
-        const iframe = document.createElement('iframe');
-        iframe.src = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=true`;
-        container.innerHTML = '';
-        container.appendChild(iframe);
-    } else {
-        // For other files, show download option
-        showNoPreview(container, attachment);
-    }
+    // For all file types, open in new tab for best compatibility
+    // This works reliably for PDF, images, and triggers download for others
+    window.open(attachment.url, '_blank');
+    playClickSound();
 }
 
 // Show no preview available
