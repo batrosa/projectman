@@ -992,17 +992,15 @@ body.read-only .task-card:hover {
 
     .board-container {
         display: grid;
-        grid-template-columns: repeat(2, 85vw); /* Широкие колонки с возможностью скролла */
+        grid-template-columns: 1fr; /* Одна колонка на мобильных */
         padding: 0 1rem 2rem;
         gap: 1rem;
-        overflow-x: auto; /* Горизонтальный скролл */
-        overflow-y: hidden;
+        overflow-x: hidden;
+        overflow-y: auto; /* Вертикальный скролл */
         flex: 1;
         height: auto;
         min-height: 0;
         -webkit-overflow-scrolling: touch;
-        scroll-behavior: smooth;
-        scroll-snap-type: x mandatory; /* Прилипание */
     }
 
     .column {
