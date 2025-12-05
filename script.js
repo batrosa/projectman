@@ -220,12 +220,23 @@ function updateAddAttachmentBtn() {
 
 // Open file preview
 function openFilePreview(attachment) {
+    console.log('Opening file preview:', attachment); // Debug
+    
     const modal = document.getElementById('file-preview-modal');
     const container = document.getElementById('file-preview-container');
     const fileNameEl = document.getElementById('preview-file-name');
     const downloadBtn = document.getElementById('preview-download-btn');
     
-    if (!modal || !container) return;
+    if (!modal || !container) {
+        console.error('Preview modal elements not found');
+        return;
+    }
+    
+    if (!attachment || !attachment.url) {
+        console.error('Invalid attachment or missing URL:', attachment);
+        alert('Ошибка: файл не найден');
+        return;
+    }
     
     fileNameEl.textContent = attachment.name;
     downloadBtn.href = attachment.url;
@@ -239,6 +250,7 @@ function openFilePreview(attachment) {
     
     // Determine preview type
     const fileType = attachment.type || getFileType(attachment.name);
+    console.log('File type:', fileType); // Debug
     
     if (fileType === 'image') {
         const img = document.createElement('img');
@@ -252,9 +264,8 @@ function openFilePreview(attachment) {
             showNoPreview(container, attachment);
         };
     } else if (fileType === 'pdf') {
-        // For PDF, use Cloudinary's PDF viewer or Google Docs viewer
+        // For PDF, use Google Docs viewer for better compatibility
         const iframe = document.createElement('iframe');
-        // Use Google Docs viewer for better compatibility
         iframe.src = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=true`;
         container.innerHTML = '';
         container.appendChild(iframe);
@@ -282,10 +293,20 @@ function showNoPreview(container, attachment) {
 
 // Open files list modal for task
 function openFilesListModal(attachments) {
+    console.log('Opening files list modal:', attachments); // Debug
+    
     const modal = document.getElementById('files-list-modal');
     const list = document.getElementById('files-modal-list');
     
-    if (!modal || !list) return;
+    if (!modal || !list) {
+        console.error('Files list modal elements not found');
+        return;
+    }
+    
+    if (!attachments || attachments.length === 0) {
+        console.error('No attachments provided');
+        return;
+    }
     
     list.innerHTML = '';
     
@@ -307,6 +328,7 @@ function openFilesListModal(attachments) {
         `;
         
         item.onclick = () => {
+            console.log('File item clicked:', attachment); // Debug
             modal.classList.remove('active');
             openFilePreview(attachment);
         };
@@ -513,7 +535,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.5'; // FILE ATTACHMENTS FEATURE
+    const CURRENT_VERSION = '3.6'; // FIX FILE PREVIEW
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
