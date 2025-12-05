@@ -305,7 +305,7 @@ function openFilesListModal(attachments) {
         
         const item = document.createElement('div');
         item.className = 'file-list-item';
-        // Add download flag to Cloudinary URL if possible
+        // Force download URL
         let downloadUrl = attachment.url;
         if (downloadUrl.includes('upload/')) {
             downloadUrl = downloadUrl.replace('upload/', 'upload/fl_attachment/');
@@ -319,36 +319,13 @@ function openFilesListModal(attachments) {
                 <div class="attachment-name">${attachment.name}</div>
                 <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
             </div>
-            <div class="file-actions" style="display: flex; gap: 15px; align-items: center;">
-                <div class="action-btn view-btn" title="Просмотреть">
-                    <i class="fa-solid fa-eye"></i>
-                </div>
-                <a href="${downloadUrl}" download="${attachment.name}" target="_blank" class="action-btn download-link" title="Скачать">
-                    <i class="fa-solid fa-download"></i>
-                </a>
-            </div>
+            <a href="${downloadUrl}" class="primary-btn" style="padding: 8px 16px; text-decoration: none; flex-shrink: 0;">
+                <i class="fa-solid fa-download"></i> Скачать
+            </a>
         `;
         
-        // Click on item (except actions) opens preview
-        item.onclick = (e) => {
-            // Handle view button click
-            if (e.target.closest('.view-btn')) {
-                e.stopPropagation();
-                modal.classList.remove('active');
-                openFilePreview(attachment);
-                return;
-            }
-            
-            // Handle download link click - let it propagate naturally but stop item click
-            if (e.target.closest('.download-link')) {
-                e.stopPropagation();
-                return;
-            }
-
-            console.log('File item clicked:', attachment);
-            modal.classList.remove('active');
-            openFilePreview(attachment);
-        };
+        // Remove click handler (no preview anymore)
+        item.onclick = null;
         
         list.appendChild(item);
     });
@@ -552,7 +529,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '3.8'; // FIX UPLOAD FOLDER & DOCS VIEW
+    const CURRENT_VERSION = '3.9'; // DIRECT DOWNLOAD BTN ONLY
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
