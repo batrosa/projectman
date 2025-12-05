@@ -1496,18 +1496,24 @@ body.light-mode .project-checkbox-item:hover {
 .status-dropdown {
     position: absolute;
     top: 100%;
-    right: 0;
-    margin-top: 4px;
-    background: var(--card-bg);
-    border: var(--glass-border);
+    left: 0; /* Align to left side since badge is on left */
+    right: auto;
+    margin-top: 6px;
+    background: #1e293b; /* Solid dark background */
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     padding: 4px;
-    box-shadow: var(--shadow);
-    z-index: 100;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); /* Stronger shadow */
+    z-index: 9999; /* Always on top */
     display: none;
-    min-width: 200px;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    min-width: 220px;
+    /* Removed transparency/blur for better visibility */
+}
+
+body.light-mode .status-dropdown {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
 }
 
 .status-dropdown.active {
