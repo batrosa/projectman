@@ -238,10 +238,25 @@ function openFilePreview(attachment) {
     
     const fileType = attachment.type || getFileType(attachment.name);
     console.log('File type:', fileType);
+    console.log('File URL:', attachment.url);
     
-    // For all file types, open in new tab for best compatibility
-    // This works reliably for PDF, images, and triggers download for others
-    window.open(attachment.url, '_blank');
+    // Show URL to user for debugging
+    if (!attachment.url.startsWith('http')) {
+        alert('Ошибка: неверный URL файла');
+        return;
+    }
+    
+    // For Cloudinary, add fl_attachment for download if PDF fails to display
+    let url = attachment.url;
+    
+    // Try opening directly
+    const newWindow = window.open(url, '_blank');
+    
+    if (!newWindow) {
+        // Popup blocked, try alternative
+        alert('Не удалось открыть файл. Попробуйте скачать:\n' + url);
+    }
+    
     playClickSound();
 }
 
