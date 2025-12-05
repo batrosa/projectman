@@ -304,15 +304,18 @@ function openFilesListModal(attachments) {
         
         const item = document.createElement('div');
         item.className = 'file-list-item';
-        // Force download URL with Cloudinary flag
+        // Force download URL (clean)
         let downloadUrl = attachment.url;
         
-        // FOR PDF: Keep original URL (adding fl_attachment breaks it for some networks)
-        // For others: Force download
-        if (fileType !== 'pdf') {
-            if (downloadUrl.includes('upload/') && !downloadUrl.includes('fl_attachment')) {
-                downloadUrl = downloadUrl.replace('upload/', 'upload/fl_attachment/');
-            }
+        // Google Docs Viewer URL for Office files
+        let viewUrl = attachment.url;
+        let isViewable = true;
+        
+        if (['word', 'excel', 'ppt'].includes(fileType)) {
+            viewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=false`;
+        } else if (!['pdf', 'image'].includes(fileType)) {
+            // For archives etc, view acts same as download
+            isViewable = false; 
         }
 
         item.innerHTML = `
@@ -323,13 +326,33 @@ function openFilesListModal(attachments) {
                 <div class="attachment-name">${attachment.name}</div>
                 <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
             </div>
-            <a href="${downloadUrl}" target="_blank" rel="noopener noreferrer" class="primary-btn" style="padding: 8px 16px; text-decoration: none; flex-shrink: 0;">
-                <i class="fa-solid fa-download"></i> Скачать
-            </a>
+            <div class="file-actions" style="display: flex; gap: 10px; align-items: center;">
+                ${isViewable ? `
+                <div class="action-btn view-btn" title="Просмотреть">
+                    <i class="fa-solid fa-eye"></i>
+                </div>` : ''}
+                <a href="${downloadUrl}" target="_blank" download="${attachment.name}" class="action-btn download-link" title="Скачать">
+                    <i class="fa-solid fa-download"></i>
+                </a>
+            </div>
         `;
         
-        // Remove click handler
-        item.onclick = null;
+        // Click handler
+        item.onclick = (e) => {
+            // Handle download link click - stop propagation
+            if (e.target.closest('.download-link')) {
+                e.stopPropagation();
+                return;
+            }
+
+            // Handle view click or row click (if viewable)
+            if (isViewable) {
+                e.stopPropagation();
+                modal.classList.remove('active');
+                window.open(viewUrl, '_blank');
+                playClickSound();
+            }
+        };
         
         list.appendChild(item);
     });
@@ -533,7 +556,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.7'; // REVERT ACCESS MODE
+    const CURRENT_VERSION = '4.8'; // RESTORE VIEW BTN
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
