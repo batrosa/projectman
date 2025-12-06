@@ -804,25 +804,22 @@ function deleteProject(id) {
 function updateTask(id, data) {
     if (state.role !== 'admin') return;
 
-    // Show loading state
-    const submitBtn = elements.taskForm.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Сохранение...';
+    // Show loading state (button may be outside form)
+    const submitBtn = document.querySelector('button[form="task-form"]') || 
+                      elements.taskForm.querySelector('button[type="submit"]');
+    if (submitBtn) setButtonLoading(submitBtn, true, 'Сохранить');
 
     db.collection('tasks').doc(id).update(data)
         .then(() => {
             console.log("✅ Задача успешно обновлена!");
             elements.taskModal.classList.remove('active');
             elements.taskForm.reset();
+            if (submitBtn) setButtonLoading(submitBtn, false, 'Сохранить');
         })
         .catch((error) => {
             console.error("Error updating task:", error);
             alert("❌ Ошибка при обновлении задачи:\n\n" + error.message);
-        })
-        .finally(() => {
-            submitBtn.disabled = false;
-            submitBtn.textContent = originalText;
+            if (submitBtn) setButtonLoading(submitBtn, false, 'Сохранить');
         });
 }
 
@@ -1552,11 +1549,12 @@ function setupEventListeners() {
         if (state.role !== 'admin') return;
         if (!state.activeProjectId) return;
 
-        // Show loading state on button
-        const submitBtn = elements.taskForm.querySelector('button[type="submit"]');
-        const originalText = submitBtn.textContent;
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Сохранение...';
+        // Show loading state on button (may be outside form)
+        const submitBtn = document.querySelector('button[form="task-form"]') || 
+                          elements.taskForm.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            setButtonLoading(submitBtn, true, 'Создать');
+        }
 
         try {
             // Prepare attachments (filter out any still uploading)
@@ -1592,12 +1590,11 @@ function setupEventListeners() {
             console.log("✅ Задача успешно создана!");
             elements.taskModal.classList.remove('active');
             elements.taskForm.reset();
+            if (submitBtn) setButtonLoading(submitBtn, false, 'Создать');
         } catch (error) {
             console.error("Error creating task:", error);
             alert("❌ Ошибка при создании задачи:\n\n" + error.message);
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = originalText;
+            if (submitBtn) setButtonLoading(submitBtn, false, 'Создать');
         }
     }
 
@@ -1608,6 +1605,11 @@ function setupEventListeners() {
     elements.taskForm.addEventListener('submit', (e) => {
         e.preventDefault();
         playClickSound();
+        
+        // Find submit button (may be outside form with form="task-form" attribute)
+        const submitBtn = document.querySelector('button[form="task-form"]') || 
+                          elements.taskForm.querySelector('button[type="submit"]');
+        
         const title = document.getElementById('t-title').value;
         const description = document.getElementById('t-description').value;
         const taskId = document.getElementById('t-id').value;
