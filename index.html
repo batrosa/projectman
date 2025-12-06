@@ -18,7 +18,7 @@
     <!-- Preload critical CSS -->
     <link rel="preload" href="style.css?v=5.9" as="style">
     <link rel="stylesheet" href="style.css?v=5.9">
-    <link rel="stylesheet" href="mobile-additions.css?v=5.4">
+    <link rel="stylesheet" href="mobile-additions.css?v=5.5">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -99,8 +99,8 @@
     <!-- Loading Overlay - HIDDEN by default (fast load) -->
     <div id="loading-overlay" class="loading-overlay hidden" style="display: none;"></div>
 
-    <!-- Auth Overlay -->
-    <div id="auth-overlay" class="login-overlay">
+    <!-- Auth Overlay - Hidden by default, shown only if not logged in -->
+    <div id="auth-overlay" class="login-overlay" style="display: none;">
         <!-- Registration/Login Screen -->
         <div id="auth-screen" class="login-card">
             <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
