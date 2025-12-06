@@ -562,7 +562,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.2'; // NO AUTO-SELECT PROJECT + MOBILE DELETE FIX
+    const CURRENT_VERSION = '5.3'; // CLOSE SIDEBAR ON CREATE PROJECT
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -1399,6 +1399,7 @@ function setupEventListeners() {
     // Modals
     elements.addProjectBtn.addEventListener('click', () => {
         playClickSound();
+        closeSidebarOnMobile();
         elements.projectForm.reset();
         elements.projectModal.classList.add('active');
     });
