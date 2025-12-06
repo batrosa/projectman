@@ -1919,18 +1919,45 @@ body.light-mode .file-preview-container {
 .my-tasks-modal-content {
     max-width: 380px;
     width: 380px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .my-tasks-content {
     padding: 1rem 0;
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .my-tasks-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    max-height: 60vh;
+    max-height: 50vh;
     overflow-y: auto;
+    padding-right: 8px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.my-tasks-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.my-tasks-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.my-tasks-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.my-tasks-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 /* Empty State */
