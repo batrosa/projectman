@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProjectMan — Контроль задач для малого бизнеса</title>
-    <meta name="description" content="Простой таск-менеджер с двойным контролем. Сотрудник отмечает — вы подтверждаете. Ничего не потеряется.">
+    <title>ProjectMan — Простейший таск-менеджер для бизнеса</title>
+    <meta name="description" content="Освойте за 1 минуту. Никаких сложных настроек — только задачи и контроль. Простой таск-менеджер с двойным контролем.">
     
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,6 +24,7 @@
             --accent-glow: rgba(108, 92, 231, 0.4);
             --success: #00d26a;
             --warning: #ffc048;
+            --danger: #ff6b6b;
             --text: #ffffff;
             --text-muted: #8a8a9a;
             --border: rgba(255, 255, 255, 0.08);
@@ -64,6 +65,45 @@
             z-index: -1;
         }
 
+        /* Floating particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: var(--accent);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: float 15s infinite ease-in-out;
+        }
+
+        .particle:nth-child(1) { left: 10%; animation-delay: 0s; animation-duration: 20s; }
+        .particle:nth-child(2) { left: 20%; animation-delay: 2s; animation-duration: 18s; }
+        .particle:nth-child(3) { left: 30%; animation-delay: 4s; animation-duration: 22s; }
+        .particle:nth-child(4) { left: 40%; animation-delay: 1s; animation-duration: 17s; }
+        .particle:nth-child(5) { left: 50%; animation-delay: 3s; animation-duration: 19s; }
+        .particle:nth-child(6) { left: 60%; animation-delay: 5s; animation-duration: 21s; }
+        .particle:nth-child(7) { left: 70%; animation-delay: 2s; animation-duration: 16s; }
+        .particle:nth-child(8) { left: 80%; animation-delay: 4s; animation-duration: 23s; }
+        .particle:nth-child(9) { left: 90%; animation-delay: 1s; animation-duration: 18s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 0.3; }
+            50% { transform: translateY(50vh) scale(1); opacity: 0.5; }
+            90% { opacity: 0.3; }
+        }
+
         /* Container */
         .container {
             max-width: 1200px;
@@ -82,6 +122,7 @@
             background: rgba(10, 10, 15, 0.8);
             backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border);
+            transition: all 0.3s;
         }
 
         .header-content {
@@ -102,6 +143,12 @@
 
         .logo i {
             color: var(--accent);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
         }
 
         .nav-links {
@@ -114,11 +161,27 @@
             color: var(--text-muted);
             text-decoration: none;
             font-weight: 500;
-            transition: color 0.3s;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent);
+            transition: width 0.3s;
         }
 
         .nav-links a:hover {
             color: var(--text);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
         }
 
         .header-cta {
@@ -140,6 +203,23 @@
             cursor: pointer;
             border: none;
             transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
         }
 
         .btn-primary {
@@ -149,7 +229,7 @@
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
+            transform: translateY(-3px);
             box-shadow: 0 8px 32px var(--accent-glow);
         }
 
@@ -162,6 +242,7 @@
         .btn-secondary:hover {
             background: var(--bg-card);
             border-color: var(--accent);
+            transform: translateY(-2px);
         }
 
         .btn-large {
@@ -180,17 +261,43 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 16px;
-            background: rgba(108, 92, 231, 0.1);
-            border: 1px solid rgba(108, 92, 231, 0.3);
+            padding: 10px 20px;
+            background: rgba(0, 210, 106, 0.1);
+            border: 1px solid rgba(0, 210, 106, 0.3);
             border-radius: 50px;
-            font-size: 0.9rem;
-            color: var(--accent-light);
+            font-size: 0.95rem;
+            color: var(--success);
             margin-bottom: 24px;
+            animation: fadeInDown 0.8s ease;
         }
 
         .hero-badge i {
-            color: var(--success);
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
         }
 
         .hero h1 {
@@ -202,6 +309,7 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            animation: fadeInUp 0.8s ease 0.2s both;
         }
 
         .hero h1 span {
@@ -211,10 +319,33 @@
         }
 
         .hero-subtitle {
-            font-size: 1.25rem;
+            font-size: 1.35rem;
             color: var(--text-muted);
-            max-width: 600px;
-            margin: 0 auto 40px;
+            max-width: 650px;
+            margin: 0 auto 20px;
+            animation: fadeInUp 0.8s ease 0.4s both;
+        }
+
+        .hero-highlight {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 24px;
+            background: rgba(108, 92, 231, 0.1);
+            border: 1px solid rgba(108, 92, 231, 0.3);
+            border-radius: 12px;
+            margin-bottom: 32px;
+            animation: fadeInUp 0.8s ease 0.5s both;
+        }
+
+        .hero-highlight i {
+            color: var(--accent);
+            font-size: 1.2rem;
+        }
+
+        .hero-highlight span {
+            font-size: 1.1rem;
+            font-weight: 600;
         }
 
         .hero-cta {
@@ -223,35 +354,46 @@
             justify-content: center;
             flex-wrap: wrap;
             margin-bottom: 48px;
+            animation: fadeInUp 0.8s ease 0.6s both;
         }
 
         .hero-stats {
             display: flex;
             justify-content: center;
-            gap: 48px;
+            gap: 60px;
             padding-top: 48px;
             border-top: 1px solid var(--border);
+            animation: fadeInUp 0.8s ease 0.7s both;
         }
 
         .hero-stat {
             text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .hero-stat:hover {
+            transform: scale(1.05);
         }
 
         .hero-stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--accent-light);
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .hero-stat-label {
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             color: var(--text-muted);
         }
 
-        /* Demo Image */
+        /* Demo Section */
         .hero-demo {
             margin-top: 60px;
             position: relative;
+            animation: scaleIn 1s ease 0.8s both;
         }
 
         .demo-wrapper {
@@ -260,6 +402,12 @@
             border-radius: 20px;
             padding: 20px;
             box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
+            transition: transform 0.5s, box-shadow 0.5s;
+        }
+
+        .demo-wrapper:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 60px 100px rgba(108, 92, 231, 0.2);
         }
 
         .demo-browser {
@@ -272,7 +420,6 @@
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: var(--border);
         }
 
         .demo-dot:nth-child(1) { background: #ff5f57; }
@@ -280,26 +427,390 @@
         .demo-dot:nth-child(3) { background: #28c840; }
 
         .demo-screen {
-            background: var(--bg-dark);
+            background: #0f172a;
             border-radius: 12px;
             padding: 24px;
             min-height: 400px;
         }
 
-        /* Problem Section */
-        .problem {
-            padding: 100px 0;
+        /* App Demo Styles */
+        .app-demo {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 20px;
+            height: 380px;
         }
 
+        .demo-sidebar {
+            background: rgba(30, 41, 59, 0.7);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .demo-brand {
+            color: var(--accent);
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .demo-projects-title {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .demo-project {
+            padding: 10px 12px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 8px;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .demo-project.active {
+            background: rgba(99, 102, 241, 0.2);
+            border-left: 3px solid var(--accent);
+        }
+
+        .demo-project i {
+            color: var(--accent);
+            font-size: 0.8rem;
+        }
+
+        .demo-main {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .demo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .demo-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .demo-btn {
+            background: var(--accent);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .demo-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .demo-column {
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        .demo-column-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .demo-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .demo-status-dot.orange { background: var(--warning); }
+        .demo-status-dot.green { background: var(--success); }
+
+        .demo-task {
+            background: rgba(51, 65, 85, 0.4);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-left: 3px solid;
+            animation: slideIn 0.5s ease;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .demo-task:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .demo-task.orange { border-color: var(--warning); }
+        .demo-task.green { border-color: var(--success); }
+
+        .demo-task-status {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+
+        .demo-task-status.assigned {
+            background: rgba(230, 126, 34, 0.15);
+            color: #e67e22;
+        }
+
+        .demo-task-status.in-work {
+            background: rgba(243, 156, 18, 0.15);
+            color: #f39c12;
+        }
+
+        .demo-task-status.completed {
+            background: rgba(46, 204, 113, 0.15);
+            color: #2ecc71;
+        }
+
+        .demo-task-status.done {
+            background: rgba(46, 204, 113, 0.15);
+            color: #2ecc71;
+        }
+
+        .demo-task-title {
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .demo-task-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .demo-task-deadline {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .demo-task-deadline.overdue {
+            color: var(--danger);
+        }
+
+        .demo-avatar {
+            width: 22px;
+            height: 22px;
+            background: var(--gradient-1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+            font-weight: 600;
+        }
+
+        /* Simplicity Section */
+        .simplicity {
+            padding: 120px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .simplicity::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(108, 92, 231, 0.1) 0%, transparent 70%);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .simplicity-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+
+        .simplicity-text h2 {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 700;
+            margin-bottom: 24px;
+            line-height: 1.2;
+        }
+
+        .simplicity-text h2 span {
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .simplicity-text p {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+            line-height: 1.7;
+        }
+
+        .simplicity-list {
+            list-style: none;
+        }
+
+        .simplicity-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+            transition: transform 0.3s;
+        }
+
+        .simplicity-list li:hover {
+            transform: translateX(10px);
+        }
+
+        .simplicity-list li:last-child {
+            border: none;
+        }
+
+        .simplicity-list i {
+            width: 32px;
+            height: 32px;
+            background: rgba(0, 210, 106, 0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--success);
+            flex-shrink: 0;
+        }
+
+        .simplicity-list span {
+            font-size: 1.05rem;
+        }
+
+        .comparison-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 32px;
+            position: relative;
+        }
+
+        .comparison-item {
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 16px;
+            transition: transform 0.3s;
+        }
+
+        .comparison-item:hover {
+            transform: scale(1.02);
+        }
+
+        .comparison-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .comparison-item.bad {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid rgba(255, 107, 107, 0.2);
+        }
+
+        .comparison-item.good {
+            background: rgba(0, 210, 106, 0.1);
+            border: 1px solid rgba(0, 210, 106, 0.2);
+        }
+
+        .comparison-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .comparison-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+
+        .comparison-item.bad .comparison-icon {
+            background: rgba(255, 107, 107, 0.2);
+            color: var(--danger);
+        }
+
+        .comparison-item.good .comparison-icon {
+            background: rgba(0, 210, 106, 0.2);
+            color: var(--success);
+        }
+
+        .comparison-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .comparison-item.bad .comparison-title {
+            color: var(--danger);
+        }
+
+        .comparison-item.good .comparison-title {
+            color: var(--success);
+        }
+
+        .comparison-desc {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            padding-left: 52px;
+        }
+
+        /* Section styles */
         .section-label {
-            display: inline-block;
-            padding: 6px 14px;
-            background: rgba(255, 192, 72, 0.1);
-            border: 1px solid rgba(255, 192, 72, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(108, 92, 231, 0.1);
+            border: 1px solid rgba(108, 92, 231, 0.3);
             border-radius: 50px;
             font-size: 0.85rem;
             font-weight: 600;
-            color: var(--warning);
+            color: var(--accent-light);
             margin-bottom: 20px;
         }
 
@@ -315,191 +826,7 @@
             max-width: 600px;
         }
 
-        .problem-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
-            margin-top: 48px;
-        }
-
-        .problem-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 28px;
-            transition: all 0.3s ease;
-        }
-
-        .problem-card:hover {
-            background: var(--bg-card-hover);
-            border-color: rgba(255, 192, 72, 0.3);
-            transform: translateY(-4px);
-        }
-
-        .problem-icon {
-            width: 48px;
-            height: 48px;
-            background: rgba(255, 192, 72, 0.1);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.3rem;
-            color: var(--warning);
-            margin-bottom: 16px;
-        }
-
-        .problem-card h3 {
-            font-size: 1.2rem;
-            margin-bottom: 8px;
-        }
-
-        .problem-card p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        /* Solution Section */
-        .solution {
-            padding: 100px 0;
-            background: linear-gradient(180deg, transparent 0%, rgba(108, 92, 231, 0.03) 50%, transparent 100%);
-        }
-
-        .solution .section-label {
-            background: rgba(0, 210, 106, 0.1);
-            border-color: rgba(0, 210, 106, 0.3);
-            color: var(--success);
-        }
-
-        .solution-content {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 60px;
-            align-items: center;
-            margin-top: 48px;
-        }
-
-        .solution-features {
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
-
-        .solution-feature {
-            display: flex;
-            gap: 16px;
-            padding: 20px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            transition: all 0.3s ease;
-        }
-
-        .solution-feature:hover {
-            border-color: var(--accent);
-            transform: translateX(8px);
-        }
-
-        .solution-feature-icon {
-            width: 44px;
-            height: 44px;
-            background: var(--gradient-1);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-            color: white;
-            flex-shrink: 0;
-        }
-
-        .solution-feature h4 {
-            font-size: 1.1rem;
-            margin-bottom: 4px;
-        }
-
-        .solution-feature p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-
-        .solution-visual {
-            position: relative;
-        }
-
-        .flow-diagram {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 32px;
-        }
-
-        .flow-step {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding: 16px;
-            background: var(--bg-dark);
-            border-radius: 12px;
-            margin-bottom: 12px;
-            position: relative;
-        }
-
-        .flow-step:not(:last-child)::after {
-            content: '';
-            position: absolute;
-            bottom: -12px;
-            left: 32px;
-            width: 2px;
-            height: 12px;
-            background: var(--accent);
-        }
-
-        .flow-number {
-            width: 36px;
-            height: 36px;
-            background: var(--gradient-1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.9rem;
-            flex-shrink: 0;
-        }
-
-        .flow-text {
-            flex: 1;
-        }
-
-        .flow-text strong {
-            display: block;
-            margin-bottom: 2px;
-        }
-
-        .flow-text span {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        .flow-status {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .status-orange {
-            background: rgba(255, 192, 72, 0.15);
-            color: var(--warning);
-        }
-
-        .status-green {
-            background: rgba(0, 210, 106, 0.15);
-            color: var(--success);
-        }
-
-        /* Features Section */
+        /* Features */
         .features {
             padding: 100px 0;
         }
@@ -517,14 +844,31 @@
             border-radius: 20px;
             padding: 32px;
             text-align: center;
-            transition: all 0.3s ease;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--gradient-1);
+            opacity: 0;
+            transition: opacity 0.4s;
         }
 
         .feature-card:hover {
-            background: var(--bg-card-hover);
+            transform: translateY(-10px);
             border-color: var(--accent);
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(108, 92, 231, 0.15);
+            box-shadow: 0 20px 40px rgba(108, 92, 231, 0.2);
+        }
+
+        .feature-card:hover::before {
+            opacity: 0.05;
         }
 
         .feature-icon {
@@ -538,167 +882,92 @@
             font-size: 1.5rem;
             color: white;
             margin: 0 auto 20px;
+            position: relative;
+            transition: transform 0.4s;
+        }
+
+        .feature-card:hover .feature-icon {
+            transform: scale(1.1) rotate(5deg);
         }
 
         .feature-card h3 {
             font-size: 1.2rem;
             margin-bottom: 12px;
+            position: relative;
         }
 
         .feature-card p {
             color: var(--text-muted);
             font-size: 0.95rem;
+            position: relative;
         }
 
-        /* Pricing Section */
-        .pricing {
+        /* How it works */
+        .how-it-works {
             padding: 100px 0;
-            background: linear-gradient(180deg, transparent 0%, rgba(108, 92, 231, 0.05) 100%);
+            background: linear-gradient(180deg, transparent 0%, rgba(108, 92, 231, 0.03) 50%, transparent 100%);
         }
 
-        .pricing-grid {
+        .steps {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 24px;
             margin-top: 48px;
-        }
-
-        .pricing-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 40px 32px;
             position: relative;
-            transition: all 0.3s ease;
         }
 
-        .pricing-card:hover {
-            transform: translateY(-8px);
-        }
-
-        .pricing-card.popular {
-            border-color: var(--accent);
-            box-shadow: 0 0 60px var(--accent-glow);
-        }
-
-        .pricing-badge {
+        .steps::before {
+            content: '';
             position: absolute;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--gradient-1);
-            padding: 6px 20px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
+            top: 40px;
+            left: 12%;
+            right: 12%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--success));
+            z-index: 0;
         }
 
-        .pricing-name {
-            font-size: 1.3rem;
-            font-weight: 600;
+        .step {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step-number {
+            width: 80px;
+            height: 80px;
+            background: var(--bg-card);
+            border: 2px solid var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--accent);
+            margin: 0 auto 20px;
+            position: relative;
+            transition: all 0.4s;
+        }
+
+        .step:hover .step-number {
+            background: var(--gradient-1);
+            color: white;
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px var(--accent-glow);
+        }
+
+        .step h4 {
+            font-size: 1.1rem;
             margin-bottom: 8px;
         }
 
-        .pricing-desc {
+        .step p {
             color: var(--text-muted);
             font-size: 0.9rem;
-            margin-bottom: 24px;
         }
 
-        .pricing-price {
-            margin-bottom: 24px;
-        }
-
-        .pricing-amount {
-            font-size: 3rem;
-            font-weight: 800;
-        }
-
-        .pricing-period {
-            color: var(--text-muted);
-        }
-
-        .pricing-features {
-            list-style: none;
-            margin-bottom: 32px;
-        }
-
-        .pricing-features li {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 0;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .pricing-features li:last-child {
-            border: none;
-        }
-
-        .pricing-features i {
-            color: var(--success);
-        }
-
-        .pricing-card .btn {
-            width: 100%;
-        }
-
-        /* FAQ Section */
-        .faq {
-            padding: 100px 0;
-        }
-
-        .faq-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            margin-top: 48px;
-        }
-
-        .faq-item {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 24px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .faq-item:hover {
-            border-color: var(--accent);
-        }
-
-        .faq-question {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: 600;
-            font-size: 1.05rem;
-        }
-
-        .faq-question i {
-            color: var(--accent);
-            transition: transform 0.3s;
-        }
-
-        .faq-item.active .faq-question i {
-            transform: rotate(45deg);
-        }
-
-        .faq-answer {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            max-height: 0;
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .faq-item.active .faq-answer {
-            max-height: 200px;
-            margin-top: 16px;
-        }
-
-        /* CTA Section */
+        /* CTA */
         .cta {
             padding: 100px 0;
             text-align: center;
@@ -721,6 +990,12 @@
             height: 200%;
             background: rgba(255, 255, 255, 0.1);
             transform: rotate(30deg);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% { transform: rotate(30deg) translateX(-100%); }
+            100% { transform: rotate(30deg) translateX(100%); }
         }
 
         .cta h2 {
@@ -745,6 +1020,7 @@
 
         .cta .btn:hover {
             background: #f0f0f0;
+            transform: translateY(-3px);
         }
 
         /* Footer */
@@ -782,85 +1058,53 @@
             font-size: 0.9rem;
         }
 
-        /* Mobile Responsive */
+        /* Mobile */
         @media (max-width: 1024px) {
-            .nav-links {
-                display: none;
-            }
-
-            .solution-content,
-            .pricing-grid,
-            .faq-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .features-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .hero-stats {
-                gap: 24px;
-            }
+            .nav-links { display: none; }
+            .simplicity-content,
+            .features-grid { grid-template-columns: 1fr; }
+            .steps { grid-template-columns: repeat(2, 1fr); }
+            .steps::before { display: none; }
+            .app-demo { grid-template-columns: 1fr; }
+            .demo-sidebar { display: none; }
         }
 
         @media (max-width: 768px) {
-            .hero {
-                padding: 120px 0 60px;
-            }
-
-            .features-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .pricing-card.popular {
-                order: -1;
-            }
-
-            .hero-cta {
-                flex-direction: column;
-                align-items: center;
-            }
-
-            .btn {
-                width: 100%;
-                max-width: 300px;
-            }
-
-            .footer-content {
-                flex-direction: column;
-                text-align: center;
-            }
-
-            .footer-links {
-                flex-wrap: wrap;
-                justify-content: center;
-            }
+            .hero { padding: 120px 0 60px; }
+            .features-grid, .steps { grid-template-columns: 1fr; }
+            .hero-stats { flex-direction: column; gap: 24px; }
+            .hero-cta { flex-direction: column; align-items: center; }
+            .btn { width: 100%; max-width: 300px; }
+            .footer-content { flex-direction: column; text-align: center; }
+            .demo-columns { grid-template-columns: 1fr; }
         }
 
-        /* Animations */
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        /* Scroll animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 0.8s ease;
         }
 
-        .animate {
-            animation: fadeInUp 0.6s ease forwards;
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
         }
-
-        .delay-1 { animation-delay: 0.1s; }
-        .delay-2 { animation-delay: 0.2s; }
-        .delay-3 { animation-delay: 0.3s; }
-        .delay-4 { animation-delay: 0.4s; }
     </style>
 </head>
 <body>
     <div class="bg-gradient"></div>
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
 
     <!-- Header -->
     <header>
@@ -872,65 +1116,69 @@
                 </a>
                 <nav>
                     <ul class="nav-links">
-                        <li><a href="#problem">Проблема</a></li>
-                        <li><a href="#solution">Решение</a></li>
+                        <li><a href="#simplicity">Простота</a></li>
                         <li><a href="#features">Возможности</a></li>
-                        <li><a href="#pricing">Цены</a></li>
-                        <li><a href="#faq">FAQ</a></li>
+                        <li><a href="#how">Как работает</a></li>
                     </ul>
                 </nav>
                 <div class="header-cta">
                     <a href="index.html" class="btn btn-secondary">Войти</a>
-                    <a href="#pricing" class="btn btn-primary">Попробовать бесплатно</a>
+                    <a href="index.html" class="btn btn-primary">Попробовать</a>
                 </div>
             </div>
         </div>
     </header>
 
-    <!-- Hero Section -->
+    <!-- Hero -->
     <section class="hero">
         <div class="container">
             <div class="hero-badge">
-                <i class="fa-solid fa-circle-check"></i>
-                Бесплатный период 14 дней
+                <i class="fa-solid fa-bolt"></i>
+                Освойте за 1 минуту
             </div>
             
             <h1>
-                Контроль задач<br>
-                <span>без хаоса и потерь</span>
+                Самый простой<br>
+                <span>таск-менеджер</span>
             </h1>
             
             <p class="hero-subtitle">
-                Простой таск-менеджер с двойным контролем для малого бизнеса. 
-                Сотрудник отмечает выполнение — вы подтверждаете. Ничего не потеряется.
+                Никаких сложных настроек, запутанных меню и часов обучения. 
+                Только задачи и контроль — всё под рукой.
             </p>
+
+            <div class="hero-highlight">
+                <i class="fa-solid fa-rocket"></i>
+                <span>В отличие от аналогов, тут всё необходимое и ничего лишнего</span>
+            </div>
             
             <div class="hero-cta">
-                <a href="#pricing" class="btn btn-primary btn-large">
-                    <i class="fa-solid fa-rocket"></i>
+                <a href="index.html" class="btn btn-primary btn-large">
+                    <i class="fa-solid fa-play"></i>
                     Начать бесплатно
                 </a>
-                <a href="#solution" class="btn btn-secondary btn-large">
-                    <i class="fa-solid fa-play"></i>
+                <a href="#how" class="btn btn-secondary btn-large">
+                    <i class="fa-solid fa-circle-info"></i>
                     Как это работает
                 </a>
             </div>
 
             <div class="hero-stats">
                 <div class="hero-stat">
-                    <div class="hero-stat-value">2 мин</div>
-                    <div class="hero-stat-label">на освоение</div>
+                    <div class="hero-stat-value">1 мин</div>
+                    <div class="hero-stat-label">время погружения</div>
                 </div>
                 <div class="hero-stat">
-                    <div class="hero-stat-value">0₽</div>
-                    <div class="hero-stat-label">первые 14 дней</div>
+                    <div class="hero-stat-value">0</div>
+                    <div class="hero-stat-label">сложных настроек</div>
                 </div>
                 <div class="hero-stat">
-                    <div class="hero-stat-value">24/7</div>
-                    <div class="hero-stat-label">доступ с телефона</div>
+                    <div class="hero-stat-value">∞</div>
+                    <div class="hero-stat-label">простоты</div>
                 </div>
             </div>
 
+            <!-- Real App Demo -->
             <div class="hero-demo">
                 <div class="demo-wrapper">
                     <div class="demo-browser">
@@ -939,44 +1187,80 @@
                         <div class="demo-dot"></div>
                     </div>
                     <div class="demo-screen">
-                        <!-- Simplified demo of the app -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <div style="background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-                                    <span style="width: 10px; height: 10px; background: var(--warning); border-radius: 50%;"></span>
-                                    <strong>В процессе</strong>
-                                    <span style="background: var(--bg-card); padding: 2px 10px; border-radius: 10px; font-size: 0.8rem; margin-left: auto;">3</span>
+                        <div class="app-demo">
+                            <div class="demo-sidebar">
+                                <div class="demo-brand">
+                                    <i class="fa-solid fa-layer-group"></i> ProjectMan
                                 </div>
-                                <div style="background: var(--bg-card); border-radius: 10px; padding: 14px; margin-bottom: 10px; border-left: 3px solid var(--warning);">
-                                    <div style="font-size: 0.75rem; color: var(--warning); margin-bottom: 6px;">
-                                        <i class="fa-solid fa-person-digging"></i> В работе
-                                    </div>
-                                    <div style="font-weight: 500; margin-bottom: 8px;">Заказать кофе для офиса</div>
-                                    <div style="font-size: 0.8rem; color: var(--text-muted);">
-                                        <i class="fa-regular fa-calendar"></i> Сегодня
-                                    </div>
+                                <div class="demo-projects-title">Проекты</div>
+                                <div class="demo-project active">
+                                    <i class="fa-solid fa-folder"></i> Офис на Ленина
                                 </div>
-                                <div style="background: var(--bg-card); border-radius: 10px; padding: 14px; margin-bottom: 10px; border-left: 3px solid var(--success);">
-                                    <div style="font-size: 0.75rem; color: var(--success); margin-bottom: 6px;">
-                                        <i class="fa-solid fa-check"></i> Завершена
-                                    </div>
-                                    <div style="font-weight: 500; margin-bottom: 8px;">Подготовить отчёт за неделю</div>
-                                    <div style="font-size: 0.8rem; color: var(--text-muted);">
-                                        <i class="fa-regular fa-calendar"></i> Завтра
-                                    </div>
+                                <div class="demo-project">
+                                    <i class="fa-solid fa-folder"></i> Склад
+                                </div>
+                                <div class="demo-project">
+                                    <i class="fa-solid fa-folder"></i> Маркетинг
                                 </div>
                             </div>
-                            <div style="background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px;">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-                                    <span style="width: 10px; height: 10px; background: var(--success); border-radius: 50%;"></span>
-                                    <strong>Готово</strong>
-                                    <span style="background: var(--bg-card); padding: 2px 10px; border-radius: 10px; font-size: 0.8rem; margin-left: auto;">5</span>
-                                </div>
-                                <div style="background: var(--bg-card); border-radius: 10px; padding: 14px; margin-bottom: 10px; opacity: 0.7;">
-                                    <div style="font-size: 0.75rem; color: var(--success); margin-bottom: 6px;">
-                                        <i class="fa-solid fa-check-double"></i> Подтверждено
+                            <div class="demo-main">
+                                <div class="demo-header">
+                                    <div class="demo-title">Офис на Ленина</div>
+                                    <div class="demo-btn">
+                                        <i class="fa-solid fa-plus"></i> Новая задача
                                     </div>
-                                    <div style="font-weight: 500; margin-bottom: 8px; text-decoration: line-through;">Позвонить поставщику</div>
+                                </div>
+                                <div class="demo-columns">
+                                    <div class="demo-column">
+                                        <div class="demo-column-header">
+                                            <span class="demo-status-dot orange"></span>
+                                            В процессе
+                                            <span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">2</span>
+                                        </div>
+                                        <div class="demo-task orange" style="animation-delay: 0.1s;">
+                                            <div class="demo-task-status in-work">
+                                                <i class="fa-solid fa-person-digging"></i> В работе
+                                            </div>
+                                            <div class="demo-task-title">Заказать воду в офис</div>
+                                            <div class="demo-task-meta">
+                                                <div class="demo-task-deadline">
+                                                    <i class="fa-regular fa-calendar"></i> Сегодня
+                                                </div>
+                                                <div class="demo-avatar">АИ</div>
+                                            </div>
+                                        </div>
+                                        <div class="demo-task green" style="animation-delay: 0.2s;">
+                                            <div class="demo-task-status completed">
+                                                <i class="fa-solid fa-check"></i> Завершена
+                                            </div>
+                                            <div class="demo-task-title">Подготовить отчёт</div>
+                                            <div class="demo-task-meta">
+                                                <div class="demo-task-deadline">
+                                                    <i class="fa-regular fa-calendar"></i> Завтра
+                                                </div>
+                                                <div class="demo-avatar">МП</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="demo-column">
+                                        <div class="demo-column-header">
+                                            <span class="demo-status-dot green"></span>
+                                            Готово
+                                            <span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">3</span>
+                                        </div>
+                                        <div class="demo-task green" style="animation-delay: 0.3s; opacity: 0.7;">
+                                            <div class="demo-task-status done">
+                                                <i class="fa-solid fa-check-double"></i> В архиве
+                                            </div>
+                                            <div class="demo-task-title" style="text-decoration: line-through;">Позвонить поставщику</div>
+                                            <div class="demo-task-meta">
+                                                <div class="demo-task-deadline">
+                                                    <i class="fa-solid fa-check"></i> Выполнено
+                                                </div>
+                                                <div class="demo-avatar">СК</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -986,134 +1270,61 @@
         </div>
     </section>
 
-    <!-- Problem Section -->
-    <section class="problem" id="problem">
+    <!-- Simplicity Section -->
+    <section class="simplicity reveal" id="simplicity">
         <div class="container">
-            <span class="section-label">
-                <i class="fa-solid fa-triangle-exclamation"></i> Проблема
-            </span>
-            <h2 class="section-title">Знакомо?</h2>
-            <p class="section-subtitle">
-                Эти проблемы стоят вашему бизнесу денег каждый день
-            </p>
-
-            <div class="problem-grid">
-                <div class="problem-card">
-                    <div class="problem-icon">
-                        <i class="fa-solid fa-head-side-virus"></i>
-                    </div>
-                    <h3>Сотрудник «забыл»</h3>
-                    <p>Задача была поставлена, но никто не помнит. Клиент недоволен, вы теряете деньги и репутацию.</p>
-                </div>
-                <div class="problem-card">
-                    <div class="problem-icon">
-                        <i class="fa-solid fa-comments"></i>
-                    </div>
-                    <h3>Хаос в чатах</h3>
-                    <p>Задачи теряются в WhatsApp и Telegram. Непонятно что сделано, что нет, кто ответственный.</p>
-                </div>
-                <div class="problem-card">
-                    <div class="problem-icon">
-                        <i class="fa-solid fa-clipboard-question"></i>
-                    </div>
-                    <h3>«Сделал» ≠ сделал</h3>
-                    <p>Сотрудник говорит что выполнил, но по факту — нет. Нет системы проверки и подтверждения.</p>
-                </div>
-                <div class="problem-card">
-                    <div class="problem-icon">
-                        <i class="fa-solid fa-clock"></i>
-                    </div>
-                    <h3>Нет времени контролировать</h3>
-                    <p>Вы заняты бизнесом, а не слежкой за задачами. Но без контроля — всё разваливается.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Solution Section -->
-    <section class="solution" id="solution">
-        <div class="container">
-            <span class="section-label">
-                <i class="fa-solid fa-check"></i> Решение
-            </span>
-            <h2 class="section-title">Двойной контроль — ничего не потеряется</h2>
-            <p class="section-subtitle">
-                Уникальная система: сотрудник отмечает выполнение, вы подтверждаете
-            </p>
-
-            <div class="solution-content">
-                <div class="solution-features">
-                    <div class="solution-feature">
-                        <div class="solution-feature-icon">
-                            <i class="fa-solid fa-plus"></i>
-                        </div>
-                        <div>
-                            <h4>Вы ставите задачу</h4>
-                            <p>Создаёте задачу, назначаете ответственного, ставите срок. 30 секунд.</p>
-                        </div>
-                    </div>
-                    <div class="solution-feature">
-                        <div class="solution-feature-icon">
-                            <i class="fa-solid fa-bell"></i>
-                        </div>
-                        <div>
-                            <h4>Сотрудник видит</h4>
-                            <p>Получает задачу в приложении. Принимает в работу. Вы видите что он начал.</p>
-                        </div>
-                    </div>
-                    <div class="solution-feature">
-                        <div class="solution-feature-icon">
+            <div class="simplicity-content">
+                <div class="simplicity-text">
+                    <span class="section-label">
+                        <i class="fa-solid fa-heart"></i> Простота
+                    </span>
+                    <h2>Почему мы <span>проще</span> всех аналогов?</h2>
+                    <p>
+                        Мы убрали всё лишнее. Никаких Гант-диаграмм, канбан-досок с 10 колонками, 
+                        интеграций с 50 сервисами. Только то, что реально нужно малому бизнесу.
+                    </p>
+                    <ul class="simplicity-list">
+                        <li>
                             <i class="fa-solid fa-check"></i>
-                        </div>
-                        <div>
-                            <h4>Сотрудник отмечает «Готово»</h4>
-                            <p>Выполнил — отметил. Но задача ещё не закрыта!</p>
-                        </div>
-                    </div>
-                    <div class="solution-feature">
-                        <div class="solution-feature-icon">
-                            <i class="fa-solid fa-check-double"></i>
-                        </div>
-                        <div>
-                            <h4>Вы подтверждаете</h4>
-                            <p>Проверяете результат и подтверждаете. Только тогда задача закрыта.</p>
-                        </div>
-                    </div>
+                            <span>Открыл — сразу понятно что делать</span>
+                        </li>
+                        <li>
+                            <i class="fa-solid fa-check"></i>
+                            <span>Нет кнопок «куда нажать непонятно»</span>
+                        </li>
+                        <li>
+                            <i class="fa-solid fa-check"></i>
+                            <span>Сотрудники освоят без обучения</span>
+                        </li>
+                        <li>
+                            <i class="fa-solid fa-check"></i>
+                            <span>Работает одинаково на ПК и телефоне</span>
+                        </li>
+                    </ul>
                 </div>
-
-                <div class="solution-visual">
-                    <div class="flow-diagram">
-                        <div class="flow-step">
-                            <div class="flow-number">1</div>
-                            <div class="flow-text">
-                                <strong>Задача поставлена</strong>
-                                <span>Босс создал задачу</span>
+                <div class="comparison-box">
+                    <div class="comparison-item bad">
+                        <div class="comparison-header">
+                            <div class="comparison-icon">
+                                <i class="fa-solid fa-xmark"></i>
                             </div>
-                            <div class="flow-status status-orange">Новая</div>
+                            <div class="comparison-title">Аналоги</div>
                         </div>
-                        <div class="flow-step">
-                            <div class="flow-number">2</div>
-                            <div class="flow-text">
-                                <strong>В работе</strong>
-                                <span>Сотрудник принял</span>
-                            </div>
-                            <div class="flow-status status-orange">В работе</div>
+                        <div class="comparison-desc">
+                            Часы на настройку, обучающие видео, непонятные термины, 
+                            100 функций из которых нужны 3
                         </div>
-                        <div class="flow-step">
-                            <div class="flow-number">3</div>
-                            <div class="flow-text">
-                                <strong>Завершена</strong>
-                                <span>Сотрудник выполнил</span>
+                    </div>
+                    <div class="comparison-item good">
+                        <div class="comparison-header">
+                            <div class="comparison-icon">
+                                <i class="fa-solid fa-check"></i>
                             </div>
-                            <div class="flow-status status-green">Готово</div>
+                            <div class="comparison-title">ProjectMan</div>
                         </div>
-                        <div class="flow-step">
-                            <div class="flow-number">4</div>
-                            <div class="flow-text">
-                                <strong>Подтверждено</strong>
-                                <span>Босс проверил</span>
-                            </div>
-                            <div class="flow-status status-green">✓ Закрыто</div>
+                        <div class="comparison-desc">
+                            1 минута на освоение, всё интуитивно, только нужные функции — 
+                            задачи, сроки, ответственные, контроль
                         </div>
                     </div>
                 </div>
@@ -1121,217 +1332,113 @@
         </div>
     </section>
 
-    <!-- Features Section -->
-    <section class="features" id="features">
+    <!-- Features -->
+    <section class="features reveal" id="features">
         <div class="container">
             <div style="text-align: center;">
-                <span class="section-label" style="background: rgba(108, 92, 231, 0.1); border-color: rgba(108, 92, 231, 0.3); color: var(--accent-light);">
+                <span class="section-label">
                     <i class="fa-solid fa-star"></i> Возможности
                 </span>
-                <h2 class="section-title">Всё что нужно. Ничего лишнего.</h2>
+                <h2 class="section-title">Всё нужное. Ничего лишнего.</h2>
                 <p class="section-subtitle" style="margin: 0 auto;">
-                    Мы убрали всё сложное и оставили только нужное для малого бизнеса
+                    Мы оставили только то, что реально используется каждый день
                 </p>
             </div>
 
             <div class="features-grid">
                 <div class="feature-card">
                     <div class="feature-icon">
-                        <i class="fa-solid fa-mobile-screen"></i>
-                    </div>
-                    <h3>Работает с телефона</h3>
-                    <p>Ставьте и проверяйте задачи прямо из кармана. Полноценное приложение в браузере.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">
                         <i class="fa-solid fa-users"></i>
                     </div>
-                    <h3>Вся команда в одном месте</h3>
-                    <p>Добавляйте сотрудников, назначайте права доступа к разным проектам.</p>
+                    <h3>Двойной контроль</h3>
+                    <p>Сотрудник отмечает «выполнено» — вы подтверждаете. Ничего не потеряется.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">
-                        <i class="fa-solid fa-paperclip"></i>
+                        <i class="fa-solid fa-mobile-screen"></i>
                     </div>
-                    <h3>Прикрепление файлов</h3>
-                    <p>Добавляйте документы, фото и файлы прямо к задачам. До 2 файлов на задачу.</p>
+                    <h3>С любого устройства</h3>
+                    <p>Работайте с телефона так же удобно, как с компьютера. Полная адаптация.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">
                         <i class="fa-solid fa-folder-tree"></i>
                     </div>
-                    <h3>Несколько проектов</h3>
-                    <p>Разделяйте задачи по проектам, точкам, направлениям. Всё организовано.</p>
+                    <h3>Проекты</h3>
+                    <p>Разделяйте задачи по точкам, направлениям, отделам. Всё организовано.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fa-solid fa-paperclip"></i>
+                    </div>
+                    <h3>Файлы к задачам</h3>
+                    <p>Прикрепляйте документы, фото, файлы. До 2 файлов на задачу.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">
                         <i class="fa-solid fa-clock"></i>
                     </div>
-                    <h3>Сроки и напоминания</h3>
-                    <p>Устанавливайте дедлайны. Система покажет просроченные задачи.</p>
+                    <h3>Сроки</h3>
+                    <p>Устанавливайте дедлайны. Просроченные задачи сразу видно.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">
-                        <i class="fa-solid fa-shield-halved"></i>
+                        <i class="fa-solid fa-list-check"></i>
                     </div>
-                    <h3>Российские серверы</h3>
-                    <p>Данные хранятся на российских серверах. Оплата в рублях без проблем.</p>
+                    <h3>Мои задачи</h3>
+                    <p>Одна кнопка — все ваши задачи из всех проектов. Быстро и удобно.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Pricing Section -->
-    <section class="pricing" id="pricing">
+    <!-- How it works -->
+    <section class="how-it-works reveal" id="how">
         <div class="container">
             <div style="text-align: center;">
-                <span class="section-label" style="background: rgba(108, 92, 231, 0.1); border-color: rgba(108, 92, 231, 0.3); color: var(--accent-light);">
-                    <i class="fa-solid fa-tag"></i> Цены
+                <span class="section-label">
+                    <i class="fa-solid fa-route"></i> Как работает
                 </span>
-                <h2 class="section-title">Простые и понятные тарифы</h2>
+                <h2 class="section-title">4 простых шага</h2>
                 <p class="section-subtitle" style="margin: 0 auto;">
-                    Первые 14 дней бесплатно. Никаких скрытых платежей.
+                    Система двойного контроля — задача не потеряется
                 </p>
             </div>
 
-            <div class="pricing-grid">
-                <div class="pricing-card">
-                    <div class="pricing-name">Стартовый</div>
-                    <div class="pricing-desc">Для небольших команд</div>
-                    <div class="pricing-price">
-                        <span class="pricing-amount">1 490₽</span>
-                        <span class="pricing-period">/ месяц</span>
-                    </div>
-                    <ul class="pricing-features">
-                        <li><i class="fa-solid fa-check"></i> До 5 пользователей</li>
-                        <li><i class="fa-solid fa-check"></i> Безлимит проектов</li>
-                        <li><i class="fa-solid fa-check"></i> Безлимит задач</li>
-                        <li><i class="fa-solid fa-check"></i> Прикрепление файлов</li>
-                        <li><i class="fa-solid fa-check"></i> Мобильная версия</li>
-                    </ul>
-                    <a href="index.html" class="btn btn-secondary">Попробовать</a>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h4>Поставьте задачу</h4>
+                    <p>Создайте задачу, назначьте ответственного и срок. 30 секунд.</p>
                 </div>
-
-                <div class="pricing-card popular">
-                    <div class="pricing-badge">Популярный</div>
-                    <div class="pricing-name">Бизнес</div>
-                    <div class="pricing-desc">Для растущих компаний</div>
-                    <div class="pricing-price">
-                        <span class="pricing-amount">2 990₽</span>
-                        <span class="pricing-period">/ месяц</span>
-                    </div>
-                    <ul class="pricing-features">
-                        <li><i class="fa-solid fa-check"></i> До 15 пользователей</li>
-                        <li><i class="fa-solid fa-check"></i> Безлимит проектов</li>
-                        <li><i class="fa-solid fa-check"></i> Безлимит задач</li>
-                        <li><i class="fa-solid fa-check"></i> Прикрепление файлов</li>
-                        <li><i class="fa-solid fa-check"></i> Приоритетная поддержка</li>
-                    </ul>
-                    <a href="index.html" class="btn btn-primary">Попробовать бесплатно</a>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h4>Сотрудник видит</h4>
+                    <p>Получает задачу, принимает в работу. Вы видите статус.</p>
                 </div>
-
-                <div class="pricing-card">
-                    <div class="pricing-name">Корпоративный</div>
-                    <div class="pricing-desc">Для больших команд</div>
-                    <div class="pricing-price">
-                        <span class="pricing-amount">5 990₽</span>
-                        <span class="pricing-period">/ месяц</span>
-                    </div>
-                    <ul class="pricing-features">
-                        <li><i class="fa-solid fa-check"></i> До 50 пользователей</li>
-                        <li><i class="fa-solid fa-check"></i> Безлимит проектов</li>
-                        <li><i class="fa-solid fa-check"></i> Безлимит задач</li>
-                        <li><i class="fa-solid fa-check"></i> Расширенные файлы</li>
-                        <li><i class="fa-solid fa-check"></i> Личный менеджер</li>
-                    </ul>
-                    <a href="index.html" class="btn btn-secondary">Связаться</a>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h4>Отмечает готово</h4>
+                    <p>Сотрудник выполнил — отметил. Но задача ещё не закрыта!</p>
                 </div>
-            </div>
-
-            <p style="text-align: center; margin-top: 32px; color: var(--text-muted);">
-                💰 Скидка 20% при оплате за год
-            </p>
-        </div>
-    </section>
-
-    <!-- FAQ Section -->
-    <section class="faq" id="faq">
-        <div class="container">
-            <div style="text-align: center;">
-                <span class="section-label" style="background: rgba(108, 92, 231, 0.1); border-color: rgba(108, 92, 231, 0.3); color: var(--accent-light);">
-                    <i class="fa-solid fa-circle-question"></i> FAQ
-                </span>
-                <h2 class="section-title">Частые вопросы</h2>
-            </div>
-
-            <div class="faq-grid">
-                <div class="faq-item">
-                    <div class="faq-question">
-                        Нужно ли устанавливать приложение?
-                        <i class="fa-solid fa-plus"></i>
-                    </div>
-                    <div class="faq-answer">
-                        Нет, ProjectMan работает прямо в браузере. Просто откройте сайт на компьютере или телефоне — и работайте. Можно добавить иконку на рабочий стол для быстрого доступа.
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">
-                        Как добавить сотрудников?
-                        <i class="fa-solid fa-plus"></i>
-                    </div>
-                    <div class="faq-answer">
-                        Сотрудники регистрируются сами, а вы через админ-панель даёте им доступ к нужным проектам. Это занимает 1 минуту.
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">
-                        Можно ли попробовать бесплатно?
-                        <i class="fa-solid fa-plus"></i>
-                    </div>
-                    <div class="faq-answer">
-                        Да! Первые 14 дней полностью бесплатны, без ограничений функционала. Карта не требуется для начала.
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">
-                        Чем это лучше Битрикс24?
-                        <i class="fa-solid fa-plus"></i>
-                    </div>
-                    <div class="faq-answer">
-                        ProjectMan создан для малого бизнеса: простой, понятный, без 100 ненужных функций. Освоить можно за 2 минуты, а не за неделю. И в разы дешевле.
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">
-                        Где хранятся данные?
-                        <i class="fa-solid fa-plus"></i>
-                    </div>
-                    <div class="faq-answer">
-                        Данные хранятся на защищённых серверах. Используется шифрование. Доступ только у вас и вашей команды.
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">
-                        Как оплатить?
-                        <i class="fa-solid fa-plus"></i>
-                    </div>
-                    <div class="faq-answer">
-                        Оплата картой российского банка через ЮKassa. Автоматическое продление подписки. Можно оплатить за год со скидкой 20%.
-                    </div>
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <h4>Вы подтверждаете</h4>
+                    <p>Проверяете и подтверждаете. Только тогда — архив.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- CTA Section -->
-    <section class="cta">
+    <!-- CTA -->
+    <section class="cta reveal">
         <div class="container">
             <div class="cta-box">
-                <h2>Готовы навести порядок в задачах?</h2>
-                <p>Начните бесплатный период прямо сейчас. Без карты, без обязательств.</p>
+                <h2>Попробуйте прямо сейчас</h2>
+                <p>1 минута на освоение. Бесплатно. Без регистрации карты.</p>
                 <a href="index.html" class="btn btn-large">
                     <i class="fa-solid fa-rocket"></i>
-                    Попробовать бесплатно
+                    Начать работу
                 </a>
             </div>
         </div>
@@ -1347,45 +1454,33 @@
                 </a>
                 <ul class="footer-links">
                     <li><a href="#features">Возможности</a></li>
-                    <li><a href="#pricing">Цены</a></li>
-                    <li><a href="#faq">FAQ</a></li>
+                    <li><a href="#how">Как работает</a></li>
                     <li><a href="mailto:support@projectman.ru">Поддержка</a></li>
                 </ul>
                 <div class="footer-copy">
-                    © 2025 ProjectMan. Все права защищены.
+                    © 2025 ProjectMan
                 </div>
             </div>
         </div>
     </footer>
 
-    <!-- FAQ Toggle Script -->
     <script>
-        document.querySelectorAll('.faq-item').forEach(item => {
-            item.addEventListener('click', () => {
-                // Close others
-                document.querySelectorAll('.faq-item').forEach(other => {
-                    if (other !== item) other.classList.remove('active');
-                });
-                // Toggle current
-                item.classList.toggle('active');
-            });
-        });
-
-        // Smooth scroll for anchor links
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
+        // Scroll reveal
+        function reveal() {
+            const reveals = document.querySelectorAll('.reveal');
+            reveals.forEach(el => {
+                const windowHeight = window.innerHeight;
+                const elementTop = el.getBoundingClientRect().top;
+                const elementVisible = 150;
+                if (elementTop < windowHeight - elementVisible) {
+                    el.classList.add('active');
                 }
             });
-        });
+        }
+        window.addEventListener('scroll', reveal);
+        reveal();
 
-        // Header background on scroll
+        // Header background
         window.addEventListener('scroll', () => {
             const header = document.querySelector('header');
             if (window.scrollY > 50) {
@@ -1394,7 +1489,17 @@
                 header.style.background = 'rgba(10, 10, 15, 0.8)';
             }
         });
+
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
     </script>
 </body>
 </html>
-
