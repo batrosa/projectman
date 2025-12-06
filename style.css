@@ -719,6 +719,14 @@ body.light-mode select option {
     padding: 0; /* Desktop doesn't need extra padding */
 }
 
+/* Task modal footer - same as regular footer on desktop */
+.task-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
 .modal-footer {
     display: flex;
     justify-content: flex-end;
