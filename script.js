@@ -39,6 +39,18 @@ function playClickSound() {
     // Sound removed per user request
 }
 
+// Button loading state helper
+function setButtonLoading(button, isLoading, originalText) {
+    if (isLoading) {
+        button.disabled = true;
+        button.dataset.originalText = originalText;
+        button.innerHTML = '<span class="btn-spinner"></span>';
+    } else {
+        button.disabled = false;
+        button.innerHTML = originalText || button.dataset.originalText;
+    }
+}
+
 // ========== LOADING SCREEN ==========
 const loadingTips = [
     "Нажмите на статус задачи, чтобы изменить его",
@@ -1668,6 +1680,10 @@ function setupEventListeners() {
         e.preventDefault();
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
+        const submitBtn = elements.loginForm.querySelector('button[type="submit"]');
+
+        // Show loading state
+        setButtonLoading(submitBtn, true, 'Войти');
 
         try {
             await auth.signInWithEmailAndPassword(email, password);
@@ -1675,6 +1691,7 @@ function setupEventListeners() {
         } catch (error) {
             elements.loginError.textContent = getAuthErrorMessage(error.code);
             elements.loginError.style.display = 'block';
+            setButtonLoading(submitBtn, false, 'Войти');
         }
     });
 
@@ -1687,6 +1704,7 @@ function setupEventListeners() {
         const email = document.getElementById('register-email').value;
         const password = document.getElementById('register-password').value;
         const confirmPassword = document.getElementById('register-password-confirm').value;
+        const submitBtn = elements.registerForm.querySelector('button[type="submit"]');
 
         if (password !== confirmPassword) {
             elements.registerError.textContent = 'Пароли не совпадают';
@@ -1699,6 +1717,9 @@ function setupEventListeners() {
             elements.registerError.style.display = 'block';
             return;
         }
+
+        // Show loading state
+        setButtonLoading(submitBtn, true, 'Зарегистрироваться');
 
         try {
             const userCredential = await auth.createUserWithEmailAndPassword(email, password);
@@ -1718,6 +1739,7 @@ function setupEventListeners() {
         } catch (error) {
             elements.registerError.textContent = getAuthErrorMessage(error.code);
             elements.registerError.style.display = 'block';
+            setButtonLoading(submitBtn, false, 'Зарегистрироваться');
         }
     });
 
