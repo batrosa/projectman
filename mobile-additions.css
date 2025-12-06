@@ -77,23 +77,52 @@
         position: relative !important;
     }
 
-    /* Board container - scrollable */
+    /* Board container - hidden by default, shown when active */
     .board-container {
-        display: flex !important;
-        flex-direction: column !important;
-        padding: 1rem !important;
-        padding-bottom: 5rem !important; /* Extra padding for bottom scrolling */
-        gap: 2rem !important;
+        display: none !important;
+        flex-direction: column;
+        padding: 1rem;
+        padding-bottom: 5rem;
+        gap: 2rem;
         
         /* CRITICAL SCROLLING FIXES */
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        -webkit-overflow-scrolling: touch !important;
-        overscroll-behavior-y: contain !important; /* Prevent pull-to-refresh affecting whole page */
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
         
-        flex: 1 1 auto !important; /* Grow and shrink */
-        min-height: 0 !important; /* Allow shrinking below content size */
-        height: 100% !important; /* Fill available space */
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
+    }
+
+    .board-container.active {
+        display: flex !important;
+    }
+
+    /* Empty state - centered on mobile */
+    .empty-state {
+        flex: 1;
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        text-align: center;
+    }
+
+    .empty-state i {
+        font-size: 4rem;
+        opacity: 0.3;
+        margin-bottom: 1.5rem;
+        color: var(--primary);
+    }
+
+    .empty-state p {
+        font-size: 1.1rem;
+        color: var(--text-secondary);
+        max-width: 250px;
+        line-height: 1.5;
     }
 
     /* Ensure body doesn't scroll */
