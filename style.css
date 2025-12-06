@@ -1969,7 +1969,6 @@ body.light-mode .file-preview-container {
 .my-task-item:hover {
     border-color: var(--primary);
     background: var(--card-hover);
-    transform: translateX(4px);
 }
 
 .my-task-header {
@@ -2066,11 +2065,7 @@ body.light-mode .file-preview-container {
 }
 
 .my-task-go i {
-    transition: transform 0.2s;
-}
-
-.my-task-item:hover .my-task-go i {
-    transform: translateX(3px);
+    /* No animation */
 }
 
 /* Light Mode */
