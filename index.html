@@ -118,6 +118,17 @@
             flex-shrink: 0;
             margin-top: 0.1rem;
         }
+
+        /* Button spinner */
+        .btn-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
     </style>
 
     <!-- Version checker - ОТКЛЮЧЕН временно для отладки -->
@@ -130,7 +141,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=5.3" defer></script>
+    <script src="script.js?v=5.4" defer></script>
 </head>
 
 <body>
