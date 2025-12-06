@@ -1917,7 +1917,7 @@ body.light-mode .file-preview-container {
 
 /* My Tasks Modal */
 .my-tasks-modal-content {
-    max-width: 550px;
+    max-width: 420px;
     width: 90%;
 }
 
