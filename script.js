@@ -34,13 +34,9 @@ let pendingAttachments = [];
     }
 })();
 
-// Sound Effect
-const clickSound = new Audio('button.mp3');
-clickSound.volume = 0.1; // 10% volume (Ultra subtle)
-
+// Sound Effect - DISABLED
 function playClickSound() {
-    clickSound.currentTime = 0;
-    clickSound.play().catch(e => console.log('Audio play failed (user interaction needed first):', e));
+    // Sound removed per user request
 }
 
 // ========== FILE ATTACHMENT FUNCTIONS ==========
@@ -562,7 +558,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.3'; // CLOSE SIDEBAR ON CREATE PROJECT
+    const CURRENT_VERSION = '5.4'; // REMOVE SOUND + AUTO-OPEN NEW PROJECT
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -1486,6 +1482,7 @@ function setupEventListeners() {
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         }).then((docRef) => {
             selectProject(docRef.id);
+            closeSidebarOnMobile();
         });
     }
 
