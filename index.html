@@ -107,6 +107,16 @@
             margin: 0 auto;
             line-height: 1.5;
             min-height: 3em;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            text-align: left;
+        }
+
+        .loading-tip i {
+            color: #6366f1;
+            flex-shrink: 0;
+            margin-top: 0.1rem;
         }
     </style>
 
@@ -120,7 +130,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=5.1" defer></script>
+    <script src="script.js?v=5.2" defer></script>
 </head>
 
 <body>
@@ -134,7 +144,7 @@
             <div class="loading-spinner-container">
                 <div class="loading-spinner"></div>
             </div>
-            <p id="loading-tip" class="loading-tip">Загрузка...</p>
+            <p class="loading-tip"><i class="fa-solid fa-lightbulb"></i> <span id="loading-tip">Загрузка...</span></p>
         </div>
     </div>
 
