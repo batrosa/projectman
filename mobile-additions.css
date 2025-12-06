@@ -371,7 +371,7 @@
 
     #task-modal .modal-header {
         flex-shrink: 0;
-        background: #1e293b;
+        background: transparent;
     }
 
     /* Scrollable form content wrapper */
