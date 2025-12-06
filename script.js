@@ -1895,6 +1895,12 @@ function showAuthScreen() {
 function hideAuthScreen() {
     elements.authOverlay.style.display = 'none';
     
+    // Show the app container
+    const appContainer = document.getElementById('app-container');
+    if (appContainer) {
+        appContainer.style.display = 'flex';
+    }
+    
     // Also hide the initial loading overlay if it's still visible
     const loader = document.getElementById('loading-overlay');
     if (loader) {
