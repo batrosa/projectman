@@ -562,7 +562,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.0'; // MY TASKS FIXES
+    const CURRENT_VERSION = '5.1'; // FIX DELETE PROJECT
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -722,6 +722,25 @@ function deleteTask(id) {
     if (state.role !== 'admin') return;
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     db.collection('tasks').doc(id).delete();
+}
+
+function deleteProject(id) {
+    if (state.role !== 'admin') return;
+    if (!confirm('Вы уверены? Все задачи этого проекта будут удалены.')) return;
+
+    // Delete project
+    db.collection('projects').doc(id).delete();
+
+    // Delete associated tasks
+    const projectTasks = state.tasks.filter(t => t.projectId === id);
+    projectTasks.forEach(t => {
+        db.collection('tasks').doc(t.id).delete();
+    });
+
+    if (state.activeProjectId === id) {
+        state.activeProjectId = null;
+        renderBoard();
+    }
 }
 
 function updateTask(id, data) {
@@ -1467,25 +1486,6 @@ function setupEventListeners() {
         }).then((docRef) => {
             selectProject(docRef.id);
         });
-    }
-
-    function deleteProject(id) {
-        if (state.role !== 'admin') return;
-        if (!confirm('Вы уверены? Все задачи этого проекта будут удалены.')) return;
-
-        // Delete project
-        db.collection('projects').doc(id).delete();
-
-        // Delete associated tasks
-        const projectTasks = state.tasks.filter(t => t.projectId === id);
-        projectTasks.forEach(t => {
-            db.collection('tasks').doc(t.id).delete();
-        });
-
-        if (state.activeProjectId === id) {
-            state.activeProjectId = null;
-            renderBoard();
-        }
     }
 
     async function createTask(title, assignee, deadline, status, assigneeEmail, description) {
