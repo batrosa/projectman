@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=5.7" as="style">
-    <link rel="stylesheet" href="style.css?v=5.7">
-    <link rel="stylesheet" href="mobile-additions.css?v=4.9">
+    <link rel="preload" href="style.css?v=5.8" as="style">
+    <link rel="stylesheet" href="style.css?v=5.8">
+    <link rel="stylesheet" href="mobile-additions.css?v=5.0">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -319,49 +319,51 @@
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <form id="task-form">
-                <div class="form-group">
-                    <label for="t-title">Задача</label>
-                    <input type="text" id="t-title" required placeholder="Что нужно сделать?">
-                </div>
-
-                <div class="form-group">
-                    <label for="t-description">Комментарий / Описание</label>
-                    <textarea id="t-description" rows="3" placeholder="Подробности задачи..."></textarea>
-                </div>
-
-                <div class="form-row">
+                <div class="task-form-body">
                     <div class="form-group">
-                        <label>Ответственные</label>
-                        <div id="t-assignee-container" class="multi-select-container">
-                            <!-- Checkboxes will be injected here -->
-                            <div style="padding: 0.5rem; color: var(--text-secondary);">Загрузка...</div>
+                        <label for="t-title">Задача</label>
+                        <input type="text" id="t-title" required placeholder="Что нужно сделать?">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="t-description">Комментарий / Описание</label>
+                        <textarea id="t-description" rows="3" placeholder="Подробности задачи..."></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Ответственные</label>
+                            <div id="t-assignee-container" class="multi-select-container">
+                                <!-- Checkboxes will be injected here -->
+                                <div style="padding: 0.5rem; color: var(--text-secondary);">Загрузка...</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="t-deadline">Срок</label>
+                            <input type="date" id="t-deadline" required>
                         </div>
                     </div>
+
+                    <!-- File Attachments Section -->
                     <div class="form-group">
-                        <label for="t-deadline">Срок</label>
-                        <input type="date" id="t-deadline" required>
-                    </div>
-                </div>
-
-                <!-- File Attachments Section -->
-                <div class="form-group">
-                    <label><i class="fa-solid fa-paperclip"></i> Прикрепленные файлы (макс. 2)</label>
-                    <div id="attachments-container" class="attachments-container">
-                        <div id="attachments-list" class="attachments-list">
-                            <!-- Attached files will appear here -->
+                        <label><i class="fa-solid fa-paperclip"></i> Прикрепленные файлы (макс. 2)</label>
+                        <div id="attachments-container" class="attachments-container">
+                            <div id="attachments-list" class="attachments-list">
+                                <!-- Attached files will appear here -->
+                            </div>
+                            <button type="button" id="add-attachment-btn" class="add-attachment-btn">
+                                <i class="fa-solid fa-plus"></i> Прикрепить файл
+                            </button>
+                            <input type="file" id="file-input" style="display: none;" 
+                                   accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar">
+                            <p class="attachment-hint">PDF, Word, Excel, изображения, архивы. Макс. 10 MB</p>
                         </div>
-                        <button type="button" id="add-attachment-btn" class="add-attachment-btn">
-                            <i class="fa-solid fa-plus"></i> Прикрепить файл
-                        </button>
-                        <input type="file" id="file-input" style="display: none;" 
-                               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar">
-                        <p class="attachment-hint">PDF, Word, Excel, изображения, архивы. Макс. 10 MB</p>
                     </div>
-                </div>
 
-                <!-- Status hidden, defaults to in-progress -->
-                <input type="hidden" id="t-status" value="in-progress">
-                <input type="hidden" id="t-id">
+                    <!-- Status hidden, defaults to in-progress -->
+                    <input type="hidden" id="t-status" value="in-progress">
+                    <input type="hidden" id="t-id">
+                </div>
                 <div class="modal-footer">
                     <button type="button" class="secondary-btn close-modal">Отмена</button>
                     <button type="submit" class="primary-btn">Сохранить</button>

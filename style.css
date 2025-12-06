@@ -714,6 +714,11 @@ body.light-mode select option {
     font-weight: normal;
 }
 
+/* Task form body - scrollable on mobile, normal on desktop */
+.task-form-body {
+    padding: 0; /* Desktop doesn't need extra padding */
+}
+
 .modal-footer {
     display: flex;
     justify-content: flex-end;
