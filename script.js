@@ -1740,6 +1740,7 @@ function setupEventListeners() {
     if (logoutBtn) {
         logoutBtn.addEventListener('click', () => {
             playClickSound();
+            closeSidebarOnMobile();
             logout();
         });
     }
