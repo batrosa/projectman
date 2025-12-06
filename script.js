@@ -562,7 +562,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.9'; // MY TASKS FEATURE
+    const CURRENT_VERSION = '5.0'; // MY TASKS FIXES
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -799,6 +799,7 @@ function renderProjects() {
         li.onclick = () => {
             playClickSound();
             selectProject(project.id);
+            closeSidebarOnMobile();
         };
         elements.projectList.appendChild(li);
     });
@@ -1355,6 +1356,16 @@ function toggleTheme() {
     updateThemeIcon(isLight);
 }
 
+// Close sidebar on mobile devices
+function closeSidebarOnMobile() {
+    if (window.innerWidth <= 768) {
+        elements.sidebar.classList.remove('active');
+        if (elements.sidebarOverlay) {
+            elements.sidebarOverlay.classList.remove('active');
+        }
+    }
+}
+
 function updateThemeIcon(isLight) {
     const btn = elements.themeToggle;
     if (isLight) {
@@ -1581,6 +1592,7 @@ function setupEventListeners() {
     elements.themeToggle.addEventListener('click', () => {
         playClickSound();
         toggleTheme();
+        closeSidebarOnMobile();
     });
 
     // Auth - Login/Register toggle
@@ -1702,6 +1714,7 @@ function setupEventListeners() {
     if (elements.adminPanelBtn) {
         elements.adminPanelBtn.addEventListener('click', () => {
             playClickSound();
+            closeSidebarOnMobile();
             elements.adminPanelModal.classList.add('active');
         });
     }
@@ -1710,6 +1723,7 @@ function setupEventListeners() {
     if (elements.myTasksBtn) {
         elements.myTasksBtn.addEventListener('click', () => {
             playClickSound();
+            closeSidebarOnMobile();
             openMyTasksModal();
         });
     }
@@ -2246,11 +2260,18 @@ async function fetchMyTasks() {
         // Get all projects user has access to
         const accessibleProjects = getFilteredProjects();
         
-        for (const project of accessibleProjects) {
-            const snapshot = await db.collection('tasks')
+        // Fetch all projects in PARALLEL for speed
+        const projectPromises = accessibleProjects.map(project => 
+            db.collection('tasks')
                 .where('projectId', '==', project.id)
-                .get();
-            
+                .get()
+                .then(snapshot => ({ project, snapshot }))
+        );
+        
+        const results = await Promise.all(projectPromises);
+        
+        // Process all results
+        results.forEach(({ project, snapshot }) => {
             snapshot.forEach(doc => {
                 const task = { id: doc.id, ...doc.data() };
                 let isAssignee = false;
@@ -2275,7 +2296,7 @@ async function fetchMyTasks() {
                     });
                 }
             });
-        }
+        });
         
         // Sort by deadline (closest first) and status
         myTasks.sort((a, b) => {
