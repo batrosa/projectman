@@ -6,12 +6,9 @@
     <title>ProjectMan — Простейший таск-менеджер для бизнеса</title>
     <meta name="description" content="Освойте за 1 минуту. Никаких сложных настроек — только задачи и контроль. Простой таск-менеджер с двойным контролем.">
     
-    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
@@ -29,19 +26,10 @@
             --text-muted: #8a8a9a;
             --border: rgba(255, 255, 255, 0.08);
             --gradient-1: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
-            --gradient-2: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html {
-            scroll-behavior: smooth;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
         body {
             font-family: 'Onest', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg-dark);
@@ -50,13 +38,9 @@
             overflow-x: hidden;
         }
 
-        /* Animated Background */
         .bg-gradient {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             background: 
                 radial-gradient(ellipse 80% 50% at 20% -20%, rgba(108, 92, 231, 0.15) 0%, transparent 50%),
                 radial-gradient(ellipse 60% 40% at 80% 0%, rgba(162, 155, 254, 0.1) 0%, transparent 50%),
@@ -65,13 +49,9 @@
             z-index: -1;
         }
 
-        /* Floating particles */
         .particles {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
             z-index: -1;
             overflow: hidden;
@@ -79,8 +59,7 @@
 
         .particle {
             position: absolute;
-            width: 4px;
-            height: 4px;
+            width: 4px; height: 4px;
             background: var(--accent);
             border-radius: 50%;
             opacity: 0.3;
@@ -95,7 +74,6 @@
         .particle:nth-child(6) { left: 60%; animation-delay: 5s; animation-duration: 21s; }
         .particle:nth-child(7) { left: 70%; animation-delay: 2s; animation-duration: 16s; }
         .particle:nth-child(8) { left: 80%; animation-delay: 4s; animation-duration: 23s; }
-        .particle:nth-child(9) { left: 90%; animation-delay: 1s; animation-duration: 18s; }
 
         @keyframes float {
             0%, 100% { transform: translateY(100vh) scale(0); opacity: 0; }
@@ -104,19 +82,11 @@
             90% { opacity: 0.3; }
         }
 
-        /* Container */
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 24px;
-        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
 
-        /* Header */
         header {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
+            top: 0; left: 0; right: 0;
             z-index: 100;
             padding: 20px 0;
             background: rgba(10, 10, 15, 0.8);
@@ -125,953 +95,337 @@
             transition: all 0.3s;
         }
 
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .header-content { display: flex; justify-content: space-between; align-items: center; }
 
         .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--text);
-            text-decoration: none;
+            display: flex; align-items: center; gap: 12px;
+            font-size: 1.5rem; font-weight: 700;
+            color: var(--text); text-decoration: none;
         }
-
-        .logo i {
-            color: var(--accent);
-            animation: pulse 2s infinite;
-        }
+        .logo i { color: var(--accent); animation: pulse 2s infinite; }
 
         @keyframes pulse {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.1); }
         }
 
-        .nav-links {
-            display: flex;
-            gap: 32px;
-            list-style: none;
-        }
-
+        .nav-links { display: flex; gap: 32px; list-style: none; }
         .nav-links a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s;
-            position: relative;
+            color: var(--text-muted); text-decoration: none;
+            font-weight: 500; transition: all 0.3s; position: relative;
         }
-
         .nav-links a::after {
-            content: '';
-            position: absolute;
-            bottom: -4px;
-            left: 0;
-            width: 0;
-            height: 2px;
-            background: var(--accent);
-            transition: width 0.3s;
+            content: ''; position: absolute; bottom: -4px; left: 0;
+            width: 0; height: 2px; background: var(--accent); transition: width 0.3s;
         }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a:hover::after { width: 100%; }
 
-        .nav-links a:hover {
-            color: var(--text);
-        }
+        .header-cta { display: flex; gap: 12px; }
 
-        .nav-links a:hover::after {
-            width: 100%;
-        }
-
-        .header-cta {
-            display: flex;
-            gap: 12px;
-        }
-
-        /* Buttons */
         .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 14px 28px;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: 600;
-            text-decoration: none;
-            cursor: pointer;
-            border: none;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 14px 28px; border-radius: 12px;
+            font-size: 1rem; font-weight: 600;
+            text-decoration: none; cursor: pointer; border: none;
+            transition: all 0.3s ease; position: relative; overflow: hidden;
         }
-
         .btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
+            content: ''; position: absolute; top: 0; left: -100%;
+            width: 100%; height: 100%;
             background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
             transition: left 0.5s;
         }
-
-        .btn:hover::before {
-            left: 100%;
-        }
+        .btn:hover::before { left: 100%; }
 
         .btn-primary {
-            background: var(--gradient-1);
-            color: white;
+            background: var(--gradient-1); color: white;
             box-shadow: 0 4px 24px var(--accent-glow);
         }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 32px var(--accent-glow);
-        }
+        .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 8px 32px var(--accent-glow); }
 
         .btn-secondary {
-            background: transparent;
-            color: var(--text);
+            background: transparent; color: var(--text);
             border: 1px solid var(--border);
         }
+        .btn-secondary:hover { background: var(--bg-card); border-color: var(--accent); transform: translateY(-2px); }
 
-        .btn-secondary:hover {
-            background: var(--bg-card);
-            border-color: var(--accent);
-            transform: translateY(-2px);
-        }
+        .btn-large { padding: 18px 36px; font-size: 1.1rem; }
 
-        .btn-large {
-            padding: 18px 36px;
-            font-size: 1.1rem;
-        }
-
-        /* Hero Section */
-        .hero {
-            padding: 160px 0 100px;
-            text-align: center;
-            position: relative;
-        }
+        /* Hero */
+        .hero { padding: 160px 0 100px; text-align: center; }
 
         .hero-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            display: inline-flex; align-items: center; gap: 8px;
             padding: 10px 20px;
             background: rgba(0, 210, 106, 0.1);
             border: 1px solid rgba(0, 210, 106, 0.3);
             border-radius: 50px;
-            font-size: 0.95rem;
-            color: var(--success);
+            font-size: 0.95rem; color: var(--success);
             margin-bottom: 24px;
             animation: fadeInDown 0.8s ease;
         }
+        .hero-badge i { animation: bounce 1s infinite; }
 
-        .hero-badge i {
-            animation: bounce 1s infinite;
-        }
-
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-3px); }
-        }
-
-        @keyframes fadeInDown {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        @keyframes scaleIn {
-            from { opacity: 0; transform: scale(0.9); }
-            to { opacity: 1; transform: scale(1); }
-        }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
 
         .hero h1 {
             font-size: clamp(2.5rem, 6vw, 4.5rem);
-            font-weight: 800;
-            line-height: 1.1;
-            margin-bottom: 24px;
+            font-weight: 800; line-height: 1.1; margin-bottom: 24px;
             background: linear-gradient(135deg, #ffffff 0%, #a0a0b0 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
             animation: fadeInUp 0.8s ease 0.2s both;
         }
-
-        .hero h1 span {
-            background: var(--gradient-1);
-            -webkit-background-clip: text;
-            background-clip: text;
-        }
+        .hero h1 span { background: var(--gradient-1); -webkit-background-clip: text; background-clip: text; }
 
         .hero-subtitle {
-            font-size: 1.35rem;
-            color: var(--text-muted);
-            max-width: 650px;
-            margin: 0 auto 20px;
+            font-size: 1.35rem; color: var(--text-muted);
+            max-width: 650px; margin: 0 auto 20px;
             animation: fadeInUp 0.8s ease 0.4s both;
         }
 
         .hero-highlight {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
+            display: inline-flex; align-items: center; gap: 10px;
             padding: 12px 24px;
             background: rgba(108, 92, 231, 0.1);
             border: 1px solid rgba(108, 92, 231, 0.3);
-            border-radius: 12px;
-            margin-bottom: 32px;
+            border-radius: 12px; margin-bottom: 32px;
             animation: fadeInUp 0.8s ease 0.5s both;
         }
-
-        .hero-highlight i {
-            color: var(--accent);
-            font-size: 1.2rem;
-        }
-
-        .hero-highlight span {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
+        .hero-highlight i { color: var(--accent); font-size: 1.2rem; }
+        .hero-highlight span { font-size: 1.1rem; font-weight: 600; }
 
         .hero-cta {
-            display: flex;
-            gap: 16px;
-            justify-content: center;
-            flex-wrap: wrap;
+            display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
             margin-bottom: 48px;
             animation: fadeInUp 0.8s ease 0.6s both;
         }
 
         .hero-stats {
-            display: flex;
-            justify-content: center;
-            gap: 60px;
-            padding-top: 48px;
-            border-top: 1px solid var(--border);
+            display: flex; justify-content: center; gap: 60px;
+            padding-top: 48px; border-top: 1px solid var(--border);
             animation: fadeInUp 0.8s ease 0.7s both;
         }
-
-        .hero-stat {
-            text-align: center;
-            transition: transform 0.3s;
-        }
-
-        .hero-stat:hover {
-            transform: scale(1.05);
-        }
-
+        .hero-stat { text-align: center; transition: transform 0.3s; }
+        .hero-stat:hover { transform: scale(1.05); }
         .hero-stat-value {
-            font-size: 2.5rem;
-            font-weight: 800;
+            font-size: 2.5rem; font-weight: 800;
             background: var(--gradient-1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
         }
+        .hero-stat-label { font-size: 0.95rem; color: var(--text-muted); }
 
-        .hero-stat-label {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
-
-        /* Demo Section */
-        .hero-demo {
-            margin-top: 60px;
-            position: relative;
-            animation: scaleIn 1s ease 0.8s both;
-        }
-
+        /* Demo */
+        .hero-demo { margin-top: 60px; animation: scaleIn 1s ease 0.8s both; }
         .demo-wrapper {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 20px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 20px; padding: 20px;
             box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
             transition: transform 0.5s, box-shadow 0.5s;
         }
-
-        .demo-wrapper:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 60px 100px rgba(108, 92, 231, 0.2);
-        }
-
-        .demo-browser {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-        }
-
-        .demo-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-        }
-
+        .demo-wrapper:hover { transform: translateY(-10px); box-shadow: 0 60px 100px rgba(108, 92, 231, 0.2); }
+        .demo-browser { display: flex; gap: 8px; margin-bottom: 16px; }
+        .demo-dot { width: 12px; height: 12px; border-radius: 50%; }
         .demo-dot:nth-child(1) { background: #ff5f57; }
         .demo-dot:nth-child(2) { background: #febc2e; }
         .demo-dot:nth-child(3) { background: #28c840; }
+        .demo-screen { background: #0f172a; border-radius: 12px; padding: 24px; min-height: 400px; }
 
-        .demo-screen {
-            background: #0f172a;
-            border-radius: 12px;
-            padding: 24px;
-            min-height: 400px;
-        }
-
-        /* App Demo Styles */
-        .app-demo {
-            display: grid;
-            grid-template-columns: 200px 1fr;
-            gap: 20px;
-            height: 380px;
-        }
-
-        .demo-sidebar {
-            background: rgba(30, 41, 59, 0.7);
-            border-radius: 12px;
-            padding: 16px;
-        }
-
-        .demo-brand {
-            color: var(--accent);
-            font-weight: 700;
-            font-size: 1rem;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .demo-projects-title {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 10px;
-        }
-
-        .demo-project {
-            padding: 10px 12px;
-            background: rgba(99, 102, 241, 0.1);
-            border-radius: 8px;
-            margin-bottom: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .demo-project.active {
-            background: rgba(99, 102, 241, 0.2);
-            border-left: 3px solid var(--accent);
-        }
-
-        .demo-project i {
-            color: var(--accent);
-            font-size: 0.8rem;
-        }
-
-        .demo-main {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .demo-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-
-        .demo-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-
-        .demo-btn {
-            background: var(--accent);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .demo-columns {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            flex: 1;
-        }
-
-        .demo-column {
-            background: rgba(15, 23, 42, 0.4);
-            border-radius: 12px;
-            padding: 12px;
-        }
-
-        .demo-column-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 12px;
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-
-        .demo-status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-
+        .app-demo { display: grid; grid-template-columns: 200px 1fr; gap: 20px; height: 380px; }
+        .demo-sidebar { background: rgba(30, 41, 59, 0.7); border-radius: 12px; padding: 16px; }
+        .demo-brand { color: var(--accent); font-weight: 700; font-size: 1rem; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        .demo-projects-title { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .demo-project { padding: 10px 12px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; margin-bottom: 6px; font-size: 0.85rem; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 8px; }
+        .demo-project.active { background: rgba(99, 102, 241, 0.2); border-left: 3px solid var(--accent); }
+        .demo-project i { color: var(--accent); font-size: 0.8rem; }
+        .demo-main { display: flex; flex-direction: column; }
+        .demo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .demo-title { font-size: 1.2rem; font-weight: 600; }
+        .demo-btn { background: var(--accent); color: white; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+        .demo-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; }
+        .demo-column { background: rgba(15, 23, 42, 0.4); border-radius: 12px; padding: 12px; }
+        .demo-column-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; font-weight: 500; }
+        .demo-status-dot { width: 8px; height: 8px; border-radius: 50%; }
         .demo-status-dot.orange { background: var(--warning); }
         .demo-status-dot.green { background: var(--success); }
-
-        .demo-task {
-            background: rgba(51, 65, 85, 0.4);
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 8px;
-            border-left: 3px solid;
-            animation: slideIn 0.5s ease;
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-
-        .demo-task:hover {
-            transform: translateX(4px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-10px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
+        .demo-task { background: rgba(51, 65, 85, 0.4); border-radius: 10px; padding: 12px; margin-bottom: 8px; border-left: 3px solid; animation: slideIn 0.5s ease; transition: transform 0.3s; }
+        .demo-task:hover { transform: translateX(4px); }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
         .demo-task.orange { border-color: var(--warning); }
         .demo-task.green { border-color: var(--success); }
+        .demo-task-status { font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+        .demo-task-status.in-work { background: rgba(243, 156, 18, 0.15); color: #f39c12; }
+        .demo-task-status.completed { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
+        .demo-task-status.done { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
+        .demo-task-title { font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; }
+        .demo-task-meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); }
+        .demo-avatar { width: 22px; height: 22px; background: var(--gradient-1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 600; }
 
-        .demo-task-status {
-            font-size: 0.7rem;
-            padding: 3px 8px;
-            border-radius: 4px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            margin-bottom: 6px;
-        }
-
-        .demo-task-status.assigned {
-            background: rgba(230, 126, 34, 0.15);
-            color: #e67e22;
-        }
-
-        .demo-task-status.in-work {
-            background: rgba(243, 156, 18, 0.15);
-            color: #f39c12;
-        }
-
-        .demo-task-status.completed {
-            background: rgba(46, 204, 113, 0.15);
-            color: #2ecc71;
-        }
-
-        .demo-task-status.done {
-            background: rgba(46, 204, 113, 0.15);
-            color: #2ecc71;
-        }
-
-        .demo-task-title {
-            font-size: 0.85rem;
-            font-weight: 500;
-            margin-bottom: 8px;
-        }
-
-        .demo-task-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .demo-task-deadline {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .demo-task-deadline.overdue {
-            color: var(--danger);
-        }
-
-        .demo-avatar {
-            width: 22px;
-            height: 22px;
-            background: var(--gradient-1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.6rem;
-            font-weight: 600;
-        }
-
-        /* Simplicity Section */
-        .simplicity {
-            padding: 120px 0;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .simplicity::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, rgba(108, 92, 231, 0.1) 0%, transparent 70%);
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-        }
-
-        .simplicity-content {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 80px;
-            align-items: center;
-        }
-
-        .simplicity-text h2 {
-            font-size: clamp(2rem, 4vw, 3rem);
-            font-weight: 700;
-            margin-bottom: 24px;
-            line-height: 1.2;
-        }
-
-        .simplicity-text h2 span {
-            background: var(--gradient-1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .simplicity-text p {
-            font-size: 1.15rem;
-            color: var(--text-muted);
-            margin-bottom: 32px;
-            line-height: 1.7;
-        }
-
-        .simplicity-list {
-            list-style: none;
-        }
-
-        .simplicity-list li {
-            display: flex;
-            align-items: flex-start;
-            gap: 16px;
-            padding: 16px 0;
-            border-bottom: 1px solid var(--border);
-            transition: transform 0.3s;
-        }
-
-        .simplicity-list li:hover {
-            transform: translateX(10px);
-        }
-
-        .simplicity-list li:last-child {
-            border: none;
-        }
-
-        .simplicity-list i {
-            width: 32px;
-            height: 32px;
-            background: rgba(0, 210, 106, 0.1);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--success);
-            flex-shrink: 0;
-        }
-
-        .simplicity-list span {
-            font-size: 1.05rem;
-        }
-
-        .comparison-box {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 32px;
-            position: relative;
-        }
-
-        .comparison-item {
-            padding: 20px;
-            border-radius: 16px;
-            margin-bottom: 16px;
-            transition: transform 0.3s;
-        }
-
-        .comparison-item:hover {
-            transform: scale(1.02);
-        }
-
-        .comparison-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .comparison-item.bad {
-            background: rgba(255, 107, 107, 0.1);
-            border: 1px solid rgba(255, 107, 107, 0.2);
-        }
-
-        .comparison-item.good {
-            background: rgba(0, 210, 106, 0.1);
-            border: 1px solid rgba(0, 210, 106, 0.2);
-        }
-
-        .comparison-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-
-        .comparison-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-        }
-
-        .comparison-item.bad .comparison-icon {
-            background: rgba(255, 107, 107, 0.2);
-            color: var(--danger);
-        }
-
-        .comparison-item.good .comparison-icon {
-            background: rgba(0, 210, 106, 0.2);
-            color: var(--success);
-        }
-
-        .comparison-title {
-            font-weight: 600;
-            font-size: 1.1rem;
-        }
-
-        .comparison-item.bad .comparison-title {
-            color: var(--danger);
-        }
-
-        .comparison-item.good .comparison-title {
-            color: var(--success);
-        }
-
-        .comparison-desc {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            padding-left: 52px;
-        }
-
-        /* Section styles */
+        /* Sections */
         .section-label {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            display: inline-flex; align-items: center; gap: 8px;
             padding: 8px 16px;
             background: rgba(108, 92, 231, 0.1);
             border: 1px solid rgba(108, 92, 231, 0.3);
             border-radius: 50px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--accent-light);
+            font-size: 0.85rem; font-weight: 600; color: var(--accent-light);
             margin-bottom: 20px;
         }
+        .section-label.warning { background: rgba(255, 192, 72, 0.1); border-color: rgba(255, 192, 72, 0.3); color: var(--warning); }
+        .section-label.success { background: rgba(0, 210, 106, 0.1); border-color: rgba(0, 210, 106, 0.3); color: var(--success); }
+        .section-title { font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; margin-bottom: 20px; }
+        .section-subtitle { font-size: 1.1rem; color: var(--text-muted); max-width: 600px; }
 
-        .section-title {
-            font-size: clamp(2rem, 4vw, 3rem);
-            font-weight: 700;
-            margin-bottom: 20px;
+        /* Problem */
+        .problem { padding: 100px 0; }
+        .problem-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 48px; }
+        .problem-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 16px; padding: 28px;
+            transition: all 0.3s ease;
         }
+        .problem-card:hover { background: var(--bg-card-hover); border-color: rgba(255, 192, 72, 0.3); transform: translateY(-4px); }
+        .problem-icon {
+            width: 48px; height: 48px;
+            background: rgba(255, 192, 72, 0.1); border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem; color: var(--warning); margin-bottom: 16px;
+        }
+        .problem-card h3 { font-size: 1.2rem; margin-bottom: 8px; }
+        .problem-card p { color: var(--text-muted); font-size: 0.95rem; }
 
-        .section-subtitle {
-            font-size: 1.1rem;
-            color: var(--text-muted);
-            max-width: 600px;
+        /* Solution */
+        .solution { padding: 100px 0; background: linear-gradient(180deg, transparent 0%, rgba(108, 92, 231, 0.03) 50%, transparent 100%); }
+        .solution-content { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; margin-top: 48px; }
+        .solution-features { display: flex; flex-direction: column; gap: 24px; }
+        .solution-feature {
+            display: flex; gap: 16px; padding: 20px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 16px; transition: all 0.3s ease;
         }
+        .solution-feature:hover { border-color: var(--accent); transform: translateX(8px); }
+        .solution-feature-icon {
+            width: 44px; height: 44px;
+            background: var(--gradient-1); border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; color: white; flex-shrink: 0;
+        }
+        .solution-feature h4 { font-size: 1.1rem; margin-bottom: 4px; }
+        .solution-feature p { color: var(--text-muted); font-size: 0.9rem; }
+        .flow-diagram { background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 32px; }
+        .flow-step {
+            display: flex; align-items: center; gap: 16px;
+            padding: 16px; background: var(--bg-dark);
+            border-radius: 12px; margin-bottom: 12px; position: relative;
+        }
+        .flow-step:not(:last-child)::after { content: ''; position: absolute; bottom: -12px; left: 32px; width: 2px; height: 12px; background: var(--accent); }
+        .flow-number { width: 36px; height: 36px; background: var(--gradient-1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; flex-shrink: 0; }
+        .flow-text { flex: 1; }
+        .flow-text strong { display: block; margin-bottom: 2px; }
+        .flow-text span { font-size: 0.85rem; color: var(--text-muted); }
+        .flow-status { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
+        .status-orange { background: rgba(255, 192, 72, 0.15); color: var(--warning); }
+        .status-green { background: rgba(0, 210, 106, 0.15); color: var(--success); }
 
         /* Features */
-        .features {
-            padding: 100px 0;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 24px;
-            margin-top: 48px;
-        }
-
+        .features { padding: 100px 0; }
+        .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
         .feature-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 32px;
-            text-align: center;
-            transition: all 0.4s ease;
-            position: relative;
-            overflow: hidden;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 20px; padding: 32px; text-align: center;
+            transition: all 0.4s ease; position: relative; overflow: hidden;
         }
-
-        .feature-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--gradient-1);
-            opacity: 0;
-            transition: opacity 0.4s;
-        }
-
-        .feature-card:hover {
-            transform: translateY(-10px);
-            border-color: var(--accent);
-            box-shadow: 0 20px 40px rgba(108, 92, 231, 0.2);
-        }
-
-        .feature-card:hover::before {
-            opacity: 0.05;
-        }
-
+        .feature-card:hover { transform: translateY(-10px); border-color: var(--accent); box-shadow: 0 20px 40px rgba(108, 92, 231, 0.2); }
         .feature-icon {
-            width: 64px;
-            height: 64px;
-            background: var(--gradient-1);
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            color: white;
-            margin: 0 auto 20px;
-            position: relative;
-            transition: transform 0.4s;
+            width: 64px; height: 64px;
+            background: var(--gradient-1); border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; color: white;
+            margin: 0 auto 20px; transition: transform 0.4s;
         }
+        .feature-card:hover .feature-icon { transform: scale(1.1) rotate(5deg); }
+        .feature-card h3 { font-size: 1.2rem; margin-bottom: 12px; }
+        .feature-card p { color: var(--text-muted); font-size: 0.95rem; }
 
-        .feature-card:hover .feature-icon {
-            transform: scale(1.1) rotate(5deg);
+        /* Pricing */
+        .pricing { padding: 100px 0; background: linear-gradient(180deg, transparent 0%, rgba(108, 92, 231, 0.05) 100%); }
+        .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
+        .pricing-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 24px; padding: 40px 32px;
+            position: relative; transition: all 0.3s ease;
         }
+        .pricing-card:hover { transform: translateY(-8px); }
+        .pricing-card.popular { border-color: var(--accent); box-shadow: 0 0 60px var(--accent-glow); }
+        .pricing-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--gradient-1); padding: 6px 20px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
+        .pricing-name { font-size: 1.3rem; font-weight: 600; margin-bottom: 8px; }
+        .pricing-desc { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; }
+        .pricing-price { margin-bottom: 24px; }
+        .pricing-amount { font-size: 3rem; font-weight: 800; }
+        .pricing-period { color: var(--text-muted); }
+        .pricing-features { list-style: none; margin-bottom: 32px; }
+        .pricing-features li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .pricing-features li:last-child { border: none; }
+        .pricing-features i { color: var(--success); }
+        .pricing-card .btn { width: 100%; }
 
-        .feature-card h3 {
-            font-size: 1.2rem;
-            margin-bottom: 12px;
-            position: relative;
+        /* FAQ */
+        .faq { padding: 100px 0; }
+        .faq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+        .faq-item {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+            cursor: pointer; transition: all 0.3s ease;
         }
-
-        .feature-card p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            position: relative;
-        }
-
-        /* How it works */
-        .how-it-works {
-            padding: 100px 0;
-            background: linear-gradient(180deg, transparent 0%, rgba(108, 92, 231, 0.03) 50%, transparent 100%);
-        }
-
-        .steps {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 24px;
-            margin-top: 48px;
-            position: relative;
-        }
-
-        .steps::before {
-            content: '';
-            position: absolute;
-            top: 40px;
-            left: 12%;
-            right: 12%;
-            height: 2px;
-            background: linear-gradient(90deg, var(--accent), var(--success));
-            z-index: 0;
-        }
-
-        .step {
-            text-align: center;
-            position: relative;
-            z-index: 1;
-        }
-
-        .step-number {
-            width: 80px;
-            height: 80px;
-            background: var(--bg-card);
-            border: 2px solid var(--accent);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2rem;
-            font-weight: 800;
-            color: var(--accent);
-            margin: 0 auto 20px;
-            position: relative;
-            transition: all 0.4s;
-        }
-
-        .step:hover .step-number {
-            background: var(--gradient-1);
-            color: white;
-            transform: scale(1.1);
-            box-shadow: 0 10px 30px var(--accent-glow);
-        }
-
-        .step h4 {
-            font-size: 1.1rem;
-            margin-bottom: 8px;
-        }
-
-        .step p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
+        .faq-item:hover { border-color: var(--accent); }
+        .faq-question { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 1.05rem; }
+        .faq-question i { color: var(--accent); transition: transform 0.3s; }
+        .faq-item.active .faq-question i { transform: rotate(45deg); }
+        .faq-answer { color: var(--text-muted); font-size: 0.95rem; max-height: 0; overflow: hidden; transition: all 0.3s ease; }
+        .faq-item.active .faq-answer { max-height: 200px; margin-top: 16px; }
 
         /* CTA */
-        .cta {
-            padding: 100px 0;
-            text-align: center;
-        }
-
+        .cta { padding: 100px 0; text-align: center; }
         .cta-box {
-            background: var(--gradient-1);
-            border-radius: 32px;
-            padding: 80px 40px;
-            position: relative;
-            overflow: hidden;
+            background: var(--gradient-1); border-radius: 32px;
+            padding: 80px 40px; position: relative; overflow: hidden;
         }
-
         .cta-box::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -20%;
-            width: 60%;
-            height: 200%;
+            content: ''; position: absolute; top: -50%; right: -20%;
+            width: 60%; height: 200%;
             background: rgba(255, 255, 255, 0.1);
             transform: rotate(30deg);
             animation: shine 3s infinite;
         }
-
-        @keyframes shine {
-            0% { transform: rotate(30deg) translateX(-100%); }
-            100% { transform: rotate(30deg) translateX(100%); }
-        }
-
-        .cta h2 {
-            font-size: clamp(2rem, 4vw, 3rem);
-            font-weight: 700;
-            margin-bottom: 16px;
-            position: relative;
-        }
-
-        .cta p {
-            font-size: 1.2rem;
-            opacity: 0.9;
-            margin-bottom: 32px;
-            position: relative;
-        }
-
-        .cta .btn {
-            background: white;
-            color: var(--accent);
-            position: relative;
-        }
-
-        .cta .btn:hover {
-            background: #f0f0f0;
-            transform: translateY(-3px);
-        }
+        @keyframes shine { 0% { transform: rotate(30deg) translateX(-100%); } 100% { transform: rotate(30deg) translateX(100%); } }
+        .cta h2 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; margin-bottom: 16px; position: relative; }
+        .cta p { font-size: 1.2rem; opacity: 0.9; margin-bottom: 32px; position: relative; }
+        .cta .btn { background: white; color: var(--accent); position: relative; }
+        .cta .btn:hover { background: #f0f0f0; transform: translateY(-3px); }
 
         /* Footer */
-        footer {
-            padding: 60px 0 30px;
-            border-top: 1px solid var(--border);
-        }
-
-        .footer-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 24px;
-        }
-
-        .footer-links {
-            display: flex;
-            gap: 32px;
-            list-style: none;
-        }
-
-        .footer-links a {
-            color: var(--text-muted);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-
-        .footer-links a:hover {
-            color: var(--text);
-        }
-
-        .footer-copy {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
+        footer { padding: 60px 0 30px; border-top: 1px solid var(--border); }
+        .footer-content { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px; }
+        .footer-links { display: flex; gap: 32px; list-style: none; }
+        .footer-links a { color: var(--text-muted); text-decoration: none; transition: color 0.3s; }
+        .footer-links a:hover { color: var(--text); }
+        .footer-copy { color: var(--text-muted); font-size: 0.9rem; }
 
         /* Mobile */
         @media (max-width: 1024px) {
             .nav-links { display: none; }
-            .simplicity-content,
-            .features-grid { grid-template-columns: 1fr; }
-            .steps { grid-template-columns: repeat(2, 1fr); }
-            .steps::before { display: none; }
+            .solution-content, .pricing-grid, .faq-grid { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
             .app-demo { grid-template-columns: 1fr; }
             .demo-sidebar { display: none; }
         }
-
         @media (max-width: 768px) {
             .hero { padding: 120px 0 60px; }
-            .features-grid, .steps { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .pricing-card.popular { order: -1; }
             .hero-stats { flex-direction: column; gap: 24px; }
             .hero-cta { flex-direction: column; align-items: center; }
             .btn { width: 100%; max-width: 300px; }
@@ -1079,51 +433,34 @@
             .demo-columns { grid-template-columns: 1fr; }
         }
 
-        /* Scroll animations */
-        .reveal {
-            opacity: 0;
-            transform: translateY(40px);
-            transition: all 0.8s ease;
-        }
-
-        .reveal.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        .reveal { opacity: 0; transform: translateY(40px); transition: all 0.8s ease; }
+        .reveal.active { opacity: 1; transform: translateY(0); }
     </style>
 </head>
 <body>
     <div class="bg-gradient"></div>
     <div class="particles">
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div>
     </div>
 
-    <!-- Header -->
     <header>
         <div class="container">
             <div class="header-content">
-                <a href="#" class="logo">
-                    <i class="fa-solid fa-layer-group"></i>
-                    ProjectMan
-                </a>
+                <a href="#" class="logo"><i class="fa-solid fa-layer-group"></i> ProjectMan</a>
                 <nav>
                     <ul class="nav-links">
-                        <li><a href="#simplicity">Простота</a></li>
+                        <li><a href="#problem">Проблема</a></li>
+                        <li><a href="#solution">Решение</a></li>
                         <li><a href="#features">Возможности</a></li>
-                        <li><a href="#how">Как работает</a></li>
+                        <li><a href="#pricing">Цены</a></li>
+                        <li><a href="#faq">FAQ</a></li>
                     </ul>
                 </nav>
                 <div class="header-cta">
                     <a href="index.html" class="btn btn-secondary">Войти</a>
-                    <a href="index.html" class="btn btn-primary">Попробовать</a>
+                    <a href="#pricing" class="btn btn-primary">Попробовать</a>
                 </div>
             </div>
         </div>
@@ -1132,134 +469,46 @@
     <!-- Hero -->
     <section class="hero">
         <div class="container">
-            <div class="hero-badge">
-                <i class="fa-solid fa-bolt"></i>
-                Освойте за 1 минуту
-            </div>
-            
-            <h1>
-                Самый простой<br>
-                <span>таск-менеджер</span>
-            </h1>
-            
-            <p class="hero-subtitle">
-                Никаких сложных настроек, запутанных меню и часов обучения. 
-                Только задачи и контроль — всё под рукой.
-            </p>
-
-            <div class="hero-highlight">
-                <i class="fa-solid fa-rocket"></i>
-                <span>В отличие от аналогов, тут всё необходимое и ничего лишнего</span>
-            </div>
-            
+            <div class="hero-badge"><i class="fa-solid fa-bolt"></i> Освойте за 1 минуту</div>
+            <h1>Самый простой<br><span>таск-менеджер</span></h1>
+            <p class="hero-subtitle">Никаких сложных настроек и часов обучения. В отличие от аналогов — только нужное, всё под рукой.</p>
+            <div class="hero-highlight"><i class="fa-solid fa-rocket"></i><span>Открыл — сразу понятно что делать</span></div>
             <div class="hero-cta">
-                <a href="index.html" class="btn btn-primary btn-large">
-                    <i class="fa-solid fa-play"></i>
-                    Начать бесплатно
-                </a>
-                <a href="#how" class="btn btn-secondary btn-large">
-                    <i class="fa-solid fa-circle-info"></i>
-                    Как это работает
-                </a>
+                <a href="index.html" class="btn btn-primary btn-large"><i class="fa-solid fa-play"></i> Начать бесплатно</a>
+                <a href="#solution" class="btn btn-secondary btn-large"><i class="fa-solid fa-circle-info"></i> Как это работает</a>
             </div>
-
             <div class="hero-stats">
-                <div class="hero-stat">
-                    <div class="hero-stat-value">1 мин</div>
-                    <div class="hero-stat-label">время погружения</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="hero-stat-value">0</div>
-                    <div class="hero-stat-label">сложных настроек</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="hero-stat-value">∞</div>
-                    <div class="hero-stat-label">простоты</div>
-                </div>
+                <div class="hero-stat"><div class="hero-stat-value">1 мин</div><div class="hero-stat-label">на освоение</div></div>
+                <div class="hero-stat"><div class="hero-stat-value">0₽</div><div class="hero-stat-label">14 дней бесплатно</div></div>
+                <div class="hero-stat"><div class="hero-stat-value">24/7</div><div class="hero-stat-label">с любого устройства</div></div>
             </div>
 
-            <!-- Real App Demo -->
             <div class="hero-demo">
                 <div class="demo-wrapper">
-                    <div class="demo-browser">
-                        <div class="demo-dot"></div>
-                        <div class="demo-dot"></div>
-                        <div class="demo-dot"></div>
-                    </div>
+                    <div class="demo-browser"><div class="demo-dot"></div><div class="demo-dot"></div><div class="demo-dot"></div></div>
                     <div class="demo-screen">
                         <div class="app-demo">
                             <div class="demo-sidebar">
-                                <div class="demo-brand">
-                                    <i class="fa-solid fa-layer-group"></i> ProjectMan
-                                </div>
+                                <div class="demo-brand"><i class="fa-solid fa-layer-group"></i> ProjectMan</div>
                                 <div class="demo-projects-title">Проекты</div>
-                                <div class="demo-project active">
-                                    <i class="fa-solid fa-folder"></i> Офис на Ленина
-                                </div>
-                                <div class="demo-project">
-                                    <i class="fa-solid fa-folder"></i> Склад
-                                </div>
-                                <div class="demo-project">
-                                    <i class="fa-solid fa-folder"></i> Маркетинг
-                                </div>
+                                <div class="demo-project active"><i class="fa-solid fa-folder"></i> Офис на Ленина</div>
+                                <div class="demo-project"><i class="fa-solid fa-folder"></i> Склад</div>
+                                <div class="demo-project"><i class="fa-solid fa-folder"></i> Маркетинг</div>
                             </div>
                             <div class="demo-main">
                                 <div class="demo-header">
                                     <div class="demo-title">Офис на Ленина</div>
-                                    <div class="demo-btn">
-                                        <i class="fa-solid fa-plus"></i> Новая задача
-                                    </div>
+                                    <div class="demo-btn"><i class="fa-solid fa-plus"></i> Новая задача</div>
                                 </div>
                                 <div class="demo-columns">
                                     <div class="demo-column">
-                                        <div class="demo-column-header">
-                                            <span class="demo-status-dot orange"></span>
-                                            В процессе
-                                            <span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">2</span>
-                                        </div>
-                                        <div class="demo-task orange" style="animation-delay: 0.1s;">
-                                            <div class="demo-task-status in-work">
-                                                <i class="fa-solid fa-person-digging"></i> В работе
-                                            </div>
-                                            <div class="demo-task-title">Заказать воду в офис</div>
-                                            <div class="demo-task-meta">
-                                                <div class="demo-task-deadline">
-                                                    <i class="fa-regular fa-calendar"></i> Сегодня
-                                                </div>
-                                                <div class="demo-avatar">АИ</div>
-                                            </div>
-                                        </div>
-                                        <div class="demo-task green" style="animation-delay: 0.2s;">
-                                            <div class="demo-task-status completed">
-                                                <i class="fa-solid fa-check"></i> Завершена
-                                            </div>
-                                            <div class="demo-task-title">Подготовить отчёт</div>
-                                            <div class="demo-task-meta">
-                                                <div class="demo-task-deadline">
-                                                    <i class="fa-regular fa-calendar"></i> Завтра
-                                                </div>
-                                                <div class="demo-avatar">МП</div>
-                                            </div>
-                                        </div>
+                                        <div class="demo-column-header"><span class="demo-status-dot orange"></span>В процессе<span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">2</span></div>
+                                        <div class="demo-task orange"><div class="demo-task-status in-work"><i class="fa-solid fa-person-digging"></i> В работе</div><div class="demo-task-title">Заказать воду в офис</div><div class="demo-task-meta"><div><i class="fa-regular fa-calendar"></i> Сегодня</div><div class="demo-avatar">АИ</div></div></div>
+                                        <div class="demo-task green"><div class="demo-task-status completed"><i class="fa-solid fa-check"></i> Завершена</div><div class="demo-task-title">Подготовить отчёт</div><div class="demo-task-meta"><div><i class="fa-regular fa-calendar"></i> Завтра</div><div class="demo-avatar">МП</div></div></div>
                                     </div>
                                     <div class="demo-column">
-                                        <div class="demo-column-header">
-                                            <span class="demo-status-dot green"></span>
-                                            Готово
-                                            <span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">3</span>
-                                        </div>
-                                        <div class="demo-task green" style="animation-delay: 0.3s; opacity: 0.7;">
-                                            <div class="demo-task-status done">
-                                                <i class="fa-solid fa-check-double"></i> В архиве
-                                            </div>
-                                            <div class="demo-task-title" style="text-decoration: line-through;">Позвонить поставщику</div>
-                                            <div class="demo-task-meta">
-                                                <div class="demo-task-deadline">
-                                                    <i class="fa-solid fa-check"></i> Выполнено
-                                                </div>
-                                                <div class="demo-avatar">СК</div>
-                                            </div>
-                                        </div>
+                                        <div class="demo-column-header"><span class="demo-status-dot green"></span>Готово<span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">3</span></div>
+                                        <div class="demo-task green" style="opacity:0.7;"><div class="demo-task-status done"><i class="fa-solid fa-check-double"></i> В архиве</div><div class="demo-task-title" style="text-decoration:line-through;">Позвонить поставщику</div><div class="demo-task-meta"><div><i class="fa-solid fa-check"></i> Выполнено</div><div class="demo-avatar">СК</div></div></div>
                                     </div>
                                 </div>
                             </div>
@@ -1270,63 +519,39 @@
         </div>
     </section>
 
-    <!-- Simplicity Section -->
-    <section class="simplicity reveal" id="simplicity">
+    <!-- Problem -->
+    <section class="problem reveal" id="problem">
         <div class="container">
-            <div class="simplicity-content">
-                <div class="simplicity-text">
-                    <span class="section-label">
-                        <i class="fa-solid fa-heart"></i> Простота
-                    </span>
-                    <h2>Почему мы <span>проще</span> всех аналогов?</h2>
-                    <p>
-                        Мы убрали всё лишнее. Никаких Гант-диаграмм, канбан-досок с 10 колонками, 
-                        интеграций с 50 сервисами. Только то, что реально нужно малому бизнесу.
-                    </p>
-                    <ul class="simplicity-list">
-                        <li>
-                            <i class="fa-solid fa-check"></i>
-                            <span>Открыл — сразу понятно что делать</span>
-                        </li>
-                        <li>
-                            <i class="fa-solid fa-check"></i>
-                            <span>Нет кнопок «куда нажать непонятно»</span>
-                        </li>
-                        <li>
-                            <i class="fa-solid fa-check"></i>
-                            <span>Сотрудники освоят без обучения</span>
-                        </li>
-                        <li>
-                            <i class="fa-solid fa-check"></i>
-                            <span>Работает одинаково на ПК и телефоне</span>
-                        </li>
-                    </ul>
+            <span class="section-label warning"><i class="fa-solid fa-triangle-exclamation"></i> Проблема</span>
+            <h2 class="section-title">Знакомо?</h2>
+            <p class="section-subtitle">Эти проблемы стоят вашему бизнесу денег каждый день</p>
+            <div class="problem-grid">
+                <div class="problem-card"><div class="problem-icon"><i class="fa-solid fa-head-side-virus"></i></div><h3>Сотрудник «забыл»</h3><p>Задача была поставлена, но никто не помнит. Клиент недоволен.</p></div>
+                <div class="problem-card"><div class="problem-icon"><i class="fa-solid fa-comments"></i></div><h3>Хаос в чатах</h3><p>Задачи теряются в WhatsApp. Непонятно что сделано, кто ответственный.</p></div>
+                <div class="problem-card"><div class="problem-icon"><i class="fa-solid fa-clipboard-question"></i></div><h3>«Сделал» ≠ сделал</h3><p>Сотрудник говорит что выполнил, но по факту — нет.</p></div>
+                <div class="problem-card"><div class="problem-icon"><i class="fa-solid fa-clock"></i></div><h3>Нет времени контролировать</h3><p>Вы заняты бизнесом, а не слежкой за задачами.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Solution -->
+    <section class="solution reveal" id="solution">
+        <div class="container">
+            <span class="section-label success"><i class="fa-solid fa-check"></i> Решение</span>
+            <h2 class="section-title">Двойной контроль — ничего не потеряется</h2>
+            <p class="section-subtitle">Сотрудник отмечает выполнение — вы подтверждаете</p>
+            <div class="solution-content">
+                <div class="solution-features">
+                    <div class="solution-feature"><div class="solution-feature-icon"><i class="fa-solid fa-plus"></i></div><div><h4>Вы ставите задачу</h4><p>Создаёте задачу, назначаете ответственного. 30 секунд.</p></div></div>
+                    <div class="solution-feature"><div class="solution-feature-icon"><i class="fa-solid fa-bell"></i></div><div><h4>Сотрудник видит</h4><p>Получает задачу, принимает в работу.</p></div></div>
+                    <div class="solution-feature"><div class="solution-feature-icon"><i class="fa-solid fa-check"></i></div><div><h4>Отмечает «Готово»</h4><p>Выполнил — отметил. Но задача ещё не закрыта!</p></div></div>
+                    <div class="solution-feature"><div class="solution-feature-icon"><i class="fa-solid fa-check-double"></i></div><div><h4>Вы подтверждаете</h4><p>Проверили — подтвердили. Только тогда закрыта.</p></div></div>
                 </div>
-                <div class="comparison-box">
-                    <div class="comparison-item bad">
-                        <div class="comparison-header">
-                            <div class="comparison-icon">
-                                <i class="fa-solid fa-xmark"></i>
-                            </div>
-                            <div class="comparison-title">Аналоги</div>
-                        </div>
-                        <div class="comparison-desc">
-                            Часы на настройку, обучающие видео, непонятные термины, 
-                            100 функций из которых нужны 3
-                        </div>
-                    </div>
-                    <div class="comparison-item good">
-                        <div class="comparison-header">
-                            <div class="comparison-icon">
-                                <i class="fa-solid fa-check"></i>
-                            </div>
-                            <div class="comparison-title">ProjectMan</div>
-                        </div>
-                        <div class="comparison-desc">
-                            1 минута на освоение, всё интуитивно, только нужные функции — 
-                            задачи, сроки, ответственные, контроль
-                        </div>
-                    </div>
+                <div class="flow-diagram">
+                    <div class="flow-step"><div class="flow-number">1</div><div class="flow-text"><strong>Задача поставлена</strong><span>Босс создал</span></div><div class="flow-status status-orange">Новая</div></div>
+                    <div class="flow-step"><div class="flow-number">2</div><div class="flow-text"><strong>В работе</strong><span>Сотрудник принял</span></div><div class="flow-status status-orange">В работе</div></div>
+                    <div class="flow-step"><div class="flow-number">3</div><div class="flow-text"><strong>Завершена</strong><span>Сотрудник выполнил</span></div><div class="flow-status status-green">Готово</div></div>
+                    <div class="flow-step"><div class="flow-number">4</div><div class="flow-text"><strong>Подтверждено</strong><span>Босс проверил</span></div><div class="flow-status status-green">✓ Закрыто</div></div>
                 </div>
             </div>
         </div>
@@ -1335,97 +560,90 @@
     <!-- Features -->
     <section class="features reveal" id="features">
         <div class="container">
-            <div style="text-align: center;">
-                <span class="section-label">
-                    <i class="fa-solid fa-star"></i> Возможности
-                </span>
+            <div style="text-align:center;">
+                <span class="section-label"><i class="fa-solid fa-star"></i> Возможности</span>
                 <h2 class="section-title">Всё нужное. Ничего лишнего.</h2>
-                <p class="section-subtitle" style="margin: 0 auto;">
-                    Мы оставили только то, что реально используется каждый день
-                </p>
+                <p class="section-subtitle" style="margin:0 auto;">Убрали сложное, оставили только нужное для малого бизнеса</p>
             </div>
-
             <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">
-                        <i class="fa-solid fa-users"></i>
-                    </div>
-                    <h3>Двойной контроль</h3>
-                    <p>Сотрудник отмечает «выполнено» — вы подтверждаете. Ничего не потеряется.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">
-                        <i class="fa-solid fa-mobile-screen"></i>
-                    </div>
-                    <h3>С любого устройства</h3>
-                    <p>Работайте с телефона так же удобно, как с компьютера. Полная адаптация.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">
-                        <i class="fa-solid fa-folder-tree"></i>
-                    </div>
-                    <h3>Проекты</h3>
-                    <p>Разделяйте задачи по точкам, направлениям, отделам. Всё организовано.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">
-                        <i class="fa-solid fa-paperclip"></i>
-                    </div>
-                    <h3>Файлы к задачам</h3>
-                    <p>Прикрепляйте документы, фото, файлы. До 2 файлов на задачу.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">
-                        <i class="fa-solid fa-clock"></i>
-                    </div>
-                    <h3>Сроки</h3>
-                    <p>Устанавливайте дедлайны. Просроченные задачи сразу видно.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">
-                        <i class="fa-solid fa-list-check"></i>
-                    </div>
-                    <h3>Мои задачи</h3>
-                    <p>Одна кнопка — все ваши задачи из всех проектов. Быстро и удобно.</p>
-                </div>
+                <div class="feature-card"><div class="feature-icon"><i class="fa-solid fa-mobile-screen"></i></div><h3>С телефона</h3><p>Ставьте задачи прямо из кармана. Полноценное приложение в браузере.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fa-solid fa-users"></i></div><h3>Команда</h3><p>Добавляйте сотрудников, назначайте права доступа к проектам.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fa-solid fa-paperclip"></i></div><h3>Файлы</h3><p>Прикрепляйте документы и фото к задачам. До 2 файлов.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fa-solid fa-folder-tree"></i></div><h3>Проекты</h3><p>Разделяйте задачи по точкам, направлениям. Всё организовано.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fa-solid fa-clock"></i></div><h3>Сроки</h3><p>Дедлайны и напоминания. Просроченные задачи видно сразу.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fa-solid fa-list-check"></i></div><h3>Мои задачи</h3><p>Одна кнопка — все ваши задачи из всех проектов.</p></div>
             </div>
         </div>
     </section>
 
-    <!-- How it works -->
-    <section class="how-it-works reveal" id="how">
+    <!-- Pricing -->
+    <section class="pricing reveal" id="pricing">
         <div class="container">
-            <div style="text-align: center;">
-                <span class="section-label">
-                    <i class="fa-solid fa-route"></i> Как работает
-                </span>
-                <h2 class="section-title">4 простых шага</h2>
-                <p class="section-subtitle" style="margin: 0 auto;">
-                    Система двойного контроля — задача не потеряется
-                </p>
+            <div style="text-align:center;">
+                <span class="section-label"><i class="fa-solid fa-tag"></i> Цены</span>
+                <h2 class="section-title">Простые тарифы</h2>
+                <p class="section-subtitle" style="margin:0 auto;">14 дней бесплатно. Никаких скрытых платежей.</p>
             </div>
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="pricing-name">Стартовый</div>
+                    <div class="pricing-desc">Для небольших команд</div>
+                    <div class="pricing-price"><span class="pricing-amount">1 490₽</span><span class="pricing-period">/ месяц</span></div>
+                    <ul class="pricing-features">
+                        <li><i class="fa-solid fa-check"></i> До 5 пользователей</li>
+                        <li><i class="fa-solid fa-check"></i> Безлимит проектов</li>
+                        <li><i class="fa-solid fa-check"></i> Безлимит задач</li>
+                        <li><i class="fa-solid fa-check"></i> Файлы к задачам</li>
+                        <li><i class="fa-solid fa-check"></i> Мобильная версия</li>
+                    </ul>
+                    <a href="index.html" class="btn btn-secondary">Попробовать</a>
+                </div>
+                <div class="pricing-card popular">
+                    <div class="pricing-badge">Популярный</div>
+                    <div class="pricing-name">Бизнес</div>
+                    <div class="pricing-desc">Для растущих компаний</div>
+                    <div class="pricing-price"><span class="pricing-amount">2 990₽</span><span class="pricing-period">/ месяц</span></div>
+                    <ul class="pricing-features">
+                        <li><i class="fa-solid fa-check"></i> До 15 пользователей</li>
+                        <li><i class="fa-solid fa-check"></i> Безлимит проектов</li>
+                        <li><i class="fa-solid fa-check"></i> Безлимит задач</li>
+                        <li><i class="fa-solid fa-check"></i> Файлы к задачам</li>
+                        <li><i class="fa-solid fa-check"></i> Приоритетная поддержка</li>
+                    </ul>
+                    <a href="index.html" class="btn btn-primary">Попробовать бесплатно</a>
+                </div>
+                <div class="pricing-card">
+                    <div class="pricing-name">Корпоративный</div>
+                    <div class="pricing-desc">Для больших команд</div>
+                    <div class="pricing-price"><span class="pricing-amount">5 990₽</span><span class="pricing-period">/ месяц</span></div>
+                    <ul class="pricing-features">
+                        <li><i class="fa-solid fa-check"></i> До 50 пользователей</li>
+                        <li><i class="fa-solid fa-check"></i> Безлимит проектов</li>
+                        <li><i class="fa-solid fa-check"></i> Безлимит задач</li>
+                        <li><i class="fa-solid fa-check"></i> Расширенные файлы</li>
+                        <li><i class="fa-solid fa-check"></i> Личный менеджер</li>
+                    </ul>
+                    <a href="index.html" class="btn btn-secondary">Связаться</a>
+                </div>
+            </div>
+            <p style="text-align:center;margin-top:32px;color:var(--text-muted);">💰 Скидка 20% при оплате за год</p>
+        </div>
+    </section>
 
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <h4>Поставьте задачу</h4>
-                    <p>Создайте задачу, назначьте ответственного и срок. 30 секунд.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <h4>Сотрудник видит</h4>
-                    <p>Получает задачу, принимает в работу. Вы видите статус.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <h4>Отмечает готово</h4>
-                    <p>Сотрудник выполнил — отметил. Но задача ещё не закрыта!</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">4</div>
-                    <h4>Вы подтверждаете</h4>
-                    <p>Проверяете и подтверждаете. Только тогда — архив.</p>
-                </div>
+    <!-- FAQ -->
+    <section class="faq reveal" id="faq">
+        <div class="container">
+            <div style="text-align:center;">
+                <span class="section-label"><i class="fa-solid fa-circle-question"></i> FAQ</span>
+                <h2 class="section-title">Частые вопросы</h2>
+            </div>
+            <div class="faq-grid">
+                <div class="faq-item"><div class="faq-question">Нужно ли устанавливать приложение?<i class="fa-solid fa-plus"></i></div><div class="faq-answer">Нет, ProjectMan работает в браузере. Просто откройте сайт — и работайте. Можно добавить на рабочий стол.</div></div>
+                <div class="faq-item"><div class="faq-question">Как добавить сотрудников?<i class="fa-solid fa-plus"></i></div><div class="faq-answer">Сотрудники регистрируются сами, вы через админ-панель даёте доступ к проектам. Занимает 1 минуту.</div></div>
+                <div class="faq-item"><div class="faq-question">Можно попробовать бесплатно?<i class="fa-solid fa-plus"></i></div><div class="faq-answer">Да! 14 дней бесплатно, без ограничений. Карта не нужна для начала.</div></div>
+                <div class="faq-item"><div class="faq-question">Чем лучше Битрикс24?<i class="fa-solid fa-plus"></i></div><div class="faq-answer">ProjectMan для малого бизнеса: простой, понятный, без 100 функций. Освоить за 1 минуту, не за неделю.</div></div>
+                <div class="faq-item"><div class="faq-question">Где хранятся данные?<i class="fa-solid fa-plus"></i></div><div class="faq-answer">На защищённых серверах с шифрованием. Доступ только у вас и команды.</div></div>
+                <div class="faq-item"><div class="faq-question">Как оплатить?<i class="fa-solid fa-plus"></i></div><div class="faq-answer">Картой через ЮKassa. Автопродление подписки. Скидка 20% за год.</div></div>
             </div>
         </div>
     </section>
@@ -1434,70 +652,53 @@
     <section class="cta reveal">
         <div class="container">
             <div class="cta-box">
-                <h2>Попробуйте прямо сейчас</h2>
-                <p>1 минута на освоение. Бесплатно. Без регистрации карты.</p>
-                <a href="index.html" class="btn btn-large">
-                    <i class="fa-solid fa-rocket"></i>
-                    Начать работу
-                </a>
+                <h2>Готовы навести порядок?</h2>
+                <p>14 дней бесплатно. Без карты. 1 минута на освоение.</p>
+                <a href="index.html" class="btn btn-large"><i class="fa-solid fa-rocket"></i> Начать бесплатно</a>
             </div>
         </div>
     </section>
 
-    <!-- Footer -->
     <footer>
         <div class="container">
             <div class="footer-content">
-                <a href="#" class="logo">
-                    <i class="fa-solid fa-layer-group"></i>
-                    ProjectMan
-                </a>
+                <a href="#" class="logo"><i class="fa-solid fa-layer-group"></i> ProjectMan</a>
                 <ul class="footer-links">
                     <li><a href="#features">Возможности</a></li>
-                    <li><a href="#how">Как работает</a></li>
+                    <li><a href="#pricing">Цены</a></li>
+                    <li><a href="#faq">FAQ</a></li>
                     <li><a href="mailto:support@projectman.ru">Поддержка</a></li>
                 </ul>
-                <div class="footer-copy">
-                    © 2025 ProjectMan
-                </div>
+                <div class="footer-copy">© 2025 ProjectMan</div>
             </div>
         </div>
     </footer>
 
     <script>
-        // Scroll reveal
         function reveal() {
-            const reveals = document.querySelectorAll('.reveal');
-            reveals.forEach(el => {
-                const windowHeight = window.innerHeight;
-                const elementTop = el.getBoundingClientRect().top;
-                const elementVisible = 150;
-                if (elementTop < windowHeight - elementVisible) {
-                    el.classList.add('active');
-                }
+            document.querySelectorAll('.reveal').forEach(el => {
+                if (el.getBoundingClientRect().top < window.innerHeight - 150) el.classList.add('active');
             });
         }
         window.addEventListener('scroll', reveal);
         reveal();
 
-        // Header background
         window.addEventListener('scroll', () => {
-            const header = document.querySelector('header');
-            if (window.scrollY > 50) {
-                header.style.background = 'rgba(10, 10, 15, 0.95)';
-            } else {
-                header.style.background = 'rgba(10, 10, 15, 0.8)';
-            }
+            document.querySelector('header').style.background = window.scrollY > 50 ? 'rgba(10,10,15,0.95)' : 'rgba(10,10,15,0.8)';
         });
 
-        // Smooth scroll
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
+        document.querySelectorAll('.faq-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.faq-item').forEach(o => { if (o !== item) o.classList.remove('active'); });
+                item.classList.toggle('active');
+            });
+        });
+
+        document.querySelectorAll('a[href^="#"]').forEach(a => {
+            a.addEventListener('click', e => {
                 e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
+                const t = document.querySelector(a.getAttribute('href'));
+                if (t) t.scrollIntoView({ behavior: 'smooth' });
             });
         });
     </script>
