@@ -348,22 +348,14 @@
         margin: 0;
     }
 
-    /* Task Modal Form - Scrollable Body */
+    /* Task Modal - Fixed Layout */
     #task-modal .modal-content {
         display: flex;
         flex-direction: column;
     }
 
-    #task-form {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        overflow: visible;
-        min-height: 0;
-    }
-
     /* Scrollable form content wrapper */
-    .task-form-body {
+    #task-modal .task-form-body {
         flex: 1;
         overflow-y: auto;
         padding: 1.5rem;
@@ -372,24 +364,45 @@
         min-height: 0;
     }
 
+    #task-modal #task-form {
+        display: block;
+    }
+
     /* Custom scrollbar for form body */
-    .task-form-body::-webkit-scrollbar {
+    #task-modal .task-form-body::-webkit-scrollbar {
         width: 4px;
     }
 
-    .task-form-body::-webkit-scrollbar-track {
+    #task-modal .task-form-body::-webkit-scrollbar-track {
         background: transparent;
     }
 
-    .task-form-body::-webkit-scrollbar-thumb {
+    #task-modal .task-form-body::-webkit-scrollbar-thumb {
         background: rgba(99, 102, 241, 0.3);
         border-radius: 4px;
     }
 
-    /* For modals without the wrapper, make form groups scrollable */
-    #task-modal .form-group,
-    #task-modal .form-row {
-        /* These stay normal */
+    /* Task Modal Footer - Fixed at Bottom */
+    .task-modal-footer {
+        display: flex;
+        gap: 1rem;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+        background: #1e293b;
+    }
+
+    body.light-mode .task-modal-footer {
+        background: #ffffff;
+    }
+
+    .task-modal-footer button {
+        flex: 1;
+        padding: 1rem;
+        font-size: 1rem;
+        min-height: 52px;
+        justify-content: center;
+        border-radius: 8px;
     }
 
     /* Forms */
@@ -445,20 +458,14 @@
         background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
     }
 
-    /* Modal Footer - Fixed at Bottom via Flexbox */
-    #task-modal .modal-footer {
+    /* Regular modal footer */
+    .modal-footer {
         display: flex;
         gap: 1rem;
-        margin-top: 0;
-        padding: 1rem 1.5rem;
+        margin-top: 2rem;
+        padding-top: 1.5rem;
         border-top: 1px solid var(--border);
         flex-direction: row;
-        flex-shrink: 0;
-        background: #1e293b;
-    }
-
-    body.light-mode #task-modal .modal-footer {
-        background: #ffffff;
     }
 
     .modal-footer button {

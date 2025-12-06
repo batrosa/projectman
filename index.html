@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=5.8" as="style">
-    <link rel="stylesheet" href="style.css?v=5.8">
-    <link rel="stylesheet" href="mobile-additions.css?v=5.1">
+    <link rel="preload" href="style.css?v=5.9" as="style">
+    <link rel="stylesheet" href="style.css?v=5.9">
+    <link rel="stylesheet" href="mobile-additions.css?v=5.2">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -318,8 +318,8 @@
                 <h2>Новая задача</h2>
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <form id="task-form">
-                <div class="task-form-body">
+            <div class="task-form-body">
+                <form id="task-form">
                     <div class="form-group">
                         <label for="t-title">Задача</label>
                         <input type="text" id="t-title" required placeholder="Что нужно сделать?">
@@ -363,12 +363,12 @@
                     <!-- Status hidden, defaults to in-progress -->
                     <input type="hidden" id="t-status" value="in-progress">
                     <input type="hidden" id="t-id">
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="secondary-btn close-modal">Отмена</button>
-                    <button type="submit" class="primary-btn">Сохранить</button>
-                </div>
-            </form>
+                </form>
+            </div>
+            <div class="task-modal-footer">
+                <button type="button" class="secondary-btn close-modal">Отмена</button>
+                <button type="submit" form="task-form" class="primary-btn">Сохранить</button>
+            </div>
         </div>
     </div>
 
