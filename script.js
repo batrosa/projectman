@@ -562,7 +562,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.1'; // FIX DELETE PROJECT
+    const CURRENT_VERSION = '5.2'; // NO AUTO-SELECT PROJECT + MOBILE DELETE FIX
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -652,11 +652,11 @@ function setupRealtimeListeners() {
             state.tasks = [];
         }
 
-        // If no active project and we have projects, select first (optional, maybe only on first load)
-        if (!state.activeProjectId && state.projects.length > 0 && !state.initialLoadDone) {
-            selectProject(state.projects[0].id);
-            state.initialLoadDone = true;
-        }
+        // Don't auto-select first project - let user choose
+        // if (!state.activeProjectId && state.projects.length > 0 && !state.initialLoadDone) {
+        //     selectProject(state.projects[0].id);
+        //     state.initialLoadDone = true;
+        // }
 
         renderProjects();
         renderBoard();
@@ -1861,10 +1861,10 @@ function finishAuth(role) {
     // Setup admin panel if admin
     setupAdminPanel();
 
-    // Always try to select first project if none active
-    if (state.projects.length > 0 && !state.activeProjectId) {
-        selectProject(state.projects[0].id);
-    } 
+    // Don't auto-select first project - let user choose
+    // if (state.projects.length > 0 && !state.activeProjectId) {
+    //     selectProject(state.projects[0].id);
+    // } 
     
     // Force re-render of everything now that we have permissions
     renderProjects();
