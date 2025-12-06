@@ -39,6 +39,56 @@ function playClickSound() {
     // Sound removed per user request
 }
 
+// ========== LOADING SCREEN ==========
+const loadingTips = [
+    "💡 Нажмите на статус задачи, чтобы изменить его",
+    "📱 Используйте боковое меню для переключения проектов",
+    "✅ Исполнитель отмечает задачу, админ подтверждает",
+    "📎 К каждой задаче можно прикрепить до 2 файлов",
+    "🎨 Переключайте тему в боковом меню",
+    "📋 Кнопка «Мои задачи» покажет все ваши задачи",
+    "👥 Админ может управлять доступом к проектам",
+    "🔔 Следите за сроками — просроченные задачи выделяются",
+    "📊 Задачи автоматически сортируются по статусу",
+    "💼 Создавайте проекты для разных направлений работы"
+];
+
+let tipInterval = null;
+
+function startLoadingTips() {
+    const tipElement = document.getElementById('loading-tip');
+    if (!tipElement) return;
+    
+    // Show first tip
+    tipElement.textContent = loadingTips[Math.floor(Math.random() * loadingTips.length)];
+    
+    // Rotate tips every 2.5 seconds
+    tipInterval = setInterval(() => {
+        tipElement.textContent = loadingTips[Math.floor(Math.random() * loadingTips.length)];
+    }, 2500);
+}
+
+function hideLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
+        loadingScreen.classList.add('hidden');
+        
+        // Stop tip rotation
+        if (tipInterval) {
+            clearInterval(tipInterval);
+            tipInterval = null;
+        }
+        
+        // Remove from DOM after animation
+        setTimeout(() => {
+            loadingScreen.style.display = 'none';
+        }, 400);
+    }
+}
+
+// Start tips immediately
+document.addEventListener('DOMContentLoaded', startLoadingTips);
+
 // ========== FILE ATTACHMENT FUNCTIONS ==========
 
 // Get file type category
@@ -1875,13 +1925,8 @@ function finishAuth(role) {
 }
 
 function showAuthScreen() {
-    const loader = document.getElementById('loading-overlay');
-    if (loader) {
-        loader.classList.add('hidden');
-        setTimeout(() => {
-            loader.style.display = 'none';
-        }, 500);
-    }
+    // Hide loading screen first
+    hideLoadingScreen();
 
     elements.authOverlay.style.display = 'flex';
     elements.authScreen.style.display = 'block';
@@ -1901,15 +1946,8 @@ function hideAuthScreen() {
         appContainer.style.display = 'flex';
     }
     
-    // Also hide the initial loading overlay if it's still visible
-    const loader = document.getElementById('loading-overlay');
-    if (loader) {
-        loader.classList.add('hidden');
-        // Remove it from DOM after transition to prevent clicks blocking
-        setTimeout(() => {
-            loader.style.display = 'none';
-        }, 500);
-    }
+    // Hide loading screen
+    hideLoadingScreen();
 }
 
 async function logout() {
