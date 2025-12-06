@@ -96,11 +96,8 @@
 </head>
 
 <body>
-    <!-- Loading Overlay with progress text -->
-    <div id="loading-overlay" class="loading-overlay">
-        <div class="spinner"></div>
-        <div class="loading-text">Загрузка приложения...</div>
-    </div>
+    <!-- Loading Overlay - HIDDEN by default (fast load) -->
+    <div id="loading-overlay" class="loading-overlay hidden" style="display: none;"></div>
 
     <!-- Auth Overlay -->
     <div id="auth-overlay" class="login-overlay">
@@ -585,26 +582,7 @@
         </div>
     </div>
 
-    <!-- Inline Safety Script -->
-    <script>
-        // Failsafe: if the app doesn't load within 8 seconds, show error
-        setTimeout(function () {
-            var loadingOverlay = document.getElementById('loading-overlay');
-            if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
-                // Only show if no other error is displayed
-                if (!loadingOverlay.innerHTML.includes('Ошибка')) {
-                    loadingOverlay.innerHTML = '<div style="color:white; text-align:center; font-family:sans-serif; padding:20px;">' +
-                        '<h3>Долгая загрузка...</h3>' +
-                        '<p>Приложение не отвечает.</p>' +
-                        '<p>1. Проверьте подключение к интернету</p>' +
-                        '<p>2. Отключите блокировщики рекламы</p>' +
-                        '<p>3. Если не грузится - используйте VPN</p>' +
-                        '<button onclick="window.location.reload()" style="padding:10px 20px; margin-top:15px; cursor:pointer; background:white; border:none; border-radius:4px;">Обновить страницу</button>' +
-                        '</div>';
-                }
-            }
-        }, 8000);
-    </script>
+    <!-- Loading overlay removed - fast load -->
 </body>
 
 </html>
