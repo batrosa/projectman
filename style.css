@@ -1864,3 +1864,256 @@ body.light-mode .file-list-item {
 body.light-mode .file-preview-container {
     background: rgba(0, 0, 0, 0.05);
 }
+
+/* ========================================
+   MY TASKS BUTTON & MODAL
+   ======================================== */
+
+/* My Tasks Button */
+.my-tasks-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 8px;
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.my-tasks-btn:hover {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.my-tasks-btn i {
+    font-size: 1.1rem;
+}
+
+/* Tasks Count Badge */
+.my-tasks-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: var(--danger);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.4);
+}
+
+/* My Tasks Modal */
+.my-tasks-modal-content {
+    max-width: 700px;
+    width: 100%;
+}
+
+.my-tasks-content {
+    padding: 1rem 0;
+}
+
+.my-tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Empty State */
+.my-tasks-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+}
+
+.my-tasks-empty i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.my-tasks-empty p {
+    font-size: 1rem;
+}
+
+/* Task Item in My Tasks Modal */
+.my-task-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.my-task-item:hover {
+    border-color: var(--primary);
+    background: var(--card-hover);
+    transform: translateX(4px);
+}
+
+.my-task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.my-task-project {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--primary);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.my-task-project i {
+    font-size: 0.75rem;
+}
+
+.my-task-status {
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.my-task-status.status-assigned {
+    background: rgba(230, 126, 34, 0.15);
+    color: #e67e22;
+}
+
+.my-task-status.status-in-work {
+    background: rgba(243, 156, 18, 0.15);
+    color: #f39c12;
+}
+
+.my-task-status.status-completed {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+}
+
+.my-task-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.my-task-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.my-task-meta i {
+    margin-right: 0.3rem;
+}
+
+.my-task-deadline {
+    display: flex;
+    align-items: center;
+}
+
+.my-task-deadline.overdue {
+    color: var(--danger);
+}
+
+.my-task-deadline.soon {
+    color: var(--warning);
+}
+
+/* Go to project arrow */
+.my-task-go {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-left: auto;
+}
+
+.my-task-item:hover .my-task-go {
+    color: var(--primary);
+}
+
+.my-task-go i {
+    transition: transform 0.2s;
+}
+
+.my-task-item:hover .my-task-go i {
+    transform: translateX(3px);
+}
+
+/* Light Mode */
+body.light-mode .my-tasks-btn {
+    background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+    border-color: rgba(79, 70, 229, 0.25);
+}
+
+body.light-mode .my-tasks-btn:hover {
+    background: linear-gradient(135deg, rgba(79, 70, 229, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+}
+
+body.light-mode .my-task-item {
+    background: #ffffff;
+}
+
+body.light-mode .my-task-item:hover {
+    background: #f8fafc;
+}
+
+/* Task Card Highlight Animation (when navigating from My Tasks) */
+@keyframes highlightTask {
+    0% { 
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+        transform: scale(1);
+    }
+    25% { 
+        box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.4);
+        transform: scale(1.01);
+    }
+    50% { 
+        box-shadow: 0 0 0 12px rgba(99, 102, 241, 0.2);
+        transform: scale(1);
+    }
+    75% { 
+        box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.1);
+    }
+    100% { 
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    }
+}
+
+.task-card.highlight-task {
+    animation: highlightTask 2s ease-out;
+    border-color: var(--primary) !important;
+}

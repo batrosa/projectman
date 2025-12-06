@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=3.5" as="style">
-    <link rel="stylesheet" href="style.css?v=3.5">
-    <link rel="stylesheet" href="mobile-additions.css?v=3.5">
+    <link rel="preload" href="style.css?v=4.9" as="style">
+    <link rel="stylesheet" href="style.css?v=4.9">
+    <link rel="stylesheet" href="mobile-additions.css?v=4.9">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -92,7 +92,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=3.5" defer></script>
+    <script src="script.js?v=4.9" defer></script>
 </head>
 
 <body>
@@ -217,6 +217,10 @@
 
             <div class="sidebar-footer"
                 style="margin-top: auto; padding-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                <button id="my-tasks-btn" class="my-tasks-btn" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-list-check"></i> <span>Мои задачи</span>
+                    <span id="my-tasks-count" class="my-tasks-count" style="display: none;">0</span>
+                </button>
                 <button id="admin-panel-btn" class="secondary-btn"
                     style="width: 100%; justify-content: center; display: none;">
                     <i class="fa-solid fa-user-shield"></i> <span>Админ панель</span>
@@ -471,6 +475,25 @@
             </div>
             <div id="files-modal-list" class="files-modal-list">
                 <!-- Files will be listed here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- My Tasks Modal -->
+    <div id="my-tasks-modal" class="modal">
+        <div class="modal-content my-tasks-modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-list-check"></i> Мои задачи</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="my-tasks-content">
+                <div id="my-tasks-list" class="my-tasks-list">
+                    <!-- User's tasks will be loaded here -->
+                    <div class="my-tasks-empty">
+                        <i class="fa-solid fa-clipboard-check"></i>
+                        <p>У вас нет назначенных задач</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

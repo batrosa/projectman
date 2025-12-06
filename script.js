@@ -490,6 +490,12 @@ const elements = {
     projectsCheckboxes: document.getElementById('projects-checkboxes'),
     saveAccessBtn: document.getElementById('save-access-btn'),
     userAccessInfo: document.getElementById('user-access-info'),
+    
+    // My Tasks
+    myTasksBtn: document.getElementById('my-tasks-btn'),
+    myTasksModal: document.getElementById('my-tasks-modal'),
+    myTasksList: document.getElementById('my-tasks-list'),
+    myTasksCount: document.getElementById('my-tasks-count'),
 };
 
 // Init
@@ -556,7 +562,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '4.8'; // RESTORE VIEW BTN
+    const CURRENT_VERSION = '4.9'; // MY TASKS FEATURE
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -960,6 +966,7 @@ function createTaskCard(task) {
         div.classList.add('in-progress');
     }
     div.dataset.id = task.id;
+    div.dataset.taskId = task.id; // For My Tasks navigation
 
     // --- Status Badge System ---
     const actionsDiv = document.createElement('div');
@@ -1698,6 +1705,14 @@ function setupEventListeners() {
             elements.adminPanelModal.classList.add('active');
         });
     }
+    
+    // My Tasks Button
+    if (elements.myTasksBtn) {
+        elements.myTasksBtn.addEventListener('click', () => {
+            playClickSound();
+            openMyTasksModal();
+        });
+    }
 
     // Admin Panel Tabs
     document.querySelectorAll('.admin-tab').forEach(tab => {
@@ -1842,6 +1857,9 @@ function finishAuth(role) {
     if (state.activeProjectId) {
         renderBoard();
     }
+    
+    // Update My Tasks count
+    updateMyTasksCount();
 }
 
 function showAuthScreen() {
@@ -2208,6 +2226,241 @@ async function saveUserAccess() {
     } catch (error) {
         console.error('Error saving access:', error);
         alert('Ошибка при сохранении: ' + error.message);
+    }
+}
+
+// ========================================
+// MY TASKS FUNCTIONALITY
+// ========================================
+
+// Fetch all tasks where current user is assignee
+async function fetchMyTasks() {
+    if (!state.currentUser) return [];
+    
+    const myTasks = [];
+    const userEmail = state.currentUser.email?.toLowerCase();
+    const userFullName = state.currentUser.fullName || 
+        `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
+    
+    try {
+        // Get all projects user has access to
+        const accessibleProjects = getFilteredProjects();
+        
+        for (const project of accessibleProjects) {
+            const snapshot = await db.collection('tasks')
+                .where('projectId', '==', project.id)
+                .get();
+            
+            snapshot.forEach(doc => {
+                const task = { id: doc.id, ...doc.data() };
+                let isAssignee = false;
+                
+                // Check by email
+                if (userEmail && task.assigneeEmail) {
+                    const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
+                    isAssignee = assigneeEmails.map(e => e.trim()).includes(userEmail);
+                }
+                
+                // Check by name if email didn't match
+                if (!isAssignee && userFullName && task.assignee) {
+                    const assigneeNames = task.assignee.split(',').map(n => n.trim());
+                    isAssignee = assigneeNames.includes(userFullName);
+                }
+                
+                if (isAssignee) {
+                    myTasks.push({
+                        ...task,
+                        projectName: project.name,
+                        projectId: project.id
+                    });
+                }
+            });
+        }
+        
+        // Sort by deadline (closest first) and status
+        myTasks.sort((a, b) => {
+            // Completed tasks at the end
+            if (a.status === 'done' && b.status !== 'done') return 1;
+            if (b.status === 'done' && a.status !== 'done') return -1;
+            
+            // Then by deadline
+            const dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31');
+            const dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31');
+            return dateA - dateB;
+        });
+        
+    } catch (error) {
+        console.error('Error fetching my tasks:', error);
+    }
+    
+    return myTasks;
+}
+
+// Open My Tasks modal and load tasks
+async function openMyTasksModal() {
+    elements.myTasksModal.classList.add('active');
+    elements.myTasksList.innerHTML = `
+        <div class="my-tasks-empty">
+            <div class="spinner"></div>
+            <p>Загрузка задач...</p>
+        </div>
+    `;
+    
+    const tasks = await fetchMyTasks();
+    renderMyTasks(tasks);
+}
+
+// Render tasks in the My Tasks modal
+function renderMyTasks(tasks) {
+    if (tasks.length === 0) {
+        elements.myTasksList.innerHTML = `
+            <div class="my-tasks-empty">
+                <i class="fa-solid fa-clipboard-check"></i>
+                <p>У вас нет назначенных задач</p>
+            </div>
+        `;
+        return;
+    }
+    
+    elements.myTasksList.innerHTML = '';
+    
+    tasks.forEach(task => {
+        const taskEl = document.createElement('div');
+        taskEl.className = 'my-task-item';
+        taskEl.dataset.projectId = task.projectId;
+        taskEl.dataset.taskId = task.id;
+        
+        // Status info
+        const subStatus = task.subStatus || 'assigned';
+        let statusText = '';
+        let statusClass = '';
+        let statusIcon = '';
+        
+        switch (subStatus) {
+            case 'assigned':
+                statusText = 'Поставлена';
+                statusClass = 'status-assigned';
+                statusIcon = 'fa-circle-exclamation';
+                break;
+            case 'in-work':
+                statusText = 'В работе';
+                statusClass = 'status-in-work';
+                statusIcon = 'fa-person-digging';
+                break;
+            case 'completed':
+                statusText = 'Завершена';
+                statusClass = 'status-completed';
+                statusIcon = 'fa-check';
+                break;
+            default:
+                if (task.status === 'done') {
+                    statusText = 'Готово';
+                    statusClass = 'status-completed';
+                    statusIcon = 'fa-check-double';
+                } else {
+                    statusText = 'Поставлена';
+                    statusClass = 'status-assigned';
+                    statusIcon = 'fa-circle-exclamation';
+                }
+        }
+        
+        // Deadline info
+        let deadlineHtml = '';
+        let deadlineClass = '';
+        if (task.deadline) {
+            const deadline = new Date(task.deadline);
+            const now = new Date();
+            const daysLeft = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
+            
+            const formattedDate = deadline.toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'short'
+            });
+            
+            if (daysLeft < 0) {
+                deadlineClass = 'overdue';
+            } else if (daysLeft <= 2) {
+                deadlineClass = 'soon';
+            }
+            
+            deadlineHtml = `
+                <span class="my-task-deadline ${deadlineClass}">
+                    <i class="fa-regular fa-calendar"></i> ${formattedDate}
+                    ${daysLeft < 0 ? ' (просрочено)' : daysLeft === 0 ? ' (сегодня)' : daysLeft === 1 ? ' (завтра)' : ''}
+                </span>
+            `;
+        }
+        
+        taskEl.innerHTML = `
+            <div class="my-task-header">
+                <span class="my-task-project">
+                    <i class="fa-solid fa-folder"></i> ${task.projectName}
+                </span>
+                <span class="my-task-status ${statusClass}">
+                    <i class="fa-solid ${statusIcon}"></i> ${statusText}
+                </span>
+            </div>
+            <div class="my-task-title">${task.title}</div>
+            <div class="my-task-meta">
+                ${deadlineHtml}
+                <span class="my-task-go">
+                    Перейти к задаче <i class="fa-solid fa-arrow-right"></i>
+                </span>
+            </div>
+        `;
+        
+        // Click handler - navigate to project
+        taskEl.addEventListener('click', () => {
+            playClickSound();
+            navigateToTask(task.projectId, task.id);
+        });
+        
+        elements.myTasksList.appendChild(taskEl);
+    });
+}
+
+// Navigate to project containing the task
+function navigateToTask(projectId, taskId) {
+    // Close modal
+    elements.myTasksModal.classList.remove('active');
+    
+    // Close sidebar on mobile
+    if (window.innerWidth <= 768) {
+        elements.sidebar.classList.remove('active');
+        if (elements.sidebarOverlay) {
+            elements.sidebarOverlay.classList.remove('active');
+        }
+    }
+    
+    // Select the project
+    selectProject(projectId);
+    
+    // Highlight the task briefly after loading
+    setTimeout(() => {
+        const taskCard = document.querySelector(`[data-task-id="${taskId}"]`);
+        if (taskCard) {
+            taskCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            taskCard.classList.add('highlight-task');
+            setTimeout(() => {
+                taskCard.classList.remove('highlight-task');
+            }, 2000);
+        }
+    }, 500);
+}
+
+// Update My Tasks count badge
+async function updateMyTasksCount() {
+    if (!state.currentUser || !elements.myTasksCount) return;
+    
+    const tasks = await fetchMyTasks();
+    // Count only active tasks (not completed in archive)
+    const activeTasks = tasks.filter(t => t.status !== 'done');
+    
+    if (activeTasks.length > 0) {
+        elements.myTasksCount.textContent = activeTasks.length;
+        elements.myTasksCount.style.display = 'flex';
+    } else {
+        elements.myTasksCount.style.display = 'none';
     }
 }
 
