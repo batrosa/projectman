@@ -311,30 +311,88 @@
 
     /* Modal */
     .modal {
-        padding: 1rem;
-        align-items: flex-start;
-        padding-top: 2rem;
+        padding: 0;
+        align-items: stretch;
+        padding-top: 0;
     }
 
     .modal-content {
         width: 100%;
         max-width: 100%;
-        padding: 1.5rem;
-        max-height: calc(100vh - 4rem);
-        overflow-y: auto;
+        padding: 0;
+        max-height: 100dvh;
+        max-height: 100vh;
+        height: 100dvh;
+        height: 100vh;
+        overflow: hidden;
         margin: 0;
-        border-radius: 16px;
+        border-radius: 0;
+        display: flex;
+        flex-direction: column;
     }
 
     .modal-header {
-        margin-bottom: 1.5rem;
-        padding-bottom: 1rem;
+        margin-bottom: 0;
+        padding: 1rem 1.5rem;
         border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        background: #1e293b;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    body.light-mode .modal-header {
+        background: #ffffff;
     }
 
     .modal-header h2 {
         font-size: 1.3rem;
         margin: 0;
+    }
+
+    /* Task Modal Form - Scrollable Body */
+    #task-modal .modal-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #task-form {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+        min-height: 0;
+    }
+
+    /* Scrollable form content wrapper */
+    .task-form-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.5rem;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+        min-height: 0;
+    }
+
+    /* Custom scrollbar for form body */
+    .task-form-body::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .task-form-body::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .task-form-body::-webkit-scrollbar-thumb {
+        background: rgba(99, 102, 241, 0.3);
+        border-radius: 4px;
+    }
+
+    /* For modals without the wrapper, make form groups scrollable */
+    #task-modal .form-group,
+    #task-modal .form-row {
+        /* These stay normal */
     }
 
     /* Forms */
@@ -390,13 +448,23 @@
         background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
     }
 
+    /* Modal Footer - Fixed at Bottom */
     .modal-footer {
         display: flex;
         gap: 1rem;
-        margin-top: 2rem;
-        padding-top: 1.5rem;
+        margin-top: 0;
+        padding: 1rem 1.5rem;
         border-top: 1px solid var(--border);
         flex-direction: row;
+        flex-shrink: 0;
+        background: #1e293b;
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+    }
+
+    body.light-mode .modal-footer {
+        background: #ffffff;
     }
 
     .modal-footer button {
@@ -413,6 +481,44 @@
         padding: 0.5rem;
         min-width: 44px;
         min-height: 44px;
+    }
+
+    /* Other modals (not task modal) - keep normal behavior */
+    #project-modal .modal-content,
+    #help-modal .modal-content,
+    #admin-panel-modal .modal-content,
+    #my-tasks-modal .modal-content,
+    #files-list-modal .modal-content {
+        height: auto;
+        max-height: 90dvh;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 0;
+        border-radius: 16px;
+    }
+
+    #project-modal,
+    #help-modal,
+    #admin-panel-modal,
+    #my-tasks-modal,
+    #files-list-modal {
+        padding: 1rem;
+        align-items: flex-start;
+        padding-top: 2rem;
+    }
+
+    #project-modal .modal-header,
+    #help-modal .modal-header,
+    #admin-panel-modal .modal-header,
+    #my-tasks-modal .modal-header,
+    #files-list-modal .modal-header {
+        padding: 1.5rem 1.5rem 1rem;
+    }
+
+    #project-modal form,
+    #help-modal .help-content,
+    #admin-panel-modal .admin-panel-content {
+        padding: 0 1.5rem 1.5rem;
     }
 
     @media (max-height: 700px) {
