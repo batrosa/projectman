@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProjectMan — Таск-менеджер с двойным контролем</title>
+    <title>ProjectMan — Управление задачами</title>
     <meta name="description" content="Освойте за 1 минуту. Никаких сложных настроек — только задачи и контроль. Простой таск-менеджер с двойным контролем.">
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -235,7 +235,7 @@
         .demo-screen { background: #0f172a; border-radius: 12px; padding: 24px; min-height: 400px; }
 
         .app-demo { display: grid; grid-template-columns: 200px 1fr; gap: 20px; height: 380px; }
-        .demo-sidebar { background: rgba(30, 41, 59, 0.7); border-radius: 12px; padding: 16px; }
+        .demo-sidebar { background: rgba(30, 41, 59, 0.7); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; }
         .demo-brand { color: var(--accent); font-weight: 700; font-size: 1rem; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
         .demo-projects-title { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
         .demo-project { padding: 10px 12px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; margin-bottom: 6px; font-size: 0.85rem; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 8px; }
@@ -470,9 +470,9 @@
     <section class="hero">
         <div class="container">
             <div class="hero-badge"><i class="fa-solid fa-bolt"></i> Освойте за 1 минуту</div>
-            <h1>Фокус на результат,<br><span>а не на настройки</span></h1>
-            <p class="hero-subtitle">Таск-менеджер с двойным контролем для малого и среднего бизнеса. Сотрудник отмечает выполнение — руководитель подтверждает результат.</p>
-            <div class="hero-benefits" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:32px;animation:fadeInUp 0.8s ease 0.5s both;"><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(108,92,231,0.1);border:1px solid rgba(108,92,231,0.2);border-radius:12px;"><i class="fa-solid fa-check-double" style="color:var(--accent);"></i><span>Двойной контроль задач</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(0,210,106,0.1);border:1px solid rgba(0,210,106,0.2);border-radius:12px;"><i class="fa-solid fa-bolt" style="color:var(--success);"></i><span>Всё под рукой</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(255,192,72,0.1);border:1px solid rgba(255,192,72,0.2);border-radius:12px;"><i class="fa-solid fa-mobile-screen" style="color:var(--warning);"></i><span>Работает с телефона</span></div></div>
+            <h1>Задачи под контролем.<br><span>Без сложностей.</span></h1>
+            <p class="hero-subtitle">Сотрудник отмечает выполнение — вы подтверждаете. Ничего лишнего, всё под рукой.</p>
+            <div class="hero-benefits" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:32px;animation:fadeInUp 0.8s ease 0.5s both;"><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(108,92,231,0.1);border:1px solid rgba(108,92,231,0.2);border-radius:12px;"><i class="fa-solid fa-check-double" style="color:var(--accent);"></i><span>Двойной контроль</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(0,210,106,0.1);border:1px solid rgba(0,210,106,0.2);border-radius:12px;"><i class="fa-solid fa-bolt" style="color:var(--success);"></i><span>Всё под рукой</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(255,192,72,0.1);border:1px solid rgba(255,192,72,0.2);border-radius:12px;"><i class="fa-solid fa-mobile-screen" style="color:var(--warning);"></i><span>Работает с телефона</span></div></div>
             <div class="hero-cta">
                 <a href="index.html" class="btn btn-primary btn-large"><i class="fa-solid fa-play"></i> Начать бесплатно</a>
                 <a href="#solution" class="btn btn-secondary btn-large"><i class="fa-solid fa-circle-info"></i> Как это работает</a>
