@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProjectMan — Простейший таск-менеджер для бизнеса</title>
+    <title>ProjectMan — Таск-менеджер с двойным контролем</title>
     <meta name="description" content="Освойте за 1 минуту. Никаких сложных настроек — только задачи и контроль. Простой таск-менеджер с двойным контролем.">
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -470,9 +470,9 @@
     <section class="hero">
         <div class="container">
             <div class="hero-badge"><i class="fa-solid fa-bolt"></i> Освойте за 1 минуту</div>
-            <h1>Самый простой<br><span>таск-менеджер</span></h1>
-            <p class="hero-subtitle">Никаких сложных настроек и часов обучения. В отличие от аналогов — только нужное, всё под рукой.</p>
-            <div class="hero-highlight"><i class="fa-solid fa-rocket"></i><span>Открыл — сразу понятно что делать</span></div>
+            <h1>Фокус на результат,<br><span>а не на настройки</span></h1>
+            <p class="hero-subtitle">Таск-менеджер с двойным контролем для малого и среднего бизнеса. Сотрудник отмечает выполнение — руководитель подтверждает результат.</p>
+            <div class="hero-benefits" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:32px;animation:fadeInUp 0.8s ease 0.5s both;"><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(108,92,231,0.1);border:1px solid rgba(108,92,231,0.2);border-radius:12px;"><i class="fa-solid fa-check-double" style="color:var(--accent);"></i><span>Двойной контроль задач</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(0,210,106,0.1);border:1px solid rgba(0,210,106,0.2);border-radius:12px;"><i class="fa-solid fa-bolt" style="color:var(--success);"></i><span>Всё под рукой</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(255,192,72,0.1);border:1px solid rgba(255,192,72,0.2);border-radius:12px;"><i class="fa-solid fa-mobile-screen" style="color:var(--warning);"></i><span>Работает с телефона</span></div></div>
             <div class="hero-cta">
                 <a href="index.html" class="btn btn-primary btn-large"><i class="fa-solid fa-play"></i> Начать бесплатно</a>
                 <a href="#solution" class="btn btn-secondary btn-large"><i class="fa-solid fa-circle-info"></i> Как это работает</a>
@@ -490,20 +490,20 @@
                         <div class="app-demo">
                             <div class="demo-sidebar">
                                 <div class="demo-brand"><i class="fa-solid fa-layer-group"></i> ProjectMan</div>
-                                <div class="demo-projects-title">Проекты</div>
+                                <div class="demo-projects-title" style="display:flex;justify-content:space-between;align-items:center;">ПРОЕКТЫ <i class="fa-solid fa-plus" style="cursor:pointer;padding:4px;"></i></div>
                                 <div class="demo-project active"><i class="fa-solid fa-folder"></i> Офис на Ленина</div>
                                 <div class="demo-project"><i class="fa-solid fa-folder"></i> Склад</div>
-                                <div class="demo-project"><i class="fa-solid fa-folder"></i> Маркетинг</div>
+                                <div class="demo-project"><i class="fa-solid fa-folder"></i> Маркетинг</div><div style="margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:6px;"><div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:rgba(99,102,241,0.15);border-radius:8px;font-size:0.8rem;color:var(--accent);cursor:pointer;"><i class="fa-solid fa-list-check"></i> Мои задачи</div><div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:0.8rem;color:var(--text-muted);cursor:pointer;"><i class="fa-regular fa-sun"></i> Светлая тема</div></div>
                             </div>
                             <div class="demo-main">
                                 <div class="demo-header">
                                     <div class="demo-title">Офис на Ленина</div>
-                                    <div class="demo-btn"><i class="fa-solid fa-plus"></i> Новая задача</div>
+                                    <div style="display:flex;gap:8px;"><div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;cursor:pointer;"><i class="fa-solid fa-circle-question" style="color:var(--text-muted);"></i></div><div class="demo-btn"><i class="fa-solid fa-plus"></i> Новая задача</div></div>
                                 </div>
                                 <div class="demo-columns">
                                     <div class="demo-column">
                                         <div class="demo-column-header"><span class="demo-status-dot orange"></span>В процессе<span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">2</span></div>
-                                        <div class="demo-task orange"><div class="demo-task-status in-work"><i class="fa-solid fa-person-digging"></i> В работе</div><div class="demo-task-title">Заказать воду в офис</div><div class="demo-task-meta"><div><i class="fa-regular fa-calendar"></i> Сегодня</div><div class="demo-avatar">АИ</div></div></div>
+                                        <div class="demo-task orange"><div class="demo-task-status in-work"><i class="fa-solid fa-person-digging"></i> В работе</div><div class="demo-task-title">Заказать воду в офис</div><div class="demo-task-meta"><div><i class="fa-regular fa-calendar"></i> Сегодня</div><div style="display:flex;align-items:center;gap:6px;"><span style="display:flex;align-items:center;gap:3px;font-size:0.7rem;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;"><i class="fa-solid fa-paperclip"></i>1</span><div class="demo-avatar">АИ</div></div></div></div>
                                         <div class="demo-task green"><div class="demo-task-status completed"><i class="fa-solid fa-check"></i> Завершена</div><div class="demo-task-title">Подготовить отчёт</div><div class="demo-task-meta"><div><i class="fa-regular fa-calendar"></i> Завтра</div><div class="demo-avatar">МП</div></div></div>
                                     </div>
                                     <div class="demo-column">
@@ -548,10 +548,10 @@
                     <div class="solution-feature"><div class="solution-feature-icon"><i class="fa-solid fa-check-double"></i></div><div><h4>Вы подтверждаете</h4><p>Проверили — подтвердили. Только тогда закрыта.</p></div></div>
                 </div>
                 <div class="flow-diagram">
-                    <div class="flow-step"><div class="flow-number">1</div><div class="flow-text"><strong>Задача поставлена</strong><span>Босс создал</span></div><div class="flow-status status-orange">Новая</div></div>
+                    <div class="flow-step"><div class="flow-number">1</div><div class="flow-text"><strong>Задача поставлена</strong><span>Руководитель создал</span></div><div class="flow-status status-orange">Новая</div></div>
                     <div class="flow-step"><div class="flow-number">2</div><div class="flow-text"><strong>В работе</strong><span>Сотрудник принял</span></div><div class="flow-status status-orange">В работе</div></div>
                     <div class="flow-step"><div class="flow-number">3</div><div class="flow-text"><strong>Завершена</strong><span>Сотрудник выполнил</span></div><div class="flow-status status-green">Готово</div></div>
-                    <div class="flow-step"><div class="flow-number">4</div><div class="flow-text"><strong>Подтверждено</strong><span>Босс проверил</span></div><div class="flow-status status-green">✓ Закрыто</div></div>
+                    <div class="flow-step"><div class="flow-number">4</div><div class="flow-text"><strong>Подтверждено</strong><span>Руководитель проверил</span></div><div class="flow-status status-green">✓ Закрыто</div></div>
                 </div>
             </div>
         </div>
