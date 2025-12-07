@@ -218,51 +218,205 @@
         }
         .hero-stat-label { font-size: 0.95rem; color: var(--text-muted); }
 
-        /* Demo */
+                /* Demo - точная копия приложения */
         .hero-demo { margin-top: 60px; animation: scaleIn 1s ease 0.8s both; }
         .demo-wrapper {
-            background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: 20px; padding: 20px;
-            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
-            transition: transform 0.5s, box-shadow 0.5s;
+            background: #1e293b; border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 16px; padding: 0;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
         }
-        .demo-wrapper:hover { transform: translateY(-10px); box-shadow: 0 60px 100px rgba(108, 92, 231, 0.2); }
-        .demo-browser { display: flex; gap: 8px; margin-bottom: 16px; }
+        .demo-wrapper:hover { box-shadow: 0 35px 60px rgba(99, 102, 241, 0.15); }
+        .demo-browser { display: flex; gap: 8px; padding: 12px 16px; background: rgba(15, 23, 42, 0.5); border-bottom: 1px solid rgba(148, 163, 184, 0.1); }
         .demo-dot { width: 12px; height: 12px; border-radius: 50%; }
         .demo-dot:nth-child(1) { background: #ff5f57; }
         .demo-dot:nth-child(2) { background: #febc2e; }
         .demo-dot:nth-child(3) { background: #28c840; }
-        .demo-screen { background: #0f172a; border-radius: 12px; padding: 24px; min-height: 400px; }
-
-        .app-demo { display: grid; grid-template-columns: 200px 1fr; gap: 20px; height: 380px; }
-        .demo-sidebar { background: rgba(30, 41, 59, 0.7); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; }
-        .demo-brand { color: var(--accent); font-weight: 700; font-size: 1rem; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
-        .demo-projects-title { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-        .demo-project { padding: 10px 12px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; margin-bottom: 6px; font-size: 0.85rem; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 8px; }
-        .demo-project.active { background: rgba(99, 102, 241, 0.2); border-left: 3px solid var(--accent); }
-        .demo-project i { color: var(--accent); font-size: 0.8rem; }
-        .demo-main { display: flex; flex-direction: column; }
-        .demo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-        .demo-title { font-size: 1.2rem; font-weight: 600; }
-        .demo-btn { background: var(--accent); color: white; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
-        .demo-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; }
-        .demo-column { background: rgba(15, 23, 42, 0.4); border-radius: 12px; padding: 12px; }
-        .demo-column-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; font-weight: 500; }
+        .demo-screen { 
+            background: #0f172a; 
+            background-image: radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%), radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+            min-height: 420px; 
+        }
+        .app-demo { display: flex; height: 420px; }
+        
+        /* Sidebar */
+        .demo-sidebar { 
+            width: 240px; 
+            background: rgba(30, 41, 59, 0.7); 
+            backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1.25rem; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .demo-brand { 
+            font-size: 1.25rem; 
+            font-weight: 700; 
+            color: #6366f1; 
+            margin-bottom: 2rem; 
+            display: flex; 
+            align-items: center; 
+            gap: 0.6rem; 
+        }
+        .demo-projects-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 0.75rem; 
+            color: #94a3b8; 
+            font-size: 0.7rem; 
+            font-weight: 600; 
+            letter-spacing: 0.05em; 
+        }
+        .demo-icon-btn { 
+            background: none; 
+            border: none; 
+            color: #94a3b8; 
+            cursor: pointer; 
+            padding: 4px; 
+            border-radius: 4px; 
+            font-size: 0.8rem;
+        }
+        .demo-icon-btn:hover { color: #6366f1; background: rgba(99, 102, 241, 0.1); }
+        .demo-project-list { list-style: none; flex: 1; }
+        .demo-project-item { 
+            padding: 0.6rem 0.8rem; 
+            margin-bottom: 0.4rem; 
+            border-radius: 10px; 
+            cursor: pointer; 
+            color: #94a3b8; 
+            display: flex; 
+            align-items: center; 
+            gap: 0.6rem; 
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .demo-project-item:hover { background: rgba(255, 255, 255, 0.03); color: #f8fafc; }
+        .demo-project-item.active { background: rgba(99, 102, 241, 0.15); color: #6366f1; font-weight: 500; }
+        .demo-project-item i { font-size: 0.8rem; }
+        
+        .demo-sidebar-footer { margin-top: auto; display: flex; flex-direction: column; gap: 0.4rem; }
+        .demo-my-tasks-btn, .demo-theme-btn, .demo-logout-btn {
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            padding: 0.6rem; border-radius: 8px; border: none; cursor: pointer;
+            font-size: 0.8rem; font-family: inherit; transition: all 0.2s;
+        }
+        .demo-my-tasks-btn { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
+        .demo-badge { background: #6366f1; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; margin-left: auto; }
+        .demo-theme-btn { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+        .demo-logout-btn { background: rgba(239, 68, 68, 0.05); color: #ef4444; }
+        
+        /* Main */
+        .demo-main { flex: 1; padding: 1.25rem; display: flex; flex-direction: column; overflow: hidden; }
+        .demo-topbar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; }
+        .demo-project-info h2 { font-size: 1.1rem; font-weight: 600; color: #f8fafc; margin-bottom: 0.25rem; }
+        .demo-project-info p { font-size: 0.8rem; color: #94a3b8; }
+        .demo-actions { display: flex; gap: 0.5rem; }
+        .demo-help-btn { 
+            background: rgba(148, 163, 184, 0.1); 
+            border: none; 
+            color: #94a3b8; 
+            padding: 0.5rem 0.75rem; 
+            border-radius: 8px; 
+            cursor: pointer; 
+        }
+        .demo-add-task-btn { 
+            background: #6366f1; 
+            border: none; 
+            color: white; 
+            padding: 0.5rem 1rem; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            gap: 0.4rem; 
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        /* Board */
+        .demo-board { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; flex: 1; overflow: hidden; }
+        .demo-column { 
+            background: rgba(30, 41, 59, 0.4); 
+            border-radius: 12px; 
+            padding: 0.75rem; 
+            display: flex;
+            flex-direction: column;
+        }
+        .demo-column-header { 
+            display: flex; 
+            align-items: center; 
+            gap: 0.5rem; 
+            margin-bottom: 0.75rem; 
+            padding: 0 0.25rem;
+        }
         .demo-status-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .demo-status-dot.orange { background: var(--warning); }
-        .demo-status-dot.green { background: var(--success); }
-        .demo-task { background: rgba(51, 65, 85, 0.4); border-radius: 10px; padding: 12px; margin-bottom: 8px; border-left: 3px solid; animation: slideIn 0.5s ease; transition: transform 0.3s; }
-        .demo-task:hover { transform: translateX(4px); }
-        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
-        .demo-task.orange { border-color: var(--warning); }
-        .demo-task.green { border-color: var(--success); }
-        .demo-task-status { font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 6px; }
-        .demo-task-status.in-work { background: rgba(243, 156, 18, 0.15); color: #f39c12; }
-        .demo-task-status.completed { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
-        .demo-task-status.done { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
-        .demo-task-title { font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; }
-        .demo-task-meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); }
-        .demo-avatar { width: 22px; height: 22px; background: var(--gradient-1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 600; }
+        .demo-status-dot.in-progress { background: #f59e0b; }
+        .demo-status-dot.done { background: #10b981; }
+        .demo-column-header h3 { font-size: 0.85rem; font-weight: 600; color: #f8fafc; flex: 1; }
+        .demo-count { 
+            background: rgba(148, 163, 184, 0.15); 
+            padding: 0.15rem 0.5rem; 
+            border-radius: 10px; 
+            font-size: 0.7rem; 
+            color: #94a3b8; 
+        }
+        
+        .demo-task-list { display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; }
+        .demo-task-card { 
+            background: rgba(51, 65, 85, 0.4); 
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 10px; 
+            padding: 0.85rem; 
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .demo-task-card:hover { background: rgba(51, 65, 85, 0.6); transform: translateY(-1px); }
+        .demo-task-card.archived { opacity: 0.6; }
+        
+        .demo-task-status-badge { 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 0.3rem; 
+            padding: 0.2rem 0.5rem; 
+            border-radius: 4px; 
+            font-size: 0.65rem; 
+            font-weight: 500;
+            margin-bottom: 0.5rem; 
+        }
+        .demo-task-status-badge.in-work { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        .demo-task-status-badge.completed { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+        .demo-task-status-badge.done { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+        
+        .demo-task-title { font-size: 0.85rem; font-weight: 500; color: #f8fafc; margin-bottom: 0.6rem; line-height: 1.4; }
+        .demo-task-title.done { text-decoration: line-through; color: #94a3b8; }
+        
+        .demo-task-footer { display: flex; justify-content: space-between; align-items: center; }
+        .demo-task-date { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; color: #94a3b8; }
+        .demo-task-date.today { color: #f59e0b; }
+        .demo-task-right { display: flex; align-items: center; gap: 0.4rem; }
+        .demo-task-files { 
+            display: flex; 
+            align-items: center; 
+            gap: 0.2rem; 
+            font-size: 0.65rem; 
+            color: #94a3b8;
+            background: rgba(148, 163, 184, 0.1);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+        }
+        .demo-avatar { 
+            width: 22px; 
+            height: 22px; 
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); 
+            border-radius: 50%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 0.55rem; 
+            font-weight: 600; 
+            color: white;
+        }
 
         /* Sections */
         .section-label {
@@ -470,7 +624,7 @@
     <section class="hero">
         <div class="container">
             <div class="hero-badge"><i class="fa-solid fa-bolt"></i> Освойте за 1 минуту</div>
-            <h1>Задачи под контролем.<br><span>Без сложностей.</span></h1>
+            <h1>Самый эффективный и простой<br><span>таск-менеджер</span></h1>
             <p class="hero-subtitle">Сотрудник отмечает выполнение — вы подтверждаете. Ничего лишнего, всё под рукой.</p>
             <div class="hero-benefits" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:32px;animation:fadeInUp 0.8s ease 0.5s both;"><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(108,92,231,0.1);border:1px solid rgba(108,92,231,0.2);border-radius:12px;"><i class="fa-solid fa-check-double" style="color:var(--accent);"></i><span>Двойной контроль</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(0,210,106,0.1);border:1px solid rgba(0,210,106,0.2);border-radius:12px;"><i class="fa-solid fa-bolt" style="color:var(--success);"></i><span>Всё под рукой</span></div><div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:rgba(255,192,72,0.1);border:1px solid rgba(255,192,72,0.2);border-radius:12px;"><i class="fa-solid fa-mobile-screen" style="color:var(--warning);"></i><span>Работает с телефона</span></div></div>
             <div class="hero-cta">
@@ -483,35 +637,91 @@
                 <div class="hero-stat"><div class="hero-stat-value">24/7</div><div class="hero-stat-label">с любого устройства</div></div>
             </div>
 
-            <div class="hero-demo">
+                        <div class="hero-demo">
                 <div class="demo-wrapper">
                     <div class="demo-browser"><div class="demo-dot"></div><div class="demo-dot"></div><div class="demo-dot"></div></div>
                     <div class="demo-screen">
                         <div class="app-demo">
                             <div class="demo-sidebar">
                                 <div class="demo-brand"><i class="fa-solid fa-layer-group"></i> ProjectMan</div>
-                                <div class="demo-projects-title" style="display:flex;justify-content:space-between;align-items:center;">ПРОЕКТЫ <i class="fa-solid fa-plus" style="cursor:pointer;padding:4px;"></i></div>
-                                <div class="demo-project active"><i class="fa-solid fa-folder"></i> Офис на Ленина</div>
-                                <div class="demo-project"><i class="fa-solid fa-folder"></i> Склад</div>
-                                <div class="demo-project"><i class="fa-solid fa-folder"></i> Маркетинг</div><div style="margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:6px;"><div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:rgba(99,102,241,0.15);border-radius:8px;font-size:0.8rem;color:var(--accent);cursor:pointer;"><i class="fa-solid fa-list-check"></i> Мои задачи</div><div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:0.8rem;color:var(--text-muted);cursor:pointer;"><i class="fa-regular fa-sun"></i> Светлая тема</div></div>
+                                <div class="demo-projects-header">
+                                    <span>ПРОЕКТЫ</span>
+                                    <button class="demo-icon-btn"><i class="fa-solid fa-plus"></i></button>
+                                </div>
+                                <ul class="demo-project-list">
+                                    <li class="demo-project-item active"><i class="fa-solid fa-folder"></i> Офис на Ленина</li>
+                                    <li class="demo-project-item"><i class="fa-solid fa-folder"></i> Склад «Восток»</li>
+                                    <li class="demo-project-item"><i class="fa-solid fa-folder"></i> Маркетинг</li>
+                                </ul>
+                                <div class="demo-sidebar-footer">
+                                    <button class="demo-my-tasks-btn"><i class="fa-solid fa-list-check"></i> Мои задачи <span class="demo-badge">3</span></button>
+                                    <button class="demo-theme-btn"><i class="fa-regular fa-sun"></i> Светлая тема</button>
+                                    <button class="demo-logout-btn"><i class="fa-solid fa-right-from-bracket"></i> Выйти</button>
+                                </div>
                             </div>
                             <div class="demo-main">
-                                <div class="demo-header">
-                                    <div class="demo-title">Офис на Ленина</div>
-                                    <div style="display:flex;gap:8px;"><div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;cursor:pointer;"><i class="fa-solid fa-circle-question" style="color:var(--text-muted);"></i></div><div class="demo-btn"><i class="fa-solid fa-plus"></i> Новая задача</div></div>
+                                <div class="demo-topbar">
+                                    <div class="demo-project-info">
+                                        <h2>Офис на Ленина</h2>
+                                        <p>Административные задачи офиса</p>
+                                    </div>
+                                    <div class="demo-actions">
+                                        <button class="demo-help-btn"><i class="fa-solid fa-circle-question"></i></button>
+                                        <button class="demo-add-task-btn"><i class="fa-solid fa-plus"></i> Новая задача</button>
+                                    </div>
                                 </div>
-                                <div class="demo-columns">
+                                <div class="demo-board">
                                     <div class="demo-column">
-                                        <div class="demo-column-header"><span class="demo-status-dot orange"></span>В процессе<span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">2</span></div>
-                                        <div class="demo-task orange"><div class="demo-task-status in-work"><i class="fa-solid fa-person-digging"></i> В работе</div><div class="demo-task-title">Заказать воду в офис</div><div class="demo-task-meta"><div><i class="fa-regular fa-calendar"></i> Сегодня</div><div style="display:flex;align-items:center;gap:6px;"><span style="display:flex;align-items:center;gap:3px;font-size:0.7rem;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;"><i class="fa-solid fa-paperclip"></i>1</span><div class="demo-avatar">АИ</div></div></div></div>
-                                        <div class="demo-task green"><div class="demo-task-status completed"><i class="fa-solid fa-check"></i> Завершена</div><div class="demo-task-title">Подготовить отчёт</div><div class="demo-task-meta"><div><i class="fa-regular fa-calendar"></i> Завтра</div><div class="demo-avatar">МП</div></div></div>
+                                        <div class="demo-column-header">
+                                            <span class="demo-status-dot in-progress"></span>
+                                            <h3>В процессе</h3>
+                                            <span class="demo-count">2</span>
+                                        </div>
+                                        <div class="demo-task-list">
+                                            <div class="demo-task-card">
+                                                <div class="demo-task-status-badge in-work"><i class="fa-solid fa-person-digging"></i> В работе</div>
+                                                <div class="demo-task-title">Заказать воду в офис — 10 бутылей</div>
+                                                <div class="demo-task-footer">
+                                                    <span class="demo-task-date today"><i class="fa-regular fa-calendar"></i> Сегодня</span>
+                                                    <div class="demo-task-right">
+                                                        <span class="demo-task-files"><i class="fa-solid fa-paperclip"></i> 1</span>
+                                                        <div class="demo-avatar">АИ</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="demo-task-card">
+                                                <div class="demo-task-status-badge completed"><i class="fa-solid fa-check"></i> Завершена</div>
+                                                <div class="demo-task-title">Подготовить квартальный отчёт</div>
+                                                <div class="demo-task-footer">
+                                                    <span class="demo-task-date"><i class="fa-regular fa-calendar"></i> 10 дек</span>
+                                                    <div class="demo-avatar">МП</div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="demo-column">
-                                        <div class="demo-column-header"><span class="demo-status-dot green"></span>Готово<span style="margin-left:auto;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;font-size:0.75rem;">3</span></div>
-                                        <div class="demo-task green" style="opacity:0.7;"><div class="demo-task-status done"><i class="fa-solid fa-check-double"></i> В архиве</div><div class="demo-task-title" style="text-decoration:line-through;">Позвонить поставщику</div><div class="demo-task-meta"><div><i class="fa-solid fa-check"></i> Выполнено</div><div class="demo-avatar">СК</div></div></div>
+                                        <div class="demo-column-header">
+                                            <span class="demo-status-dot done"></span>
+                                            <h3>Готово</h3>
+                                            <span class="demo-count">1</span>
+                                        </div>
+                                        <div class="demo-task-list">
+                                            <div class="demo-task-card archived">
+                                                <div class="demo-task-status-badge done"><i class="fa-solid fa-check-double"></i> В архиве</div>
+                                                <div class="demo-task-title done">Связаться с поставщиком мебели</div>
+                                                <div class="demo-task-footer">
+                                                    <span class="demo-task-date"><i class="fa-solid fa-check"></i> Выполнено</span>
+                                                    <div class="demo-avatar">СК</div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
                         </div>
                     </div>
                 </div>
