@@ -44,6 +44,7 @@ const SECRET_PIN = '1733';
 let currentPin = '';
 let pinVerified = false;
 let pinInitialized = false; // Prevent double initialization
+let pendingInviteCode = null; // Store invite code from URL
 
 function initPinScreen() {
     const pinScreen = document.getElementById('pin-screen');
@@ -239,6 +240,9 @@ function hideLoadingScreen() {
 
 // Start tips immediately and init PIN screen
 document.addEventListener('DOMContentLoaded', () => {
+    // Capture invite code from URL immediately (before auth flow)
+    captureInviteCodeFromUrl();
+    
     startLoadingTips();
     
     // Disable double-tap zoom on mobile
@@ -804,36 +808,46 @@ function showOrgSelectionScreen() {
         elements.orgWelcomeName.textContent = `Привет, ${name}!`;
     }
     
-    // Check for invite code in URL
-    checkInviteCodeFromUrl();
+    // Apply pending invite code if exists
+    applyPendingInviteCode();
 }
 
-// Check URL for invite code and auto-fill
-function checkInviteCodeFromUrl() {
+// Check URL for invite code on page load (call early!)
+function captureInviteCodeFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
     const inviteCode = urlParams.get('invite');
     
-    if (inviteCode && elements.orgInviteCodeInput) {
-        // Switch to join screen
-        elements.orgChoiceScreen.style.display = 'none';
-        elements.orgJoinScreen.style.display = 'block';
-        
-        // Fill in the code
-        elements.orgInviteCodeInput.value = inviteCode.toUpperCase();
-        
-        // Trigger search for organization
-        setTimeout(async () => {
-            const org = await findOrganizationByCode(inviteCode);
-            if (org) {
-                elements.orgJoinName.textContent = org.name;
-                elements.orgJoinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
-                elements.orgJoinPreview.style.display = 'block';
-            }
-        }, 100);
-        
+    if (inviteCode) {
+        pendingInviteCode = inviteCode.toUpperCase();
         // Clean URL without reload
         window.history.replaceState({}, document.title, window.location.pathname);
     }
+}
+
+// Apply pending invite code to join screen
+function applyPendingInviteCode() {
+    if (!pendingInviteCode || !elements.orgInviteCodeInput) return;
+    
+    // Switch to join screen
+    elements.orgChoiceScreen.style.display = 'none';
+    elements.orgJoinScreen.style.display = 'block';
+    
+    // Fill in the code
+    elements.orgInviteCodeInput.value = pendingInviteCode;
+    
+    // Trigger search for organization
+    const code = pendingInviteCode;
+    setTimeout(async () => {
+        const org = await findOrganizationByCode(code);
+        if (org) {
+            elements.orgJoinName.textContent = org.name;
+            elements.orgJoinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
+            elements.orgJoinPreview.style.display = 'block';
+        }
+    }, 100);
+    
+    // Clear pending code after use
+    pendingInviteCode = null;
 }
 
 // Hide organization selection screen
