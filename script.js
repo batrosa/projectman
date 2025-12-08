@@ -1547,6 +1547,13 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null) {
     // Save timestamps for status changes
     if (newSubStatus === 'in_work') {
         updates.takenToWorkAt = new Date().toISOString();
+        
+        // Clear completion data when returning to work
+        updates.completedAt = null;
+        updates.completionComment = null;
+        updates.completionProof = null;
+        updates.completedBy = null;
+        updates.archivedAt = null;
     }
     
     // Sync legacy fields for backward compatibility if needed, 
