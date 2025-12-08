@@ -780,7 +780,7 @@ async function findOrganizationByCode(code) {
 }
 
 // Show organization selection screen
-function showOrgSelectionScreen() {
+function showOrgSelectionScreen(clearOrg = false) {
     hideLoadingScreen();
     elements.authOverlay.style.display = 'none';
     elements.orgOverlay.style.display = 'flex';
@@ -796,10 +796,10 @@ function showOrgSelectionScreen() {
     if (elements.orgJoinError) elements.orgJoinError.style.display = 'none';
     if (elements.orgJoinPreview) elements.orgJoinPreview.style.display = 'none';
     
-    // Clear current organization from state (user is switching)
-    state.organization = null;
-    if (state.currentUser) {
-        state.currentUser.organizationId = null;
+    // Only clear organization from state if explicitly requested (user switching)
+    if (clearOrg) {
+        state.organization = null;
+        // Don't clear currentUser.organizationId in DB - only in memory
     }
     
     // Show welcome message
@@ -819,35 +819,62 @@ function captureInviteCodeFromUrl() {
     
     if (inviteCode) {
         pendingInviteCode = inviteCode.toUpperCase();
+        // Store in sessionStorage as backup
+        sessionStorage.setItem('pendingInviteCode', pendingInviteCode);
         // Clean URL without reload
         window.history.replaceState({}, document.title, window.location.pathname);
+    } else {
+        // Check sessionStorage for pending code
+        const stored = sessionStorage.getItem('pendingInviteCode');
+        if (stored) {
+            pendingInviteCode = stored;
+        }
     }
 }
 
 // Apply pending invite code to join screen
 function applyPendingInviteCode() {
-    if (!pendingInviteCode || !elements.orgInviteCodeInput) return;
+    // Try to get from sessionStorage if not in memory
+    if (!pendingInviteCode) {
+        pendingInviteCode = sessionStorage.getItem('pendingInviteCode');
+    }
+    
+    if (!pendingInviteCode) return;
+    
+    const codeInput = document.getElementById('org-invite-code');
+    const choiceScreen = document.getElementById('org-choice-screen');
+    const joinScreen = document.getElementById('org-join-screen');
+    const joinName = document.getElementById('org-join-name');
+    const joinMembers = document.getElementById('org-join-members');
+    const joinPreview = document.getElementById('org-join-preview');
+    
+    if (!codeInput || !joinScreen) return;
     
     // Switch to join screen
-    elements.orgChoiceScreen.style.display = 'none';
-    elements.orgJoinScreen.style.display = 'block';
+    if (choiceScreen) choiceScreen.style.display = 'none';
+    joinScreen.style.display = 'block';
     
     // Fill in the code
-    elements.orgInviteCodeInput.value = pendingInviteCode;
+    codeInput.value = pendingInviteCode;
     
     // Trigger search for organization
     const code = pendingInviteCode;
     setTimeout(async () => {
-        const org = await findOrganizationByCode(code);
-        if (org) {
-            elements.orgJoinName.textContent = org.name;
-            elements.orgJoinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
-            elements.orgJoinPreview.style.display = 'block';
+        try {
+            const org = await findOrganizationByCode(code);
+            if (org && joinName && joinMembers && joinPreview) {
+                joinName.textContent = org.name;
+                joinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
+                joinPreview.style.display = 'block';
+            }
+        } catch (e) {
+            console.error('Error finding org:', e);
         }
-    }, 100);
+    }, 300);
     
     // Clear pending code after use
     pendingInviteCode = null;
+    sessionStorage.removeItem('pendingInviteCode');
 }
 
 // Hide organization selection screen
@@ -1062,7 +1089,7 @@ function setupOrgEventListeners() {
         elements.orgSwitchBtn.addEventListener('click', () => {
             elements.orgDropdown.style.display = 'none';
             elements.orgHeader.classList.remove('open');
-            showOrgSelectionScreen();
+            showOrgSelectionScreen(true); // Clear org - user is switching
         });
     }
     
@@ -1080,7 +1107,7 @@ function setupOrgEventListeners() {
                 await leaveOrganization();
                 elements.orgDropdown.style.display = 'none';
                 elements.orgHeader.classList.remove('open');
-                showOrgSelectionScreen();
+                showOrgSelectionScreen(true); // Clear org - user left
             } catch (error) {
                 alert(error.message);
             }
@@ -1558,19 +1585,16 @@ function setupRealtimeListeners() {
     
     const orgId = state.organization?.id;
     
-    // Listen for Projects (filtered by organization)
-    let projectsQuery = db.collection('projects').orderBy('createdAt');
-    if (orgId) {
-        projectsQuery = db.collection('projects')
-            .where('organizationId', '==', orgId)
-            .orderBy('createdAt');
-    }
-    
-    projectsListenerUnsubscribe = projectsQuery.onSnapshot(snapshot => {
+    // Listen for ALL Projects and filter client-side
+    // This ensures legacy projects without organizationId are included
+    projectsListenerUnsubscribe = db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
         const projects = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Include projects without organizationId (legacy) or matching org
+            // Include projects:
+            // 1. Without organizationId (legacy)
+            // 2. Matching current org
+            // 3. All if no org selected
             if (!orgId || !data.organizationId || data.organizationId === orgId) {
                 projects.push({ id: doc.id, ...data });
             }
@@ -1592,18 +1616,6 @@ function setupRealtimeListeners() {
         renderBoard();
     }, error => {
         console.error("Error listening to projects:", error);
-        // Fallback: try without organizationId filter (for migration)
-        if (orgId) {
-            db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
-                const projects = [];
-                snapshot.forEach(doc => {
-                    projects.push({ id: doc.id, ...doc.data() });
-                });
-                state.projects = projects;
-                renderProjects();
-                renderBoard();
-            });
-        }
     });
 
     // Listen for Users (filtered by organization)
@@ -1612,11 +1624,11 @@ function setupRealtimeListeners() {
         const users = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Include users matching current organization
-            if (orgId && data.organizationId === orgId) {
-                users.push({ id: doc.id, ...data });
-            } else if (!orgId) {
-                // No org filter - include all (legacy mode)
+            // Include users:
+            // 1. Without organizationId (legacy)
+            // 2. Matching current org  
+            // 3. All if no org selected
+            if (!orgId || !data.organizationId || data.organizationId === orgId) {
                 users.push({ id: doc.id, ...data });
             }
         });
