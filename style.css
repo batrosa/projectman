@@ -2332,19 +2332,21 @@ body.light-mode .my-task-item:hover {
     font-weight: 600;
     margin-left: 0.5rem;
     gap: 6px;
-    line-height: 1;
-    min-height: 32px;
-    box-sizing: border-box;
-}
-
-.info-task i {
-    font-size: 1rem;
+    width: fit-content;
 }
 
 .info-task:hover {
     color: #ffffff;
     background: var(--primary);
     border-color: var(--primary);
+}
+
+/* Mobile - match status-badge mobile size */
+@media (max-width: 768px) {
+    .info-task {
+        font-size: 0.8rem;
+        padding: 4px 8px;
+    }
 }
 
 /* Light mode adjustments */
