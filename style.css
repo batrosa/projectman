@@ -862,8 +862,8 @@ body.light-mode select option {
 }
 
 /* Read Only Mode */
-body.read-only .primary-btn,
-body.read-only .secondary-btn:not(#help-btn):not(#theme-toggle),
+body.read-only .primary-btn:not(#completion-proof-modal .primary-btn):not(#my-tasks-modal .primary-btn),
+body.read-only .secondary-btn:not(#help-btn):not(#theme-toggle):not(#completion-proof-modal .secondary-btn):not(#my-tasks-modal .secondary-btn),
 /* Allow help button and theme toggle for guests */
 body.read-only .danger-btn:not(#logout-btn),
 /* Exclude logout button */
@@ -871,6 +871,12 @@ body.read-only .icon-btn:not(#mobile-menu-btn),
 /* Exclude mobile menu button so guests can access sidebar */
 body.read-only .delete-task {
     display: none !important;
+}
+
+/* Allow buttons in completion proof modal for all users */
+#completion-proof-modal .primary-btn,
+#completion-proof-modal .secondary-btn {
+    display: flex !important;
 }
 
 body.read-only .task-card {
