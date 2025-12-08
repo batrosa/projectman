@@ -3036,6 +3036,21 @@ body.light-mode .pin-hint {
     width: 100%;
     justify-content: center;
     font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.org-regenerate-btn {
+    width: 100%;
+    justify-content: center;
+    font-size: 0.85rem;
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.org-regenerate-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
 }
 
 .org-dropdown-item {

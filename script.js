@@ -43,6 +43,7 @@ function playClickSound() {
 const SECRET_PIN = '1733';
 let currentPin = '';
 let pinVerified = false;
+let pinInitialized = false; // Prevent double initialization
 
 function initPinScreen() {
     const pinScreen = document.getElementById('pin-screen');
@@ -56,9 +57,14 @@ function initPinScreen() {
     // Show PIN screen
     pinScreen.style.display = 'flex';
     
+    // Prevent adding event listeners multiple times
+    if (pinInitialized) return;
+    pinInitialized = true;
+    
     // Handle number keys
     pinKeys.forEach(key => {
         key.addEventListener('click', () => {
+            if (pinVerified) return; // Don't accept input if already verified
             if (currentPin.length < 4) {
                 currentPin += key.dataset.value;
                 updatePinDots();
@@ -74,6 +80,7 @@ function initPinScreen() {
     // Handle delete key
     if (pinDelete) {
         pinDelete.addEventListener('click', () => {
+            if (pinVerified) return;
             if (currentPin.length > 0) {
                 currentPin = currentPin.slice(0, -1);
                 updatePinDots();
@@ -700,24 +707,41 @@ async function joinOrganization(inviteCode) {
 // Leave organization
 async function leaveOrganization() {
     if (!state.currentUser || !state.organization) return;
-    
+
     // Owner can't leave, must transfer ownership first
     if (state.orgRole === 'owner') {
         throw new Error('Владелец не может покинуть организацию. Сначала передайте права.');
     }
-    
+
     // Update user
     await db.collection('users').doc(state.currentUser.uid).update({
         organizationId: null,
         orgRole: 'employee'
     });
-    
+
     // Decrement members count
     await db.collection('organizations').doc(state.organization.id).update({
         membersCount: firebase.firestore.FieldValue.increment(-1)
     });
-    
+
     state.organization = null;
+}
+
+// Regenerate invite code (invalidates old code)
+async function regenerateInviteCode() {
+    if (!state.organization) throw new Error('Нет организации');
+    if (!['owner', 'admin'].includes(state.orgRole)) {
+        throw new Error('Недостаточно прав');
+    }
+    
+    const newCode = await generateUniqueInviteCode();
+    
+    await db.collection('organizations').doc(state.organization.id).update({
+        inviteCode: newCode
+    });
+    
+    state.organization.inviteCode = newCode;
+    return newCode;
     state.orgRole = 'employee';
 }
 
@@ -745,6 +769,17 @@ function showOrgSelectionScreen() {
     elements.orgCreateScreen.style.display = 'none';
     elements.orgJoinScreen.style.display = 'none';
     document.getElementById('app-container').style.display = 'none';
+    
+    // Reset forms
+    if (elements.orgNameInput) elements.orgNameInput.value = '';
+    if (elements.orgInviteCodeInput) elements.orgInviteCodeInput.value = '';
+    if (elements.orgCreateError) elements.orgCreateError.style.display = 'none';
+    if (elements.orgJoinError) elements.orgJoinError.style.display = 'none';
+    if (elements.orgJoinPreview) elements.orgJoinPreview.style.display = 'none';
+    
+    // Clear current organization from state (user is switching)
+    state.organization = null;
+    state.currentUser.organizationId = null;
     
     // Show welcome message
     if (state.currentUser) {
@@ -974,9 +1009,9 @@ function setupOrgEventListeners() {
                 alert('Владелец не может покинуть организацию. Сначала передайте права другому администратору.');
                 return;
             }
-            
+
             if (!confirm('Вы уверены, что хотите покинуть организацию?')) return;
-            
+
             try {
                 await leaveOrganization();
                 elements.orgDropdown.style.display = 'none';
@@ -984,6 +1019,33 @@ function setupOrgEventListeners() {
                 showOrgSelectionScreen();
             } catch (error) {
                 alert(error.message);
+            }
+        });
+    }
+    
+    // Regenerate invite code
+    if (elements.orgRegenerateCode) {
+        elements.orgRegenerateCode.addEventListener('click', async () => {
+            if (!confirm('Сменить код приглашения?\n\nСтарый код перестанет работать.')) return;
+            
+            const btn = elements.orgRegenerateCode;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Смена...';
+            
+            try {
+                const newCode = await regenerateInviteCode();
+                if (elements.orgInviteCodeDisplay) {
+                    elements.orgInviteCodeDisplay.textContent = newCode;
+                }
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Готово!';
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Сменить код';
+                    btn.disabled = false;
+                }, 2000);
+            } catch (error) {
+                alert(error.message);
+                btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Сменить код';
+                btn.disabled = false;
             }
         });
     }
@@ -1284,6 +1346,7 @@ const elements = {
     orgShareBtn: document.getElementById('org-share-btn'),
     orgSwitchBtn: document.getElementById('org-switch-btn'),
     orgLeaveBtn: document.getElementById('org-leave-btn'),
+    orgRegenerateCode: document.getElementById('org-regenerate-code'),
     brandLogo: document.getElementById('brand-logo'),
 };
 
