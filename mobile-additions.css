@@ -829,3 +829,30 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
         font-size: 0.9rem !important;
     }
 }
+
+/* ========== Task Details Modal Mobile ========== */
+@media (max-width: 768px) {
+    #task-details-modal .modal-content {
+        height: 90vh !important;
+        max-height: 90vh !important;
+        display: flex;
+        flex-direction: column;
+        border-radius: 16px !important;
+    }
+    
+    #task-details-modal .modal-header {
+        flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        background: var(--card-bg);
+        z-index: 10;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    #task-details-content {
+        flex: 1;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        padding: 1rem !important;
+    }
+}
