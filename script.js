@@ -660,6 +660,9 @@ async function findOrganizationByCode(code) {
 
 // Show organization selection screen
 function showOrgSelectionScreen(clearOrg = false) {
+    // Remove read-only class to enable buttons
+    document.body.classList.remove('read-only');
+    
     elements.authOverlay.style.display = 'none';
     elements.orgOverlay.style.display = 'flex';
     elements.orgChoiceScreen.style.display = 'block';

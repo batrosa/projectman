@@ -891,7 +891,13 @@ body.read-only #mobile-menu-btn,
 body.read-only #my-tasks-btn,
 body.read-only #submit-completion-btn,
 body.read-only #cancel-completion-btn,
-body.read-only .close-modal {
+body.read-only .close-modal,
+body.read-only #org-overlay .primary-btn,
+body.read-only #org-overlay .secondary-btn,
+body.read-only #org-overlay .org-choice-btn,
+body.read-only #auth-overlay .primary-btn,
+body.read-only #auth-overlay .secondary-btn,
+body.read-only .back-btn {
     display: flex !important;
 }
 
