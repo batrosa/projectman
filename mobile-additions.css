@@ -767,3 +767,36 @@
         margin-right: 0;
     }
 }
+
+/* Fix: Completion Proof Modal on mobile */
+@media (max-width: 768px) {
+    #completion-proof-modal .modal-content {
+        height: auto !important;
+        max-height: 90vh !important;
+        max-height: 90dvh !important;
+        overflow-y: auto !important;
+        border-radius: 16px !important;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    #completion-proof-modal form {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+    
+    #completion-proof-modal form > div:first-child {
+        flex: 1;
+        overflow-y: auto;
+    }
+    
+    #completion-proof-modal .modal-footer {
+        flex-shrink: 0;
+        padding: 1rem 1.5rem !important;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)) !important;
+        background: var(--card-bg);
+        margin-top: 0 !important;
+    }
+}
