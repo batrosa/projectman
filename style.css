@@ -886,13 +886,27 @@ body.read-only .task-card:hover {
 .help-modal-content {
     max-width: 700px;
     max-height: 85vh;
-    overflow-y: auto;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.help-modal-header {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--card-bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
 .help-content {
     display: flex;
     flex-direction: column;
     gap: 2rem;
+    overflow-y: auto;
+    padding: 1.5rem;
+    flex: 1;
 }
 
 .help-section {
@@ -1170,7 +1184,11 @@ body.read-only .task-card:hover {
     .help-modal-content {
         width: 95%;
         max-height: 85vh;
-        padding: 1.5rem;
+        padding: 0;
+    }
+    
+    .help-modal-content .help-content {
+        padding: 1rem 1.5rem 1.5rem;
     }
 
     /* Full viewport height on mobile - optimized for 9:16 format */

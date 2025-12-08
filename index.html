@@ -483,68 +483,130 @@
     <!-- Help Modal -->
     <div id="help-modal" class="modal">
         <div class="modal-content help-modal-content">
-            <div class="modal-header">
+            <div class="modal-header help-modal-header">
                 <h2><i class="fa-solid fa-circle-question"></i> Помощь</h2>
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="help-content">
                 <div class="help-section">
-                    <h3><i class="fa-solid fa-rocket"></i> О системе</h3>
-                    <p>ProjectMan - система управления задачами с двойным контролем.</p>
+                    <h3><i class="fa-solid fa-rocket"></i> О приложении</h3>
+                    <p>ProjectMan — система управления задачами с двойным контролем выполнения. Приложение позволяет создавать проекты, назначать задачи сотрудникам и отслеживать их выполнение в реальном времени.</p>
+                </div>
+
+                <div class="help-section">
+                    <h3><i class="fa-solid fa-lock"></i> Вход в приложение</h3>
+                    <p>Для доступа к приложению требуется:</p>
                     <ul>
-                        <li><strong>Проекты:</strong> Выбирайте проекты в меню слева (на ПК) или через кнопку <i class="fa-solid fa-bars"></i> (на мобильном).</li>
-                        <li><strong>Задачи:</strong> Админ создает задачи и назначает исполнителей.</li>
+                        <li><strong>PIN-код:</strong> 4-значный код для входа в приложение.</li>
+                        <li><strong>Авторизация:</strong> Вход через email и пароль или регистрация нового аккаунта.</li>
                     </ul>
                 </div>
 
                 <div class="help-section">
-                    <h3><i class="fa-solid fa-users"></i> Роли</h3>
+                    <h3><i class="fa-solid fa-users"></i> Роли пользователей</h3>
                     <p><strong>Администратор:</strong></p>
                     <ul>
-                        <li>Полный доступ (создание, удаление, редактирование).</li>
-                        <li>Управление пользователями.</li>
-                        <li>Финальное подтверждение задач (Левая галочка).</li>
+                        <li>Создание и удаление проектов</li>
+                        <li>Создание, редактирование и удаление задач</li>
+                        <li>Назначение ответственных сотрудников</li>
+                        <li>Управление пользователями (панель администратора)</li>
+                        <li>Финальное подтверждение выполненных задач</li>
                     </ul>
-                    <p><strong>Исполнитель (Сотрудник):</strong></p>
+                    <p><strong>Сотрудник:</strong></p>
                     <ul>
-                        <li>Видит доступные проекты.</li>
-                        <li>Отмечает выполнение своих задач (Правая галочка).</li>
+                        <li>Просмотр доступных проектов и задач</li>
+                        <li>Принятие задач в работу</li>
+                        <li>Отметка о выполнении с прикреплением подтверждения</li>
                     </ul>
                 </div>
 
                 <div class="help-section">
-                    <h3><i class="fa-solid fa-list-check"></i> Статусы задач</h3>
-                    <p>Теперь вместо галочек используются статусы:</p>
-                    <ul style="list-style: none; padding-left: 0;">
-                        <li style="margin-bottom: 0.5rem;">
-                            <span style="color: #e67e22; font-weight: bold;"><i class="fa-solid fa-circle-exclamation"></i> Задача поставлена:</span>
-                            Новая задача от Админа.
-                        </li>
-                        <li style="margin-bottom: 0.5rem;">
-                            <span style="color: #f39c12; font-weight: bold;"><i class="fa-solid fa-person-digging"></i> В работе:</span>
-                            Сотрудник принял задачу.
-                        </li>
-                        <li style="margin-bottom: 0.5rem;">
-                            <span style="color: #2ecc71; font-weight: bold;"><i class="fa-solid fa-check"></i> Задача завершена:</span>
-                            Сотрудник выполнил работу.
-                        </li>
-                        <li>
-                            <span style="color: #2ecc71; font-weight: bold;"><i class="fa-solid fa-check-double"></i> Готово (Архив):</span>
-                            Админ подтвердил выполнение.
-                        </li>
+                    <h3><i class="fa-solid fa-folder-open"></i> Проекты</h3>
+                    <p>Проекты — это категории для группировки задач. Выбирайте проект в боковом меню слева (на ПК) или через кнопку <i class="fa-solid fa-bars"></i> (на мобильном).</p>
+                    <ul>
+                        <li>Администратор может создавать неограниченное количество проектов</li>
+                        <li>Доступ сотрудников к проектам настраивается в панели администратора</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3><i class="fa-solid fa-clipboard-list"></i> Создание задачи</h3>
+                    <p>При создании задачи указываются:</p>
+                    <ul>
+                        <li><strong>Название:</strong> Краткое описание задачи</li>
+                        <li><strong>Описание:</strong> Подробности и комментарии</li>
+                        <li><strong>Ответственные:</strong> Поиск сотрудников по имени или фамилии</li>
+                        <li><strong>Срок:</strong> Дата выполнения задачи</li>
+                        <li><strong>Файлы:</strong> До 2 файлов (макс. 10 МБ каждый)</li>
                     </ul>
                     <div class="help-note">
-                        <i class="fa-solid fa-info-circle"></i> Нажмите на статус задачи, чтобы изменить его (например, "Принять в работу").
+                        <i class="fa-solid fa-lightbulb"></i> При назначении задачи сотруднику автоматически отправляется email-уведомление.
                     </div>
                 </div>
 
                 <div class="help-section">
-                    <h3><i class="fa-solid fa-mobile-screen"></i> Мобильная версия</h3>
-                    <p>Приложение адаптировано для смартфонов:</p>
+                    <h3><i class="fa-solid fa-list-check"></i> Статусы задач</h3>
+                    <ul style="list-style: none; padding-left: 0;">
+                        <li style="margin-bottom: 0.75rem;">
+                            <span style="color: #e67e22; font-weight: 600;"><i class="fa-solid fa-circle-exclamation"></i> Задача поставлена</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Новая задача, ожидает принятия сотрудником</span>
+                        </li>
+                        <li style="margin-bottom: 0.75rem;">
+                            <span style="color: #f39c12; font-weight: 600;"><i class="fa-solid fa-person-digging"></i> В работе</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Сотрудник принял задачу и работает над ней</span>
+                        </li>
+                        <li style="margin-bottom: 0.75rem;">
+                            <span style="color: #2ecc71; font-weight: 600;"><i class="fa-solid fa-check"></i> Задача завершена</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Сотрудник выполнил работу, ожидает проверки</span>
+                        </li>
+                        <li>
+                            <span style="color: #2ecc71; font-weight: 600;"><i class="fa-solid fa-check-double"></i> Готово (Архив)</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Администратор подтвердил выполнение</span>
+                        </li>
+                    </ul>
+                    <div class="help-note">
+                        <i class="fa-solid fa-hand-pointer"></i> Нажмите на статус задачи, чтобы изменить его.
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3><i class="fa-solid fa-clipboard-check"></i> Подтверждение выполнения</h3>
+                    <p>При завершении задачи сотрудник должен:</p>
                     <ul>
-                        <li><strong>Меню:</strong> Нажмите кнопку <i class="fa-solid fa-bars"></i> в левом верхнем углу для выбора проекта.</li>
-                        <li><strong>Навигация:</strong> Листайте список задач вверх-вниз.</li>
-                        <li><strong>Удобство:</strong> Кнопки выполнения увеличены для удобного нажатия пальцем.</li>
+                        <li>Написать комментарий о выполненной работе</li>
+                        <li>Прикрепить файл-подтверждение (фото, документ)</li>
+                    </ul>
+                    <p>После этого администратор проверяет работу и переводит задачу в архив.</p>
+                </div>
+
+                <div class="help-section">
+                    <h3><i class="fa-solid fa-tasks"></i> Мои задачи</h3>
+                    <p>Кнопка «Мои задачи» в боковом меню показывает все задачи, где вы назначены ответственным. Красный бейдж отображает количество активных задач и обновляется в реальном времени.</p>
+                </div>
+
+                <div class="help-section">
+                    <h3><i class="fa-solid fa-info-circle"></i> Информация о задаче</h3>
+                    <p>Нажмите кнопку <i class="fa-solid fa-info"></i> на карточке задачи, чтобы увидеть:</p>
+                    <ul>
+                        <li>Полное описание задачи</li>
+                        <li>Список ответственных</li>
+                        <li>Историю изменений статуса</li>
+                        <li>Комментарий и файл подтверждения (если есть)</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3><i class="fa-solid fa-palette"></i> Оформление</h3>
+                    <p>Приложение поддерживает светлую и тёмную тему. Переключение — кнопка <i class="fa-solid fa-moon"></i> / <i class="fa-solid fa-sun"></i> в боковом меню.</p>
+                </div>
+
+                <div class="help-section">
+                    <h3><i class="fa-solid fa-mobile-screen"></i> Мобильная версия</h3>
+                    <p>Приложение полностью адаптировано для смартфонов:</p>
+                    <ul>
+                        <li><strong>Меню:</strong> Кнопка <i class="fa-solid fa-bars"></i> открывает боковое меню</li>
+                        <li><strong>Задачи:</strong> Вертикальный скролл списка задач</li>
+                        <li><strong>Управление:</strong> Увеличенные кнопки для удобного нажатия</li>
                     </ul>
                 </div>
             </div>
