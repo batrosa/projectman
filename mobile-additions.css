@@ -531,84 +531,14 @@
         border-radius: 8px;
     }
 
-    /* ========== Task Modal Form - Mobile ========== */
+    /* ========== Task Modal Form - Use PC styles ========== */
+    /* Only override font-size to prevent iOS zoom */
     
-    /* General form styles */
-    .form-group {
-        margin-bottom: 1rem;
-    }
-    
-    label {
-        font-size: 0.95rem;
-        margin-bottom: 0.5rem;
-        display: block;
-    }
-
-    input,
-    textarea,
-    select {
-        width: 100%;
-        padding: 1rem;
-        font-size: 16px !important;
-        min-height: 50px;
-        border-radius: 8px;
-        border: 1px solid var(--border);
-        background: var(--card-bg);
-        color: var(--text-primary);
-    }
-
-    textarea {
-        min-height: 100px;
-        resize: vertical;
-    }
-    
-    /* ===== TASK MODAL FORM OVERRIDES ===== */
-    #task-modal .task-form-body .form-group {
-        margin-bottom: 1.25rem !important;
-        padding-bottom: 0 !important;
-        border-bottom: none !important;
-    }
-
-    #task-modal .task-form-body .form-group:last-of-type {
-        margin-bottom: 0 !important;
-    }
-
-    #task-modal .task-form-body label {
-        font-size: 0.9rem !important;
-        margin-bottom: 0.5rem !important;
-        font-weight: 500;
-        color: var(--text-secondary);
-    }
-
-    #task-modal .task-form-body .form-row {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 1.25rem !important;
-        margin-bottom: 1.5rem !important;
-        padding-bottom: 0 !important;
-        border-bottom: none !important;
-    }
-    
-    #task-modal .task-form-body .form-row .form-group {
-        margin-bottom: 0 !important;
-    }
-
-    #task-modal .task-form-body input,
-    #task-modal .task-form-body textarea,
-    #task-modal .task-form-body select {
-        padding: 0.875rem 1rem !important;
-        min-height: 50px !important;
-        border-radius: 10px !important;
-    }
-
-    #task-modal .task-form-body textarea {
-        min-height: 90px !important;
-    }
-    
-    #task-modal .task-form-body .assignee-search-input {
-        padding: 0.875rem 1rem !important;
-        min-height: 50px !important;
-        border-radius: 10px !important;
+    #task-modal input,
+    #task-modal textarea,
+    #task-modal select,
+    #task-modal .assignee-search-input {
+        font-size: 16px !important; /* Prevents iOS zoom */
     }
 
     select {
