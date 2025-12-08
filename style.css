@@ -2322,17 +2322,20 @@ body.light-mode .my-task-item:hover {
     border: 1px solid rgba(99, 102, 241, 0.3);
     color: #6366f1;
     cursor: pointer;
-    padding: 6px 12px;
+    padding: 0 12px;
     border-radius: 6px;
     transition: all 0.2s;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.85rem;
     font-weight: 600;
     margin-left: 0.5rem;
-    gap: 6px;
-    width: fit-content;
+    height: 30px;
+    min-width: 30px;
+}
+
+.info-task i {
+    font-size: 0.95rem;
 }
 
 .info-task:hover {
@@ -2344,8 +2347,13 @@ body.light-mode .my-task-item:hover {
 /* Mobile - match status-badge mobile size */
 @media (max-width: 768px) {
     .info-task {
-        font-size: 0.8rem;
-        padding: 4px 8px;
+        height: 26px;
+        min-width: 26px;
+        padding: 0 8px;
+    }
+    
+    .info-task i {
+        font-size: 0.85rem;
     }
 }
 
