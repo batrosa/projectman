@@ -750,3 +750,20 @@
         max-height: calc(100vh - 2rem);
     }
 }
+
+/* Fix: My Tasks cards centering on mobile */
+@media (max-width: 768px) {
+    .my-tasks-content {
+        padding: 1rem;
+    }
+    
+    .my-tasks-list {
+        padding-left: 0;
+        padding-right: 0;
+    }
+    
+    .my-task-item {
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
