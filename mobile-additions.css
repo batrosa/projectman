@@ -811,15 +811,16 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
 /* ========== Info Task Button Mobile - Match status-badge ========== */
 @media (max-width: 768px) {
     .info-task {
-        padding: 6px 12px !important;
+        padding: 8px 14px !important;
         border-radius: 6px !important;
-        font-size: 0.85rem !important;
+        font-size: 0.95rem !important;
         font-weight: 600 !important;
         display: inline-flex !important;
         align-items: center !important;
+        justify-content: center !important;
         gap: 6px !important;
         user-select: none !important;
-        width: fit-content !important;
+        min-height: 36px !important;
         background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%) !important;
         border: 1px solid rgba(99, 102, 241, 0.3) !important;
         color: #818cf8 !important;
