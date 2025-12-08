@@ -1427,21 +1427,19 @@ body.light-mode .assignee-option:hover {
 
 /* Assignee Picker with Search */
 .assignee-picker {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: rgba(15, 23, 42, 0.5);
-    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
 .selected-assignees {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    margin-bottom: 0.5rem;
 }
 
 .selected-assignees:empty {
-    margin-bottom: 0;
+    display: none;
 }
 
 .assignee-chip {
@@ -1509,14 +1507,16 @@ body.light-mode .assignee-option:hover {
 
 .assignee-search-input {
     width: 100%;
-    padding: 0.6rem 0.75rem;
+    padding: 0.75rem 1rem;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.5);
     color: var(--text-primary);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
+    min-height: 44px;
+    box-sizing: border-box;
 }
 
 .assignee-search-input:focus {
@@ -1611,10 +1611,6 @@ body.light-mode .assignee-option:hover {
 }
 
 /* Light mode */
-body.light-mode .assignee-picker {
-    background: #f8fafc;
-    border-color: #e2e8f0;
-}
 
 body.light-mode .assignee-chip {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
@@ -1622,7 +1618,7 @@ body.light-mode .assignee-chip {
 }
 
 body.light-mode .assignee-search-input {
-    background: white;
+    background: #f8fafc;
     border-color: #e2e8f0;
 }
 

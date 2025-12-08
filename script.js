@@ -2785,6 +2785,12 @@ function addAssignee(user) {
 function removeAssignee(email) {
     selectedAssignees = selectedAssignees.filter(a => a.email !== email);
     renderSelectedAssignees();
+    
+    // Update dropdown if it's open to show removed user again
+    const dropdown = document.getElementById('assignee-dropdown');
+    if (dropdown && dropdown.classList.contains('active')) {
+        handleAssigneeSearch();
+    }
 }
 
 function renderSelectedAssignees() {
