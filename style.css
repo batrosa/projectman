@@ -660,6 +660,7 @@ body.light-mode .project-info h1 {
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
     align-items: end;
+    margin-bottom: 1.5rem;
 }
 
 .form-row .form-group {
