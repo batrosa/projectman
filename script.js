@@ -281,15 +281,26 @@ async function uploadToCloudinary(file) {
     formData.append('upload_preset', cloudinaryConfig.uploadPreset);
     // Folder is already defined in the Preset settings
 
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
     try {
+        console.log('Starting upload to Cloudinary...', { fileName: file.name, fileSize: file.size });
+        const startTime = Date.now();
+        
         const response = await fetch(
             `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
             { 
                 method: 'POST', 
                 body: formData,
-                mode: 'cors'
+                mode: 'cors',
+                signal: controller.signal
             }
         );
+        
+        clearTimeout(timeoutId);
+        console.log('Upload response received in', Date.now() - startTime, 'ms');
 
         if (!response.ok) {
             let errorMsg = response.statusText;
@@ -303,12 +314,19 @@ async function uploadToCloudinary(file) {
             throw new Error(errorMsg);
         }
 
-        return await response.json();
+        const result = await response.json();
+        console.log('Upload complete:', result.secure_url);
+        return result;
     } catch (error) {
+        clearTimeout(timeoutId);
         console.error('Upload fetch error:', error);
-        // More descriptive error for network issues
+        
+        // Handle different error types
+        if (error.name === 'AbortError') {
+            throw new Error('Загрузка слишком долгая. Проверьте интернет или попробуйте файл меньшего размера');
+        }
         if (error.message === 'Failed to fetch' || error.message === 'Load failed') {
-            throw new Error('Проверьте подключение к интернету и попробуйте снова');
+            throw new Error('Ошибка сети. Проверьте подключение к интернету');
         }
         throw error;
     }
