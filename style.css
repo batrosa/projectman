@@ -862,20 +862,24 @@ body.light-mode select option {
 }
 
 /* Read Only Mode */
-body.read-only .primary-btn:not(#completion-proof-modal .primary-btn):not(#my-tasks-modal .primary-btn),
-body.read-only .secondary-btn:not(#help-btn):not(#theme-toggle):not(#completion-proof-modal .secondary-btn):not(#my-tasks-modal .secondary-btn),
-/* Allow help button and theme toggle for guests */
-body.read-only .danger-btn:not(#logout-btn),
-/* Exclude logout button */
-body.read-only .icon-btn:not(#mobile-menu-btn),
-/* Exclude mobile menu button so guests can access sidebar */
+body.read-only .primary-btn,
+body.read-only .secondary-btn,
+body.read-only .danger-btn,
+body.read-only .icon-btn,
 body.read-only .delete-task {
     display: none !important;
 }
 
-/* Allow buttons in completion proof modal for all users */
-#completion-proof-modal .primary-btn,
-#completion-proof-modal .secondary-btn {
+/* Exceptions for read-only mode - these buttons should be visible */
+body.read-only #help-btn,
+body.read-only #theme-toggle,
+body.read-only #logout-btn,
+body.read-only #mobile-menu-btn,
+body.read-only #my-tasks-btn,
+body.read-only #completion-proof-modal .primary-btn,
+body.read-only #completion-proof-modal .secondary-btn,
+body.read-only #completion-proof-modal .modal-footer button,
+body.read-only .close-modal {
     display: flex !important;
 }
 
