@@ -733,3 +733,15 @@
         max-height: calc(100vh - 2rem);
     }
 }
+
+/* Info Task Button - Mobile */
+.info-task {
+    height: 30px !important;
+    min-width: 30px !important;
+    padding: 0 12px !important;
+    font-size: 0.95rem !important;
+}
+
+.info-task i {
+    font-size: 0.95rem !important;
+}
