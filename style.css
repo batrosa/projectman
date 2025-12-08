@@ -886,18 +886,18 @@ body.read-only .task-card:hover {
 .help-modal-content {
     max-width: 700px;
     max-height: 85vh;
-    overflow: hidden;
+    overflow: hidden !important;
     display: flex;
     flex-direction: column;
+    padding: 0 !important;
 }
 
-.help-modal-header {
+.help-modal-content .modal-header {
     flex-shrink: 0;
     border-bottom: 1px solid var(--border);
     background: var(--card-bg);
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    padding: 1.5rem 2rem;
+    margin-bottom: 0;
 }
 
 .help-content {
@@ -905,7 +905,7 @@ body.read-only .task-card:hover {
     flex-direction: column;
     gap: 2rem;
     overflow-y: auto;
-    padding: 1.5rem;
+    padding: 1.5rem 2rem 2rem;
     flex: 1;
 }
 
@@ -1184,11 +1184,16 @@ body.read-only .task-card:hover {
     .help-modal-content {
         width: 95%;
         max-height: 85vh;
-        padding: 0;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+    
+    .help-modal-content .modal-header {
+        padding: 1rem 1.25rem;
     }
     
     .help-modal-content .help-content {
-        padding: 1rem 1.5rem 1.5rem;
+        padding: 1rem 1.25rem 1.5rem;
     }
 
     /* Full viewport height on mobile - optimized for 9:16 format */
