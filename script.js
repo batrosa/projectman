@@ -43,12 +43,7 @@ function playClickSound() {
 let pendingInviteCode = null; // Store invite code from URL
 
 function proceedToApp() {
-    // Hide loading screen if visible
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-        loadingScreen.classList.add('hidden');
-    }
-    
+    // DON'T hide loading screen here - let it stay until fully loaded
     // Now trigger auth flow based on current state
     if (typeof auth !== 'undefined' && auth.currentUser) {
         // User already logged in, load their role and proceed
@@ -142,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Short delay to ensure CSS is loaded, then start app
     setTimeout(() => {
-        hideLoadingScreen();
+        // Don't hide loading screen - it will hide when fully logged in
         proceedToApp();
     }, 500);
 });
@@ -802,8 +797,8 @@ async function renderUserOrganizations() {
     });
 }
 
-// Apply pending invite code to join screen
-function applyPendingInviteCode() {
+// Apply pending invite code - AUTO JOIN if code is valid
+async function applyPendingInviteCode() {
     // Try to get from sessionStorage if not in memory
     if (!pendingInviteCode) {
         pendingInviteCode = sessionStorage.getItem('pendingInviteCode');
@@ -811,40 +806,42 @@ function applyPendingInviteCode() {
     
     if (!pendingInviteCode) return;
     
+    const code = pendingInviteCode;
+    
+    // Clear pending code
+    pendingInviteCode = null;
+    sessionStorage.removeItem('pendingInviteCode');
+    
+    // Try to auto-join the organization
+    try {
+        const org = await findOrganizationByCode(code);
+        if (org) {
+            // Auto join!
+            const joinedOrg = await joinOrganization(code);
+            state.organization = joinedOrg;
+            state.orgRole = 'employee';
+            state.currentUser.organizationId = joinedOrg.id;
+            state.currentUser.orgRole = 'employee';
+            
+            hideOrgSelectionScreen();
+            enterApp();
+            return; // Exit - we're done
+        }
+    } catch (e) {
+        console.error('Auto-join failed:', e);
+        // Fall through to show manual join screen
+    }
+    
+    // If auto-join failed, show join screen with code filled in
     const codeInput = document.getElementById('org-invite-code');
     const choiceScreen = document.getElementById('org-choice-screen');
     const joinScreen = document.getElementById('org-join-screen');
-    const joinName = document.getElementById('org-join-name');
-    const joinMembers = document.getElementById('org-join-members');
-    const joinPreview = document.getElementById('org-join-preview');
     
-    if (!codeInput || !joinScreen) return;
-    
-    // Switch to join screen
-    if (choiceScreen) choiceScreen.style.display = 'none';
-    joinScreen.style.display = 'block';
-    
-    // Fill in the code
-    codeInput.value = pendingInviteCode;
-    
-    // Trigger search for organization
-    const code = pendingInviteCode;
-    setTimeout(async () => {
-        try {
-            const org = await findOrganizationByCode(code);
-            if (org && joinName && joinMembers && joinPreview) {
-                joinName.textContent = org.name;
-                joinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
-                joinPreview.style.display = 'block';
-            }
-        } catch (e) {
-            console.error('Error finding org:', e);
-        }
-    }, 300);
-    
-    // Clear pending code after use
-    pendingInviteCode = null;
-    sessionStorage.removeItem('pendingInviteCode');
+    if (codeInput && joinScreen) {
+        if (choiceScreen) choiceScreen.style.display = 'none';
+        joinScreen.style.display = 'block';
+        codeInput.value = code;
+    }
 }
 
 // Hide organization selection screen
@@ -4241,6 +4238,114 @@ function getFilteredProjects() {
 
 // Start
 document.addEventListener('DOMContentLoaded', init);
+
+// ========== MIGRATION FUNCTION ==========
+// Run this ONCE from browser console: migrateToOrganization('TEKO Group')
+async function migrateToOrganization(orgName) {
+    if (!auth.currentUser) {
+        console.error('Please login first!');
+        return;
+    }
+    
+    console.log('Starting migration to organization:', orgName);
+    
+    try {
+        // 1. Check if organization already exists with this name
+        let orgId = null;
+        let orgData = null;
+        
+        const existingOrgs = await db.collection('organizations').where('name', '==', orgName).get();
+        
+        if (!existingOrgs.empty) {
+            // Use existing organization
+            orgId = existingOrgs.docs[0].id;
+            orgData = existingOrgs.docs[0].data();
+            console.log('Found existing organization:', orgId);
+        } else {
+            // Create new organization
+            const inviteCode = await generateUniqueInviteCode();
+            orgData = {
+                name: orgName,
+                inviteCode: inviteCode,
+                ownerId: auth.currentUser.uid,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                membersCount: 0,
+                plan: 'free',
+                settings: { maxUsers: 100, allowInvites: true }
+            };
+            const orgRef = await db.collection('organizations').add(orgData);
+            orgId = orgRef.id;
+            console.log('Created new organization:', orgId, 'Code:', inviteCode);
+        }
+        
+        // 2. Migrate all users without organizationId
+        const usersSnapshot = await db.collection('users').get();
+        let userCount = 0;
+        
+        for (const userDoc of usersSnapshot.docs) {
+            const userData = userDoc.data();
+            if (!userData.organizationId) {
+                const isOwner = userDoc.id === auth.currentUser.uid;
+                await db.collection('users').doc(userDoc.id).update({
+                    organizationId: orgId,
+                    orgRole: isOwner ? 'owner' : (userData.role === 'admin' ? 'admin' : 'employee')
+                });
+                userCount++;
+                console.log('Migrated user:', userData.email, isOwner ? '(owner)' : '');
+            }
+        }
+        
+        // 3. Migrate all projects without organizationId
+        const projectsSnapshot = await db.collection('projects').get();
+        let projectCount = 0;
+        
+        for (const projectDoc of projectsSnapshot.docs) {
+            const projectData = projectDoc.data();
+            if (!projectData.organizationId) {
+                await db.collection('projects').doc(projectDoc.id).update({
+                    organizationId: orgId
+                });
+                projectCount++;
+                console.log('Migrated project:', projectData.name);
+            }
+        }
+        
+        // 4. Migrate all tasks without organizationId
+        const tasksSnapshot = await db.collection('tasks').get();
+        let taskCount = 0;
+        
+        for (const taskDoc of tasksSnapshot.docs) {
+            const taskData = taskDoc.data();
+            if (!taskData.organizationId) {
+                await db.collection('tasks').doc(taskDoc.id).update({
+                    organizationId: orgId
+                });
+                taskCount++;
+            }
+        }
+        console.log('Migrated tasks:', taskCount);
+        
+        // 5. Update members count
+        await db.collection('organizations').doc(orgId).update({
+            membersCount: userCount
+        });
+        
+        console.log('=== MIGRATION COMPLETE ===');
+        console.log('Organization:', orgName);
+        console.log('Organization ID:', orgId);
+        console.log('Invite Code:', orgData.inviteCode);
+        console.log('Users migrated:', userCount);
+        console.log('Projects migrated:', projectCount);
+        console.log('Tasks migrated:', taskCount);
+        console.log('');
+        console.log('Reload the page to see changes!');
+        
+        return { orgId, inviteCode: orgData.inviteCode, userCount, projectCount, taskCount };
+    } catch (error) {
+        console.error('Migration failed:', error);
+        throw error;
+    }
+}
 
 function forceUpdate() {
     if ('serviceWorker' in navigator) {
