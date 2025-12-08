@@ -979,16 +979,12 @@ function openEditTaskModal(task) {
     // Update modal title
     elements.taskModal.querySelector('h2').textContent = 'Редактировать задачу';
 
-    // Populate assignees
+    // Populate assignees picker and load existing assignees
     populateAssigneeDropdown();
-
-    // Check assigned users
-    if (task.assigneeEmail) {
-        const emails = task.assigneeEmail.split(',').map(e => e.trim());
-        emails.forEach(email => {
-            const checkbox = document.querySelector(`input[name="assignee-select"][value="${email}"]`);
-            if (checkbox) checkbox.checked = true;
-        });
+    
+    // Set selected assignees from task
+    if (task.assigneeEmail && task.assignee) {
+        setSelectedAssignees(task.assigneeEmail, task.assignee);
     }
     
     // Load existing attachments
@@ -2179,18 +2175,8 @@ function setupEventListeners() {
         const description = document.getElementById('t-description').value;
         const taskId = document.getElementById('t-id').value;
 
-        // Get selected assignees
-        const checkboxes = document.querySelectorAll('input[name="assignee-select"]:checked');
-        const selectedNames = [];
-        const selectedEmails = [];
-
-        checkboxes.forEach(cb => {
-            selectedNames.push(cb.dataset.name);
-            selectedEmails.push(cb.value);
-        });
-
-        const assignee = selectedNames.length > 0 ? selectedNames.join(', ') : 'Не назначен';
-        const assigneeEmail = selectedEmails.join(','); // Comma separated emails
+        // Get selected assignees from new picker
+        const { names: assignee, emails: assigneeEmail } = getSelectedAssignees();
 
         const deadline = document.getElementById('t-deadline').value;
         const status = document.getElementById('t-status').value;
@@ -2692,38 +2678,167 @@ function renderUsersList() {
     });
 }
 
+// Selected assignees storage
+let selectedAssignees = [];
+
 function populateAssigneeDropdown() {
-    const container = document.getElementById('t-assignee-container');
-    if (!container) return;
+    const searchInput = document.getElementById('assignee-search');
+    const dropdown = document.getElementById('assignee-dropdown');
+    const selectedContainer = document.getElementById('selected-assignees');
+    
+    if (!searchInput || !dropdown || !selectedContainer) return;
+    
+    // Clear previous state
+    selectedAssignees = [];
+    selectedContainer.innerHTML = '';
+    searchInput.value = '';
+    
+    // Setup search input events
+    searchInput.removeEventListener('input', handleAssigneeSearch);
+    searchInput.removeEventListener('focus', handleAssigneeSearch);
+    searchInput.addEventListener('input', handleAssigneeSearch);
+    searchInput.addEventListener('focus', handleAssigneeSearch);
+    
+    // Close dropdown when clicking outside
+    document.removeEventListener('click', handleAssigneeClickOutside);
+    document.addEventListener('click', handleAssigneeClickOutside);
+}
 
-    container.innerHTML = '';
-
-    if (state.users.length === 0) {
-        container.innerHTML = '<div style="padding:0.5rem; color:var(--text-secondary);">Нет пользователей</div>';
-        return;
+function handleAssigneeClickOutside(e) {
+    const dropdown = document.getElementById('assignee-dropdown');
+    const searchWrapper = document.querySelector('.assignee-search-wrapper');
+    if (dropdown && searchWrapper && !searchWrapper.contains(e.target)) {
+        dropdown.classList.remove('active');
     }
+}
 
-    state.users.forEach(user => {
-        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
-
-        const div = document.createElement('div');
-        div.className = 'assignee-option';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.name = 'assignee-select';
-        checkbox.value = user.email;
-        checkbox.id = `assignee-${user.id}`;
-        checkbox.dataset.name = fullName;
-
-        const label = document.createElement('label');
-        label.htmlFor = `assignee-${user.id}`;
-        label.textContent = fullName;
-
-        div.appendChild(checkbox);
-        div.appendChild(label);
-        container.appendChild(div);
+function handleAssigneeSearch(e) {
+    const searchInput = document.getElementById('assignee-search');
+    const dropdown = document.getElementById('assignee-dropdown');
+    if (!searchInput || !dropdown) return;
+    
+    const query = searchInput.value.toLowerCase().trim();
+    
+    // Filter users
+    const filteredUsers = state.users.filter(user => {
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim().toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        
+        // Check if already selected
+        const isSelected = selectedAssignees.some(a => a.email === user.email);
+        if (isSelected) return false;
+        
+        // If no query, show all
+        if (!query) return true;
+        
+        // Search by name or email
+        return fullName.includes(query) || email.includes(query);
     });
+    
+    // Render dropdown
+    dropdown.innerHTML = '';
+    
+    if (filteredUsers.length === 0) {
+        dropdown.innerHTML = '<div class="assignee-dropdown-empty">Не найдено</div>';
+    } else {
+        filteredUsers.forEach(user => {
+            const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+            const initials = fullName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+            
+            const item = document.createElement('div');
+            item.className = 'assignee-dropdown-item';
+            item.innerHTML = `
+                <div class="assignee-dropdown-avatar">${initials}</div>
+                <div class="assignee-dropdown-info">
+                    <div class="assignee-dropdown-name">${escapeHtml(fullName)}</div>
+                    <div class="assignee-dropdown-email">${escapeHtml(user.email || '')}</div>
+                </div>
+            `;
+            
+            item.addEventListener('click', () => {
+                addAssignee(user);
+                searchInput.value = '';
+                dropdown.classList.remove('active');
+            });
+            
+            dropdown.appendChild(item);
+        });
+    }
+    
+    dropdown.classList.add('active');
+}
+
+function addAssignee(user) {
+    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+    
+    // Check if already added
+    if (selectedAssignees.some(a => a.email === user.email)) return;
+    
+    selectedAssignees.push({
+        email: user.email,
+        name: fullName
+    });
+    
+    renderSelectedAssignees();
+}
+
+function removeAssignee(email) {
+    selectedAssignees = selectedAssignees.filter(a => a.email !== email);
+    renderSelectedAssignees();
+}
+
+function renderSelectedAssignees() {
+    const container = document.getElementById('selected-assignees');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    selectedAssignees.forEach(assignee => {
+        const initials = assignee.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+        
+        const chip = document.createElement('div');
+        chip.className = 'assignee-chip';
+        chip.innerHTML = `
+            <div class="assignee-chip-avatar">${initials}</div>
+            <span>${escapeHtml(assignee.name)}</span>
+            <button type="button" class="assignee-chip-remove" data-email="${escapeHtml(assignee.email)}">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        `;
+        
+        chip.querySelector('.assignee-chip-remove').addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeAssignee(assignee.email);
+        });
+        
+        container.appendChild(chip);
+    });
+}
+
+function setSelectedAssignees(emails, names) {
+    // Set assignees when editing a task
+    selectedAssignees = [];
+    
+    if (!emails || !names) return;
+    
+    const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
+    const nameList = names.split(',').map(n => n.trim()).filter(n => n);
+    
+    emailList.forEach((email, index) => {
+        selectedAssignees.push({
+            email: email,
+            name: nameList[index] || email
+        });
+    });
+    
+    renderSelectedAssignees();
+}
+
+function getSelectedAssignees() {
+    return {
+        names: selectedAssignees.map(a => a.name).join(', ') || 'Не назначен',
+        emails: selectedAssignees.map(a => a.email).join(',')
+    };
 }
 
 function sendEmailNotification(email, name, taskTitle, deadline) {

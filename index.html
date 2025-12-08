@@ -434,9 +434,16 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Ответственные</label>
-                            <div id="t-assignee-container" class="multi-select-container">
-                                <!-- Checkboxes will be injected here -->
-                                <div style="padding: 0.5rem; color: var(--text-secondary);">Загрузка...</div>
+                            <div id="t-assignee-container" class="assignee-picker">
+                                <div id="selected-assignees" class="selected-assignees">
+                                    <!-- Selected assignee chips will appear here -->
+                                </div>
+                                <div class="assignee-search-wrapper">
+                                    <input type="text" id="assignee-search" class="assignee-search-input" placeholder="Введите имя..." autocomplete="off">
+                                    <div id="assignee-dropdown" class="assignee-dropdown">
+                                        <!-- Search results will appear here -->
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="form-group">

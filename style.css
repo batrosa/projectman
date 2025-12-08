@@ -1425,6 +1425,217 @@ body.light-mode .assignee-option:hover {
     background: rgba(0, 0, 0, 0.05);
 }
 
+/* Assignee Picker with Search */
+.assignee-picker {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.5);
+    padding: 0.5rem;
+}
+
+.selected-assignees {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.selected-assignees:empty {
+    margin-bottom: 0;
+}
+
+.assignee-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    color: var(--text-primary);
+    padding: 0.35rem 0.5rem 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    animation: chipAppear 0.2s ease;
+}
+
+@keyframes chipAppear {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.assignee-chip-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: white;
+    margin-left: -0.25rem;
+}
+
+.assignee-chip-remove {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: var(--text-secondary);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.assignee-chip-remove:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+
+.assignee-search-wrapper {
+    position: relative;
+}
+
+.assignee-search-input {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.2);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.assignee-search-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.assignee-search-input::placeholder {
+    color: var(--text-secondary);
+}
+
+.assignee-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.assignee-dropdown.active {
+    display: block;
+}
+
+.assignee-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.assignee-dropdown-item:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.assignee-dropdown-item.selected {
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.assignee-dropdown-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: white;
+    flex-shrink: 0;
+}
+
+.assignee-dropdown-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.assignee-dropdown-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.assignee-dropdown-email {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.assignee-dropdown-empty {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.assignee-dropdown-check {
+    color: var(--primary);
+    font-size: 1rem;
+}
+
+/* Light mode */
+body.light-mode .assignee-picker {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+body.light-mode .assignee-chip {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+    border-color: rgba(99, 102, 241, 0.25);
+}
+
+body.light-mode .assignee-search-input {
+    background: white;
+    border-color: #e2e8f0;
+}
+
+body.light-mode .assignee-dropdown {
+    background: white;
+    border-color: #e2e8f0;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+body.light-mode .assignee-dropdown-item:hover {
+    background: rgba(99, 102, 241, 0.08);
+}
+
 /* Adjust modal content for admin panel */
 #admin-panel-modal .modal-content {
     max-height: 90vh;
