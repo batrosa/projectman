@@ -241,6 +241,21 @@ function hideLoadingScreen() {
 document.addEventListener('DOMContentLoaded', () => {
     startLoadingTips();
     
+    // Disable double-tap zoom on mobile
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (e) => {
+        const now = Date.now();
+        if (now - lastTouchEnd <= 300) {
+            e.preventDefault();
+        }
+        lastTouchEnd = now;
+    }, { passive: false });
+    
+    // Disable pinch zoom
+    document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+    document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+    document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+    
     // Short delay to ensure CSS is loaded, then show PIN screen
     setTimeout(() => {
         hideLoadingScreen();
@@ -903,7 +918,6 @@ function setupOrgEventListeners() {
     // Preview organization when typing invite code
     if (elements.orgInviteCodeInput) {
         let debounceTimer;
-        const mainSubmitBtn = document.getElementById('org-join-submit-main');
         
         elements.orgInviteCodeInput.addEventListener('input', (e) => {
             const code = e.target.value.trim();
@@ -917,15 +931,12 @@ function setupOrgEventListeners() {
                         elements.orgJoinName.textContent = org.name;
                         elements.orgJoinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
                         elements.orgJoinPreview.style.display = 'block';
-                        if (mainSubmitBtn) mainSubmitBtn.style.display = 'none';
                     } else {
                         elements.orgJoinPreview.style.display = 'none';
-                        if (mainSubmitBtn) mainSubmitBtn.style.display = 'none';
                     }
                 }, 500);
             } else {
                 elements.orgJoinPreview.style.display = 'none';
-                if (mainSubmitBtn) mainSubmitBtn.style.display = 'none';
             }
         });
     }

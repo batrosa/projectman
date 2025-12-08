@@ -55,12 +55,16 @@ body.light-mode select {
 }
 
 /* Disable double-tap zoom on mobile */
-html {
+html, body {
     touch-action: manipulation;
+    -ms-touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-button, a, input, select, textarea {
+* {
     touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
