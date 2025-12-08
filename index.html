@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=6.5" as="style">
-    <link rel="stylesheet" href="style.css?v=6.5">
-    <link rel="stylesheet" href="mobile-additions.css?v=7.0">
+    <link rel="preload" href="style.css?v=7.0" as="style">
+    <link rel="stylesheet" href="style.css?v=7.0">
+    <link rel="stylesheet" href="mobile-additions.css?v=7.5">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -296,9 +296,138 @@
         </div>
     </div>
 
+    <!-- Organization Selection Overlay -->
+    <div id="org-overlay" class="login-overlay" style="display: none;">
+        <!-- Choose: Create or Join -->
+        <div id="org-choice-screen" class="login-card" style="max-width: 450px;">
+            <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
+                <i class="fa-solid fa-layer-group"></i> ProjectMan
+            </div>
+            <h2 style="text-align: center;">Добро пожаловать!</h2>
+            <p id="org-welcome-name" style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;"></p>
+            
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                <button id="org-create-btn" class="org-choice-btn">
+                    <div class="org-choice-icon"><i class="fa-solid fa-building"></i></div>
+                    <div class="org-choice-text">
+                        <strong>Создать организацию</strong>
+                        <span>Создайте рабочее пространство и пригласите команду</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                
+                <button id="org-join-btn" class="org-choice-btn">
+                    <div class="org-choice-icon"><i class="fa-solid fa-link"></i></div>
+                    <div class="org-choice-text">
+                        <strong>У меня есть код</strong>
+                        <span>Присоединитесь к существующей организации</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+            
+            <button id="org-logout-btn" class="secondary-btn" style="width: 100%; justify-content: center; margin-top: 2rem;">
+                <i class="fa-solid fa-right-from-bracket"></i> Выйти из аккаунта
+            </button>
+        </div>
+        
+        <!-- Create Organization Screen -->
+        <div id="org-create-screen" class="login-card" style="display: none; max-width: 450px;">
+            <button id="org-create-back" class="back-btn">
+                <i class="fa-solid fa-arrow-left"></i> Назад
+            </button>
+            <div class="brand" style="justify-content: center; margin-bottom: 1.5rem; margin-top: 1rem;">
+                <i class="fa-solid fa-building"></i>
+            </div>
+            <h2 style="text-align: center;">Создание организации</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
+                Вы станете владельцем и сможете приглашать сотрудников
+            </p>
+            
+            <form id="org-create-form">
+                <div class="form-group">
+                    <label for="org-name">Название организации *</label>
+                    <input type="text" id="org-name" required placeholder="ООО «Ромашка»" maxlength="100">
+                </div>
+                <p id="org-create-error" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
+                <button type="submit" class="primary-btn" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-plus"></i> Создать организацию
+                </button>
+            </form>
+        </div>
+        
+        <!-- Join Organization Screen -->
+        <div id="org-join-screen" class="login-card" style="display: none; max-width: 450px;">
+            <button id="org-join-back" class="back-btn">
+                <i class="fa-solid fa-arrow-left"></i> Назад
+            </button>
+            <div class="brand" style="justify-content: center; margin-bottom: 1.5rem; margin-top: 1rem;">
+                <i class="fa-solid fa-link"></i>
+            </div>
+            <h2 style="text-align: center;">Присоединиться</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
+                Введите код приглашения от администратора
+            </p>
+            
+            <form id="org-join-form">
+                <div class="form-group">
+                    <label for="org-invite-code">Код приглашения *</label>
+                    <input type="text" id="org-invite-code" required placeholder="ABC123" maxlength="20" style="text-transform: uppercase; letter-spacing: 2px; font-size: 1.2rem; text-align: center;">
+                </div>
+                <p id="org-join-error" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
+                <div id="org-join-preview" style="display: none; background: rgba(99, 102, 241, 0.1); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                    <p style="margin: 0; font-weight: 600;" id="org-join-name"></p>
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);" id="org-join-members"></p>
+                </div>
+                <button type="submit" class="primary-btn" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-right-to-bracket"></i> Присоединиться
+                </button>
+            </form>
+        </div>
+    </div>
+
     <div class="app-container" id="app-container" style="display: none;">
         <aside class="sidebar">
-            <div class="brand">
+            <!-- Organization Header -->
+            <div id="org-header" class="org-header" style="display: none;">
+                <button id="org-menu-btn" class="org-menu-btn">
+                    <div class="org-info">
+                        <i class="fa-solid fa-building"></i>
+                        <span id="org-name-display">Организация</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down org-chevron"></i>
+                </button>
+                
+                <!-- Organization Dropdown Menu -->
+                <div id="org-dropdown" class="org-dropdown" style="display: none;">
+                    <div class="org-dropdown-header">
+                        <p class="org-dropdown-name" id="org-dropdown-name"></p>
+                        <p class="org-dropdown-role" id="org-dropdown-role"></p>
+                    </div>
+                    <div class="org-dropdown-divider"></div>
+                    <div class="org-dropdown-section">
+                        <p class="org-dropdown-label">Код приглашения</p>
+                        <div class="org-invite-code-row">
+                            <code id="org-invite-code-display">------</code>
+                            <button id="org-copy-code" class="org-copy-btn" title="Копировать">
+                                <i class="fa-solid fa-copy"></i>
+                            </button>
+                        </div>
+                        <button id="org-share-btn" class="secondary-btn org-share-btn">
+                            <i class="fa-solid fa-share-nodes"></i> Поделиться ссылкой
+                        </button>
+                    </div>
+                    <div class="org-dropdown-divider"></div>
+                    <button id="org-switch-btn" class="org-dropdown-item">
+                        <i class="fa-solid fa-rotate"></i> Сменить организацию
+                    </button>
+                    <button id="org-leave-btn" class="org-dropdown-item org-leave">
+                        <i class="fa-solid fa-right-from-bracket"></i> Покинуть организацию
+                    </button>
+                </div>
+            </div>
+            
+            <div class="brand" id="brand-logo">
                 <i class="fa-solid fa-layer-group"></i> ProjectMan
             </div>
 

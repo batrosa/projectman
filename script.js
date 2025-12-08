@@ -598,6 +598,524 @@ function openFilesListModal(attachments) {
 
 // ========== END FILE ATTACHMENT FUNCTIONS ==========
 
+// ========== ORGANIZATION FUNCTIONS ==========
+
+// Generate random invite code
+function generateInviteCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No confusing chars like 0/O, 1/I
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// Check if invite code is unique
+async function isInviteCodeUnique(code) {
+    const snapshot = await db.collection('organizations').where('inviteCode', '==', code).get();
+    return snapshot.empty;
+}
+
+// Generate unique invite code
+async function generateUniqueInviteCode() {
+    let code = generateInviteCode();
+    let attempts = 0;
+    while (!(await isInviteCodeUnique(code)) && attempts < 10) {
+        code = generateInviteCode();
+        attempts++;
+    }
+    return code;
+}
+
+// Create organization
+async function createOrganization(name) {
+    if (!state.currentUser) throw new Error('Не авторизован');
+    
+    const inviteCode = await generateUniqueInviteCode();
+    
+    const orgData = {
+        name: name.trim(),
+        inviteCode: inviteCode,
+        ownerId: state.currentUser.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        membersCount: 1,
+        plan: 'free',
+        settings: {
+            maxUsers: 10,
+            allowInvites: true
+        }
+    };
+    
+    const orgRef = await db.collection('organizations').add(orgData);
+    
+    // Update user with organization
+    await db.collection('users').doc(state.currentUser.uid).update({
+        organizationId: orgRef.id,
+        orgRole: 'owner'
+    });
+    
+    return { id: orgRef.id, ...orgData };
+}
+
+// Join organization by invite code
+async function joinOrganization(inviteCode) {
+    if (!state.currentUser) throw new Error('Не авторизован');
+    
+    const code = inviteCode.toUpperCase().trim();
+    
+    // Find organization by invite code
+    const snapshot = await db.collection('organizations').where('inviteCode', '==', code).get();
+    
+    if (snapshot.empty) {
+        throw new Error('Организация не найдена');
+    }
+    
+    const orgDoc = snapshot.docs[0];
+    const orgData = orgDoc.data();
+    
+    // Check if already member
+    if (state.currentUser.organizationId === orgDoc.id) {
+        throw new Error('Вы уже в этой организации');
+    }
+    
+    // Check member limit
+    if (orgData.membersCount >= (orgData.settings?.maxUsers || 10)) {
+        throw new Error('Организация достигла лимита участников');
+    }
+    
+    // Update user
+    await db.collection('users').doc(state.currentUser.uid).update({
+        organizationId: orgDoc.id,
+        orgRole: 'employee'
+    });
+    
+    // Increment members count
+    await db.collection('organizations').doc(orgDoc.id).update({
+        membersCount: firebase.firestore.FieldValue.increment(1)
+    });
+    
+    return { id: orgDoc.id, ...orgData };
+}
+
+// Leave organization
+async function leaveOrganization() {
+    if (!state.currentUser || !state.organization) return;
+    
+    // Owner can't leave, must transfer ownership first
+    if (state.orgRole === 'owner') {
+        throw new Error('Владелец не может покинуть организацию. Сначала передайте права.');
+    }
+    
+    // Update user
+    await db.collection('users').doc(state.currentUser.uid).update({
+        organizationId: null,
+        orgRole: 'employee'
+    });
+    
+    // Decrement members count
+    await db.collection('organizations').doc(state.organization.id).update({
+        membersCount: firebase.firestore.FieldValue.increment(-1)
+    });
+    
+    state.organization = null;
+    state.orgRole = 'employee';
+}
+
+// Get organization by ID
+async function getOrganization(orgId) {
+    const doc = await db.collection('organizations').doc(orgId).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+}
+
+// Find organization by invite code (for preview)
+async function findOrganizationByCode(code) {
+    const snapshot = await db.collection('organizations').where('inviteCode', '==', code.toUpperCase().trim()).get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() };
+}
+
+// Show organization selection screen
+function showOrgSelectionScreen() {
+    hideLoadingScreen();
+    elements.authOverlay.style.display = 'none';
+    elements.orgOverlay.style.display = 'flex';
+    elements.orgChoiceScreen.style.display = 'block';
+    elements.orgCreateScreen.style.display = 'none';
+    elements.orgJoinScreen.style.display = 'none';
+    document.getElementById('app-container').style.display = 'none';
+    
+    // Show welcome message
+    if (state.currentUser) {
+        const name = state.currentUser.firstName || state.currentUser.email;
+        elements.orgWelcomeName.textContent = `Привет, ${name}!`;
+    }
+}
+
+// Hide organization selection screen
+function hideOrgSelectionScreen() {
+    elements.orgOverlay.style.display = 'none';
+}
+
+// Setup organization event listeners
+function setupOrgEventListeners() {
+    // Choice screen buttons
+    if (elements.orgCreateBtn) {
+        elements.orgCreateBtn.addEventListener('click', () => {
+            elements.orgChoiceScreen.style.display = 'none';
+            elements.orgCreateScreen.style.display = 'block';
+            elements.orgNameInput.focus();
+        });
+    }
+    
+    if (elements.orgJoinBtn) {
+        elements.orgJoinBtn.addEventListener('click', () => {
+            elements.orgChoiceScreen.style.display = 'none';
+            elements.orgJoinScreen.style.display = 'block';
+            elements.orgInviteCodeInput.focus();
+        });
+    }
+    
+    if (elements.orgLogoutBtn) {
+        elements.orgLogoutBtn.addEventListener('click', () => {
+            logout();
+        });
+    }
+    
+    // Back buttons
+    if (elements.orgCreateBack) {
+        elements.orgCreateBack.addEventListener('click', () => {
+            elements.orgCreateScreen.style.display = 'none';
+            elements.orgChoiceScreen.style.display = 'block';
+            elements.orgCreateError.style.display = 'none';
+        });
+    }
+    
+    if (elements.orgJoinBack) {
+        elements.orgJoinBack.addEventListener('click', () => {
+            elements.orgJoinScreen.style.display = 'none';
+            elements.orgChoiceScreen.style.display = 'block';
+            elements.orgJoinError.style.display = 'none';
+            elements.orgJoinPreview.style.display = 'none';
+        });
+    }
+    
+    // Create organization form
+    if (elements.orgCreateForm) {
+        elements.orgCreateForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = elements.orgNameInput.value.trim();
+            if (!name) return;
+            
+            const submitBtn = elements.orgCreateForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание...';
+            elements.orgCreateError.style.display = 'none';
+            
+            try {
+                const org = await createOrganization(name);
+                state.organization = org;
+                state.orgRole = 'owner';
+                state.currentUser.organizationId = org.id;
+                state.currentUser.orgRole = 'owner';
+                
+                hideOrgSelectionScreen();
+                enterApp();
+            } catch (error) {
+                console.error('Error creating organization:', error);
+                elements.orgCreateError.textContent = error.message;
+                elements.orgCreateError.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Создать организацию';
+            }
+        });
+    }
+    
+    // Join organization form
+    if (elements.orgJoinForm) {
+        elements.orgJoinForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = elements.orgInviteCodeInput.value.trim();
+            if (!code) return;
+            
+            const submitBtn = elements.orgJoinForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Присоединение...';
+            elements.orgJoinError.style.display = 'none';
+            
+            try {
+                const org = await joinOrganization(code);
+                state.organization = org;
+                state.orgRole = 'employee';
+                state.currentUser.organizationId = org.id;
+                state.currentUser.orgRole = 'employee';
+                
+                hideOrgSelectionScreen();
+                enterApp();
+            } catch (error) {
+                console.error('Error joining organization:', error);
+                elements.orgJoinError.textContent = error.message;
+                elements.orgJoinError.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Присоединиться';
+            }
+        });
+    }
+    
+    // Preview organization when typing invite code
+    if (elements.orgInviteCodeInput) {
+        let debounceTimer;
+        elements.orgInviteCodeInput.addEventListener('input', (e) => {
+            const code = e.target.value.trim();
+            elements.orgJoinError.style.display = 'none';
+            
+            clearTimeout(debounceTimer);
+            if (code.length >= 4) {
+                debounceTimer = setTimeout(async () => {
+                    const org = await findOrganizationByCode(code);
+                    if (org) {
+                        elements.orgJoinName.textContent = org.name;
+                        elements.orgJoinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
+                        elements.orgJoinPreview.style.display = 'block';
+                    } else {
+                        elements.orgJoinPreview.style.display = 'none';
+                    }
+                }, 500);
+            } else {
+                elements.orgJoinPreview.style.display = 'none';
+            }
+        });
+    }
+    
+    // Organization menu in sidebar
+    if (elements.orgMenuBtn) {
+        elements.orgMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = elements.orgDropdown.style.display === 'block';
+            elements.orgDropdown.style.display = isOpen ? 'none' : 'block';
+            elements.orgHeader.classList.toggle('open', !isOpen);
+        });
+    }
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (elements.orgDropdown && !elements.orgHeader?.contains(e.target)) {
+            elements.orgDropdown.style.display = 'none';
+            elements.orgHeader?.classList.remove('open');
+        }
+    });
+    
+    // Copy invite code
+    if (elements.orgCopyCode) {
+        elements.orgCopyCode.addEventListener('click', async () => {
+            const code = elements.orgInviteCodeDisplay.textContent;
+            try {
+                await navigator.clipboard.writeText(code);
+                elements.orgCopyCode.innerHTML = '<i class="fa-solid fa-check"></i>';
+                setTimeout(() => {
+                    elements.orgCopyCode.innerHTML = '<i class="fa-solid fa-copy"></i>';
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
+        });
+    }
+    
+    // Share invite link
+    if (elements.orgShareBtn) {
+        elements.orgShareBtn.addEventListener('click', async () => {
+            const code = state.organization?.inviteCode || '';
+            const name = state.organization?.name || 'организации';
+            const shareData = {
+                title: 'Приглашение в ProjectMan',
+                text: `Присоединяйтесь к "${name}" в ProjectMan!\nКод: ${code}`,
+                url: `${window.location.origin}/join/${code}`
+            };
+            
+            if (navigator.share) {
+                try {
+                    await navigator.share(shareData);
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.error('Share failed:', err);
+                    }
+                }
+            } else {
+                // Fallback: copy to clipboard
+                try {
+                    await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
+                    alert('Ссылка скопирована в буфер обмена');
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                }
+            }
+            
+            elements.orgDropdown.style.display = 'none';
+            elements.orgHeader.classList.remove('open');
+        });
+    }
+    
+    // Switch organization
+    if (elements.orgSwitchBtn) {
+        elements.orgSwitchBtn.addEventListener('click', () => {
+            elements.orgDropdown.style.display = 'none';
+            elements.orgHeader.classList.remove('open');
+            showOrgSelectionScreen();
+        });
+    }
+    
+    // Leave organization
+    if (elements.orgLeaveBtn) {
+        elements.orgLeaveBtn.addEventListener('click', async () => {
+            if (state.orgRole === 'owner') {
+                alert('Владелец не может покинуть организацию. Сначала передайте права другому администратору.');
+                return;
+            }
+            
+            if (!confirm('Вы уверены, что хотите покинуть организацию?')) return;
+            
+            try {
+                await leaveOrganization();
+                elements.orgDropdown.style.display = 'none';
+                elements.orgHeader.classList.remove('open');
+                showOrgSelectionScreen();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+    }
+}
+
+// Update organization UI in sidebar
+function updateOrgUI() {
+    if (!state.organization) {
+        if (elements.orgHeader) elements.orgHeader.style.display = 'none';
+        if (elements.brandLogo) elements.brandLogo.style.display = 'flex';
+        return;
+    }
+    
+    // Show org header, hide brand
+    if (elements.orgHeader) elements.orgHeader.style.display = 'block';
+    if (elements.brandLogo) elements.brandLogo.style.display = 'none';
+    
+    // Update org info
+    if (elements.orgNameDisplay) elements.orgNameDisplay.textContent = state.organization.name;
+    if (elements.orgDropdownName) elements.orgDropdownName.textContent = state.organization.name;
+    
+    // Role display
+    const roleNames = {
+        owner: 'Владелец',
+        admin: 'Администратор',
+        moderator: 'Модератор',
+        employee: 'Сотрудник'
+    };
+    if (elements.orgDropdownRole) {
+        elements.orgDropdownRole.textContent = roleNames[state.orgRole] || 'Сотрудник';
+    }
+    
+    // Invite code (only for admin+)
+    const canSeeCode = ['owner', 'admin'].includes(state.orgRole);
+    const codeSection = elements.orgDropdown?.querySelector('.org-dropdown-section');
+    if (codeSection) {
+        codeSection.style.display = canSeeCode ? 'block' : 'none';
+    }
+    if (elements.orgInviteCodeDisplay && canSeeCode) {
+        elements.orgInviteCodeDisplay.textContent = state.organization.inviteCode || '------';
+    }
+    
+    // Hide leave button for owner
+    if (elements.orgLeaveBtn) {
+        elements.orgLeaveBtn.style.display = state.orgRole === 'owner' ? 'none' : 'flex';
+    }
+}
+
+// Get role name in Russian
+function getRoleName(role) {
+    const names = {
+        owner: 'Владелец',
+        admin: 'Администратор', 
+        moderator: 'Модератор',
+        employee: 'Сотрудник'
+    };
+    return names[role] || 'Сотрудник';
+}
+
+// Check if current user has permission
+function hasPermission(permission) {
+    const permissions = {
+        owner: ['all'],
+        admin: ['manage_users', 'manage_projects', 'create_tasks', 'edit_tasks', 'delete_tasks', 'view_invite_code'],
+        moderator: ['create_tasks', 'edit_tasks', 'assign_tasks'],
+        employee: ['view', 'update_own_tasks']
+    };
+    
+    const rolePerms = permissions[state.orgRole] || permissions.employee;
+    return rolePerms.includes('all') || rolePerms.includes(permission);
+}
+
+// Enter app after organization is set
+function enterApp() {
+    hideOrgSelectionScreen();
+    hideAuthScreen();
+    
+    const appContainer = document.getElementById('app-container');
+    if (appContainer) {
+        appContainer.style.display = 'flex';
+    }
+    
+    updateOrgUI();
+    applyRoleRestrictions();
+    setupRealtimeListeners();
+    subscribeToMyTasks();
+}
+
+// Apply role-based UI restrictions
+function applyRoleRestrictions() {
+    const role = state.orgRole;
+    
+    // Remove all role classes first
+    document.body.classList.remove('read-only', 'role-owner', 'role-admin', 'role-moderator', 'role-employee');
+    
+    // Add current role class
+    document.body.classList.add(`role-${role}`);
+    
+    // read-only for employees
+    if (role === 'employee') {
+        document.body.classList.add('read-only');
+    }
+    
+    // Show/hide admin panel button
+    const adminPanelBtn = document.getElementById('admin-panel-btn');
+    if (adminPanelBtn) {
+        adminPanelBtn.style.display = ['owner', 'admin'].includes(role) ? 'flex' : 'none';
+    }
+    
+    // Show/hide add project button
+    const addProjectBtn = document.getElementById('add-project-btn');
+    if (addProjectBtn) {
+        addProjectBtn.style.display = ['owner', 'admin'].includes(role) ? 'flex' : 'none';
+    }
+    
+    // Show/hide add task button based on role
+    const addTaskBtn = document.getElementById('add-task-btn');
+    if (addTaskBtn) {
+        // Moderators and above can create tasks
+        const canCreateTasks = ['owner', 'admin', 'moderator'].includes(role);
+        addTaskBtn.style.display = canCreateTasks ? 'flex' : 'none';
+    }
+    
+    // Show/hide delete project button
+    const deleteProjectBtn = document.getElementById('delete-project-btn');
+    if (deleteProjectBtn) {
+        deleteProjectBtn.style.display = ['owner', 'admin'].includes(role) ? 'block' : 'none';
+    }
+}
+
+// ========== END ORGANIZATION FUNCTIONS ==========
+
 // Initialize Firebase when ready
 let db;
 let auth;
@@ -662,9 +1180,11 @@ let state = {
     tasks: [],
     users: [], // All users (for admin panel)
     activeProjectId: null,
-    role: 'guest', // 'admin' or 'reader'
+    role: 'guest', // Legacy role, now use orgRole
+    orgRole: 'employee', // owner / admin / moderator / employee
     initialLoadDone: false, // To prevent selecting first project on every update
-    currentUser: null, // { uid, email, firstName, lastName, role, allowedProjects }
+    currentUser: null, // { uid, email, firstName, lastName, role, allowedProjects, organizationId, orgRole }
+    organization: null, // { id, name, inviteCode, ownerId, ... }
 };
 
 // DOM Elements
@@ -732,6 +1252,39 @@ const elements = {
     myTasksModal: document.getElementById('my-tasks-modal'),
     myTasksList: document.getElementById('my-tasks-list'),
     myTasksCount: document.getElementById('my-tasks-count'),
+    
+    // Organization
+    orgOverlay: document.getElementById('org-overlay'),
+    orgChoiceScreen: document.getElementById('org-choice-screen'),
+    orgCreateScreen: document.getElementById('org-create-screen'),
+    orgJoinScreen: document.getElementById('org-join-screen'),
+    orgCreateBtn: document.getElementById('org-create-btn'),
+    orgJoinBtn: document.getElementById('org-join-btn'),
+    orgLogoutBtn: document.getElementById('org-logout-btn'),
+    orgCreateBack: document.getElementById('org-create-back'),
+    orgJoinBack: document.getElementById('org-join-back'),
+    orgCreateForm: document.getElementById('org-create-form'),
+    orgJoinForm: document.getElementById('org-join-form'),
+    orgNameInput: document.getElementById('org-name'),
+    orgInviteCodeInput: document.getElementById('org-invite-code'),
+    orgCreateError: document.getElementById('org-create-error'),
+    orgJoinError: document.getElementById('org-join-error'),
+    orgJoinPreview: document.getElementById('org-join-preview'),
+    orgJoinName: document.getElementById('org-join-name'),
+    orgJoinMembers: document.getElementById('org-join-members'),
+    orgWelcomeName: document.getElementById('org-welcome-name'),
+    orgHeader: document.getElementById('org-header'),
+    orgMenuBtn: document.getElementById('org-menu-btn'),
+    orgDropdown: document.getElementById('org-dropdown'),
+    orgNameDisplay: document.getElementById('org-name-display'),
+    orgDropdownName: document.getElementById('org-dropdown-name'),
+    orgDropdownRole: document.getElementById('org-dropdown-role'),
+    orgInviteCodeDisplay: document.getElementById('org-invite-code-display'),
+    orgCopyCode: document.getElementById('org-copy-code'),
+    orgShareBtn: document.getElementById('org-share-btn'),
+    orgSwitchBtn: document.getElementById('org-switch-btn'),
+    orgLeaveBtn: document.getElementById('org-leave-btn'),
+    brandLogo: document.getElementById('brand-logo'),
 };
 
 // Init
@@ -868,12 +1421,32 @@ function showUpdateNotification() {
 }
 
 // Persistence - NOW FIREBASE
+let projectsListenerUnsubscribe = null;
+let usersListenerUnsubscribe = null;
+
 function setupRealtimeListeners() {
-    // Listen for Projects
-    db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
+    // Unsubscribe from previous listeners
+    if (projectsListenerUnsubscribe) projectsListenerUnsubscribe();
+    if (usersListenerUnsubscribe) usersListenerUnsubscribe();
+    
+    const orgId = state.organization?.id;
+    
+    // Listen for Projects (filtered by organization)
+    let projectsQuery = db.collection('projects').orderBy('createdAt');
+    if (orgId) {
+        projectsQuery = db.collection('projects')
+            .where('organizationId', '==', orgId)
+            .orderBy('createdAt');
+    }
+    
+    projectsListenerUnsubscribe = projectsQuery.onSnapshot(snapshot => {
         const projects = [];
         snapshot.forEach(doc => {
-            projects.push({ id: doc.id, ...doc.data() });
+            const data = doc.data();
+            // Include projects without organizationId (legacy) or matching org
+            if (!orgId || !data.organizationId || data.organizationId === orgId) {
+                projects.push({ id: doc.id, ...data });
+            }
         });
         state.projects = projects;
 
@@ -888,25 +1461,53 @@ function setupRealtimeListeners() {
             state.tasks = [];
         }
 
-        // Don't auto-select first project - let user choose
-        // if (!state.activeProjectId && state.projects.length > 0 && !state.initialLoadDone) {
-        //     selectProject(state.projects[0].id);
-        //     state.initialLoadDone = true;
-        // }
-
         renderProjects();
         renderBoard();
+    }, error => {
+        console.error("Error listening to projects:", error);
+        // Fallback: try without organizationId filter (for migration)
+        if (orgId) {
+            db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
+                const projects = [];
+                snapshot.forEach(doc => {
+                    projects.push({ id: doc.id, ...doc.data() });
+                });
+                state.projects = projects;
+                renderProjects();
+                renderBoard();
+            });
+        }
     });
 
-    // Listen for Users (needed for project filtering)
-    db.collection('users').onSnapshot(snapshot => {
+    // Listen for Users (filtered by organization)
+    let usersQuery = db.collection('users');
+    if (orgId) {
+        usersQuery = db.collection('users').where('organizationId', '==', orgId);
+    }
+    
+    usersListenerUnsubscribe = usersQuery.onSnapshot(snapshot => {
         const users = [];
         snapshot.forEach(doc => {
-            users.push({ id: doc.id, ...doc.data() });
+            const data = doc.data();
+            // Include users without organizationId (legacy) or matching org
+            if (!orgId || !data.organizationId || data.organizationId === orgId) {
+                users.push({ id: doc.id, ...data });
+            }
         });
         state.users = users;
         // Re-render projects if user's access changes
         renderProjects();
+    }, error => {
+        console.error("Error listening to users:", error);
+        // Fallback without filter
+        db.collection('users').onSnapshot(snapshot => {
+            const users = [];
+            snapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            state.users = users;
+            renderProjects();
+        });
     });
 }
 
@@ -2029,6 +2630,9 @@ function updateThemeIcon(isLight) {
 
 // Event Listeners
 function setupEventListeners() {
+    // Organization event listeners
+    setupOrgEventListeners();
+    
     // Modals
     elements.addProjectBtn.addEventListener('click', () => {
         playClickSound();
@@ -2131,11 +2735,13 @@ function setupEventListeners() {
 
     // Logic
     function createProject(name, description) {
-        if (state.role !== 'admin') return;
+        // Check permission: owner or admin can create projects
+        if (!['owner', 'admin'].includes(state.orgRole) && state.role !== 'admin') return;
 
         db.collection('projects').add({
             name,
             description,
+            organizationId: state.organization?.id || null,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         }).then((docRef) => {
             selectProject(docRef.id);
@@ -2144,7 +2750,8 @@ function setupEventListeners() {
     }
 
     async function createTask(title, assignee, deadline, status, assigneeEmail, description) {
-        if (state.role !== 'admin') return;
+        // Check permission: owner, admin, or moderator can create tasks
+        if (!['owner', 'admin', 'moderator'].includes(state.orgRole) && state.role !== 'admin') return;
         if (!state.activeProjectId) return;
 
         // Show loading state on button (may be outside form)
@@ -2160,6 +2767,7 @@ function setupEventListeners() {
             
             await db.collection('tasks').add({
                 projectId: state.activeProjectId,
+                organizationId: state.organization?.id || null,
                 title,
                 description: description || '',
                 assignee: assignee || 'Не назначен',
@@ -2474,18 +3082,19 @@ async function loadUserRole(user) {
     state.currentUser = {
         uid: user.uid,
         email: user.email,
-        role: 'reader' // Default
+        role: 'reader', // Legacy default
+        orgRole: 'employee'
     };
 
     // Timeout promise to prevent infinite loading
     const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out')), 5000)
+        setTimeout(() => reject(new Error('Request timed out')), 8000)
     );
 
-    // Fetch user profile to get name and role
+    // Fetch user profile to get name, role, and organization
     try {
         const userDocPromise = db.collection('users').doc(user.uid).get();
-        
+
         // Race between fetch and timeout
         const userDoc = await Promise.race([userDocPromise, timeoutPromise]);
 
@@ -2494,15 +3103,46 @@ async function loadUserRole(user) {
             state.currentUser.firstName = userData.firstName;
             state.currentUser.lastName = userData.lastName;
             state.currentUser.fullName = `${userData.firstName} ${userData.lastName}`.trim();
-            state.currentUser.role = userData.role || 'reader'; // Get role from DB
+            state.currentUser.role = userData.role || 'reader'; // Legacy role
+            state.currentUser.orgRole = userData.orgRole || 'employee'; // New org role
+            state.currentUser.organizationId = userData.organizationId || null;
             state.currentUser.allowedProjects = userData.allowedProjects || [];
+            
+            // Set state orgRole
+            state.orgRole = state.currentUser.orgRole;
+            
+            // Load organization if user has one
+            if (userData.organizationId) {
+                try {
+                    const org = await getOrganization(userData.organizationId);
+                    if (org) {
+                        state.organization = org;
+                    } else {
+                        // Organization was deleted, clear user's org
+                        state.currentUser.organizationId = null;
+                        await db.collection('users').doc(user.uid).update({
+                            organizationId: null,
+                            orgRole: 'employee'
+                        });
+                    }
+                } catch (orgError) {
+                    console.error("Error loading organization:", orgError);
+                }
+            }
         }
     } catch (e) {
         console.error("Error fetching user profile (using default role):", e);
         // Even on error, we proceed with default 'reader' role to unblock UI
     }
 
-    // Always finish auth
+    // Check if user needs to select/create organization
+    if (!state.currentUser.organizationId || !state.organization) {
+        // Show organization selection screen
+        showOrgSelectionScreen();
+        return;
+    }
+
+    // User has organization, proceed to app
     finishAuth(state.currentUser.role);
 }
 
@@ -2510,25 +3150,23 @@ function finishAuth(role) {
     // Only proceed if PIN is verified
     if (!pinVerified) return;
     
-    console.log("Auth finished. Role:", role); // Debug
+    console.log("Auth finished. Role:", role, "OrgRole:", state.orgRole); // Debug
     state.role = role;
     state.currentUser.role = role;
 
+    // Use enterApp which handles organization UI
+    enterApp();
+}
+
+function finishAuthLegacy(role) {
+    // Legacy function - kept for reference
     hideAuthScreen();
 
-    if (role === 'reader') {
-        document.body.classList.add('read-only');
-    } else {
-        document.body.classList.remove('read-only');
-    }
+    // Apply role restrictions based on orgRole
+    applyRoleRestrictions();
 
-    // Setup admin panel if admin
+    // Setup admin panel if admin+
     setupAdminPanel();
-
-    // Don't auto-select first project - let user choose
-    // if (state.projects.length > 0 && !state.activeProjectId) {
-    //     selectProject(state.projects[0].id);
-    // } 
     
     // Force re-render of everything now that we have permissions
     renderProjects();
@@ -2678,41 +3316,125 @@ function renderUsersList() {
     elements.usersList.innerHTML = '';
     elements.usersCount.textContent = `${state.users.length} ${state.users.length === 1 ? 'пользователь' : 'пользователей'}`;
 
-    state.users.forEach(user => {
+    // Sort: owner first, then by name
+    const sortedUsers = [...state.users].sort((a, b) => {
+        const roleOrder = { owner: 0, admin: 1, moderator: 2, employee: 3 };
+        const aOrder = roleOrder[a.orgRole] ?? 3;
+        const bOrder = roleOrder[b.orgRole] ?? 3;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return (a.firstName || '').localeCompare(b.firstName || '');
+    });
+
+    sortedUsers.forEach(user => {
         const userItem = document.createElement('div');
         userItem.className = 'user-item';
 
         const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
         const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
+        const userRole = user.orgRole || 'employee';
+        const isOwner = userRole === 'owner';
+        const isCurrentUser = user.id === state.currentUser.uid;
+        const canManageRoles = ['owner', 'admin'].includes(state.orgRole);
+        const canDelete = canManageRoles && !isCurrentUser && userRole !== 'owner';
+
+        // Role badge
+        const roleIcons = {
+            owner: '<i class="fa-solid fa-crown"></i>',
+            admin: '<i class="fa-solid fa-user-shield"></i>',
+            moderator: '<i class="fa-solid fa-user-pen"></i>',
+            employee: '<i class="fa-solid fa-user"></i>'
+        };
+        const roleNames = {
+            owner: 'Владелец',
+            admin: 'Админ',
+            moderator: 'Модератор',
+            employee: 'Сотрудник'
+        };
+
+        // Role selector (only for non-owners and if current user can manage)
+        let roleSelector = '';
+        if (canManageRoles && !isOwner && !isCurrentUser) {
+            roleSelector = `
+                <select class="role-select" data-user-id="${user.id}">
+                    <option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>
+                    <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
+                    <option value="employee" ${userRole === 'employee' ? 'selected' : ''}>Сотрудник</option>
+                </select>
+            `;
+        } else {
+            roleSelector = `<span class="role-badge ${userRole}">${roleIcons[userRole]} ${roleNames[userRole]}</span>`;
+        }
 
         userItem.innerHTML = `
             <div class="user-info">
                 <div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>
                 <div class="user-details">
-                    <div class="user-name">${fullName}</div>
+                    <div class="user-name">${fullName} ${isCurrentUser ? '<span style="color: var(--text-secondary); font-size: 0.8rem;">(вы)</span>' : ''}</div>
                     <div class="user-email">${user.email}</div>
                 </div>
             </div>
-            <div class="user-actions">
-                ${user.id !== state.currentUser.uid ? `
-                    <button class="delete-user-btn" data-user-id="${user.id}">
-                        <i class="fa-solid fa-trash"></i> Удалить
+            <div class="user-actions" style="display: flex; align-items: center; gap: 0.75rem;">
+                ${roleSelector}
+                ${canDelete ? `
+                    <button class="delete-user-btn" data-user-id="${user.id}" title="Удалить из организации">
+                        <i class="fa-solid fa-user-xmark"></i>
                     </button>
-                ` : '<span style="color: var(--text-secondary); font-size: 0.85rem;">Это вы</span>'}
+                ` : ''}
             </div>
         `;
+
+        // Add role change handler
+        const roleSelect = userItem.querySelector('.role-select');
+        if (roleSelect) {
+            roleSelect.addEventListener('change', async (e) => {
+                const newRole = e.target.value;
+                const userId = e.target.dataset.userId;
+                try {
+                    await db.collection('users').doc(userId).update({ orgRole: newRole });
+                    playClickSound();
+                } catch (error) {
+                    console.error('Error updating role:', error);
+                    alert('Ошибка при изменении роли');
+                    e.target.value = userRole; // Revert
+                }
+            });
+        }
 
         // Add delete handler
         const deleteBtn = userItem.querySelector('.delete-user-btn');
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => {
                 playClickSound();
-                deleteUser(user.id, fullName);
+                removeUserFromOrganization(user.id, fullName);
             });
         }
 
         elements.usersList.appendChild(userItem);
     });
+}
+
+// Remove user from organization (not delete account)
+async function removeUserFromOrganization(userId, userName) {
+    if (!confirm(`Удалить ${userName} из организации?`)) return;
+    
+    try {
+        await db.collection('users').doc(userId).update({
+            organizationId: null,
+            orgRole: 'employee'
+        });
+        
+        // Decrement members count
+        if (state.organization?.id) {
+            await db.collection('organizations').doc(state.organization.id).update({
+                membersCount: firebase.firestore.FieldValue.increment(-1)
+            });
+        }
+        
+        playClickSound();
+    } catch (error) {
+        console.error('Error removing user:', error);
+        alert('Ошибка при удалении пользователя');
+    }
 }
 
 // Selected assignees storage

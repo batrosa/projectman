@@ -2824,3 +2824,349 @@ body.light-mode .pin-key:hover:not(.pin-key-empty) {
 body.light-mode .pin-hint {
     color: #94a3b8;
 }
+
+/* ========== Organization Screens ========== */
+
+/* Choice buttons */
+.org-choice-btn {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    padding: 1.25rem;
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    color: var(--text-primary);
+}
+
+.org-choice-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary);
+    transform: translateY(-2px);
+}
+
+.org-choice-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.org-choice-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.org-choice-text strong {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.org-choice-text span {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.org-choice-btn > i:last-child {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Back button */
+.back-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    transition: color 0.2s;
+}
+
+.back-btn:hover {
+    color: var(--primary);
+}
+
+/* Organization Header in Sidebar */
+.org-header {
+    position: relative;
+    margin-bottom: 1rem;
+}
+
+.org-menu-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text-primary);
+}
+
+.org-menu-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.org-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.org-info i {
+    color: var(--primary);
+}
+
+.org-chevron {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+}
+
+.org-header.open .org-chevron {
+    transform: rotate(180deg);
+}
+
+/* Organization Dropdown */
+.org-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.org-dropdown-header {
+    padding: 1rem;
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.org-dropdown-name {
+    font-weight: 600;
+    margin: 0 0 0.25rem 0;
+}
+
+.org-dropdown-role {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.org-dropdown-divider {
+    height: 1px;
+    background: var(--border);
+}
+
+.org-dropdown-section {
+    padding: 1rem;
+}
+
+.org-dropdown-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 0.5rem 0;
+}
+
+.org-invite-code-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.org-invite-code-row code {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.625rem 1rem;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 1.1rem;
+    letter-spacing: 2px;
+    color: var(--primary);
+}
+
+.org-copy-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.org-copy-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+}
+
+.org-share-btn {
+    width: 100%;
+    justify-content: center;
+    font-size: 0.9rem;
+}
+
+.org-dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background-color 0.15s;
+    font-size: 0.9rem;
+}
+
+.org-dropdown-item:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.org-dropdown-item i {
+    width: 20px;
+    color: var(--text-secondary);
+}
+
+.org-dropdown-item.org-leave {
+    color: var(--danger);
+}
+
+.org-dropdown-item.org-leave i {
+    color: var(--danger);
+}
+
+/* Light mode adjustments */
+body.light-mode .org-choice-btn {
+    background: rgba(99, 102, 241, 0.05);
+    border-color: #e2e8f0;
+}
+
+body.light-mode .org-choice-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+body.light-mode .org-menu-btn {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.15);
+}
+
+body.light-mode .org-dropdown {
+    background: white;
+    border-color: #e2e8f0;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+body.light-mode .org-invite-code-row code {
+    background: #f1f5f9;
+}
+
+/* Role badges */
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.role-badge.owner {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(251, 191, 36, 0.2));
+    color: #f59e0b;
+}
+
+.role-badge.admin {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--primary);
+}
+
+.role-badge.moderator {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.role-badge.employee {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--text-secondary);
+}
+
+/* Role select dropdown */
+.role-select {
+    padding: 0.5rem 2rem 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1rem;
+}
+
+.role-select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+body.light-mode .role-select {
+    background-color: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+/* Delete user button in admin panel */
+.delete-user-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.delete-user-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+}
