@@ -2344,16 +2344,16 @@ body.light-mode .my-task-item:hover {
     border-color: var(--primary);
 }
 
-/* Mobile - match status-badge mobile size */
+/* Mobile - same size as PC since status-badge is same */
 @media (max-width: 768px) {
     .info-task {
-        height: 26px;
-        min-width: 26px;
-        padding: 0 8px;
+        height: 30px;
+        min-width: 30px;
+        padding: 0 12px;
     }
     
     .info-task i {
-        font-size: 0.85rem;
+        font-size: 0.95rem;
     }
 }
 
