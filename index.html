@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=5.9" as="style">
-    <link rel="stylesheet" href="style.css?v=5.9">
+    <link rel="preload" href="style.css?v=6.0" as="style">
+    <link rel="stylesheet" href="style.css?v=6.0">
     <link rel="stylesheet" href="mobile-additions.css?v=5.8">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -141,7 +141,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=5.5" defer></script>
+    <script src="script.js?v=5.9" defer></script>
 </head>
 
 <body>
@@ -534,6 +534,61 @@
             </div>
             <div id="files-modal-list" class="files-modal-list">
                 <!-- Files will be listed here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Completion Proof Modal (when executor completes task) -->
+    <div id="completion-proof-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-clipboard-check"></i> Подтверждение выполнения</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="completion-proof-form">
+                <div style="padding: 1.5rem;">
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                        Опишите выполненную работу и прикрепите подтверждение (фото, документ)
+                    </p>
+                    <div class="form-group">
+                        <label for="completion-comment">Комментарий о выполнении <span style="color: var(--danger);">*</span></label>
+                        <textarea id="completion-comment" rows="4" required placeholder="Опишите что было сделано..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-paperclip"></i> Файл-подтверждение <span style="color: var(--danger);">*</span></label>
+                        <div id="completion-attachments-container" class="attachments-container">
+                            <div id="completion-attachments-list" class="attachments-list">
+                                <!-- Attached file will appear here -->
+                            </div>
+                            <button type="button" id="add-completion-file-btn" class="add-attachment-btn">
+                                <i class="fa-solid fa-camera"></i> Прикрепить файл / фото
+                            </button>
+                            <input type="file" id="completion-file-input" style="display: none;" 
+                                   accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar,.heic">
+                            <p class="attachment-hint">Фото, PDF, документы. Макс. 10 MB</p>
+                        </div>
+                    </div>
+                    <input type="hidden" id="completion-task-id">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="secondary-btn close-modal">Отмена</button>
+                    <button type="submit" class="primary-btn" id="submit-completion-btn">
+                        <i class="fa-solid fa-check"></i> Завершить задачу
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Task Details Modal (history and completion info) -->
+    <div id="task-details-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-circle-info"></i> Информация о задаче</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="task-details-content" style="padding: 1.5rem;">
+                <!-- Task details will be loaded here -->
             </div>
         </div>
     </div>

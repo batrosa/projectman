@@ -620,7 +620,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.4'; // REMOVE SOUND + AUTO-OPEN NEW PROJECT
+    const CURRENT_VERSION = '5.5'; // COMPLETION PROOF + TASK DETAILS MODAL
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -983,15 +983,21 @@ function openStatusMenu(event, task, currentSubStatus) {
         }
     }
     
-    const addOption = (label, icon, newStatus) => {
+    const addOption = (label, icon, newStatus, requiresProof = false) => {
         const opt = document.createElement('div');
         opt.className = 'status-option';
         opt.innerHTML = `${icon} ${label}`;
         opt.onclick = (e) => {
             e.stopPropagation();
             playClickSound();
-            updateTaskSubStatus(task.id, newStatus);
             globalStatusMenu.style.display = 'none';
+            
+            // If completing task, require proof first
+            if (requiresProof) {
+                openCompletionProofModal(task.id);
+            } else {
+                updateTaskSubStatus(task.id, newStatus);
+            }
         };
         globalStatusMenu.appendChild(opt);
     };
@@ -1002,7 +1008,8 @@ function openStatusMenu(event, task, currentSubStatus) {
             if (currentSubStatus === 'assigned') {
                 addOption('Принять в работу', '<i class="fa-solid fa-person-digging"></i>', 'in_work');
             } else if (currentSubStatus === 'in_work') {
-                addOption('Задача завершена', '<i class="fa-solid fa-check"></i>', 'completed');
+                // Require proof when completing task
+                addOption('Задача завершена', '<i class="fa-solid fa-check"></i>', 'completed', true);
             }
         }
         
@@ -1297,9 +1304,23 @@ function createTaskCard(task) {
         toolbarLeft.appendChild(attachBadge);
     }
     
-    // Right side: Edit & Delete buttons (admin only)
+    // Right side: Info, Edit & Delete buttons
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'toolbar-right';
+    
+    // Info button (always visible)
+    const infoBtn = document.createElement('button');
+    infoBtn.className = 'info-task';
+    infoBtn.title = 'Информация о задаче';
+    const infoIcon = document.createElement('i');
+    infoIcon.className = 'fa-solid fa-circle-info';
+    infoBtn.appendChild(infoIcon);
+    infoBtn.onclick = (e) => {
+        e.stopPropagation();
+        playClickSound();
+        openTaskDetailsModal(task);
+    };
+    toolbarRight.appendChild(infoBtn);
     
     if (state.role === 'admin') {
         toolbarRight.appendChild(editBtn);
@@ -1369,7 +1390,7 @@ function createTaskCard(task) {
 }
 
 // Update SubStatus Function
-function updateTaskSubStatus(taskId, newSubStatus) {
+function updateTaskSubStatus(taskId, newSubStatus, completionData = null) {
     const updates = {
         subStatus: newSubStatus
     };
@@ -1377,14 +1398,29 @@ function updateTaskSubStatus(taskId, newSubStatus) {
     if (newSubStatus === 'done') {
         updates.status = 'done';
         updates.subStatus = 'completed'; // Keep visual state but move to done list
+        updates.archivedAt = new Date().toISOString();
     } else {
         updates.status = 'in-progress';
+    }
+    
+    // Save timestamps for status changes
+    if (newSubStatus === 'in_work') {
+        updates.takenToWorkAt = new Date().toISOString();
     }
     
     // Sync legacy fields for backward compatibility if needed, 
     // but new UI relies on subStatus mostly.
     if (newSubStatus === 'completed') {
         updates.assigneeCompleted = true;
+        updates.completedAt = new Date().toISOString();
+        
+        // Add completion proof data if provided
+        if (completionData) {
+            updates.completionComment = completionData.comment;
+            updates.completionProof = completionData.proof;
+            updates.completedBy = state.currentUser ? 
+                `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() : 'Unknown';
+        }
     } else {
         updates.assigneeCompleted = false;
     }
@@ -1396,6 +1432,361 @@ function updateTaskSubStatus(taskId, newSubStatus) {
         console.error("Error updating status:", error);
         alert("Ошибка: " + error.message);
     });
+}
+
+// ========== COMPLETION PROOF MODAL ==========
+let completionProofAttachment = null;
+
+function openCompletionProofModal(taskId) {
+    const modal = document.getElementById('completion-proof-modal');
+    document.getElementById('completion-task-id').value = taskId;
+    document.getElementById('completion-comment').value = '';
+    completionProofAttachment = null;
+    renderCompletionAttachment();
+    modal.classList.add('active');
+}
+
+function renderCompletionAttachment() {
+    const list = document.getElementById('completion-attachments-list');
+    const btn = document.getElementById('add-completion-file-btn');
+    
+    if (!list) return;
+    list.innerHTML = '';
+    
+    if (completionProofAttachment) {
+        const item = document.createElement('div');
+        item.className = 'attachment-item' + (completionProofAttachment.uploading ? ' uploading' : '');
+        
+        const iconClass = getFileIcon(completionProofAttachment.type || 'other');
+        
+        item.innerHTML = `
+            <div class="attachment-icon ${completionProofAttachment.type || 'other'}">
+                <i class="fa-solid ${iconClass}"></i>
+            </div>
+            <div class="attachment-info">
+                <div class="attachment-name">${completionProofAttachment.name}</div>
+                <div class="attachment-size">${completionProofAttachment.uploading ? 'Загрузка...' : formatFileSize(completionProofAttachment.size)}</div>
+            </div>
+            ${!completionProofAttachment.uploading ? `
+                <button type="button" class="attachment-remove" onclick="removeCompletionAttachment()">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            ` : ''}
+        `;
+        
+        list.appendChild(item);
+        btn.style.display = 'none';
+    } else {
+        btn.style.display = 'flex';
+    }
+}
+
+function removeCompletionAttachment() {
+    completionProofAttachment = null;
+    renderCompletionAttachment();
+}
+
+async function handleCompletionFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    event.target.value = '';
+    
+    if (file.size > cloudinaryConfig.maxFileSize) {
+        alert(`Файл слишком большой. Максимум ${formatFileSize(cloudinaryConfig.maxFileSize)}`);
+        return;
+    }
+    
+    const fileType = getFileType(file.name);
+    completionProofAttachment = {
+        name: file.name,
+        size: file.size,
+        type: fileType,
+        uploading: true
+    };
+    
+    renderCompletionAttachment();
+    
+    try {
+        const result = await uploadToCloudinary(file);
+        
+        completionProofAttachment = {
+            name: file.name,
+            url: result.secure_url,
+            type: fileType,
+            size: file.size,
+            publicId: result.public_id,
+            uploadedAt: new Date().toISOString()
+        };
+        
+        renderCompletionAttachment();
+        playClickSound();
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert('Ошибка при загрузке файла: ' + error.message);
+        completionProofAttachment = null;
+        renderCompletionAttachment();
+    }
+}
+
+function submitCompletionProof(e) {
+    e.preventDefault();
+    
+    const taskId = document.getElementById('completion-task-id').value;
+    const comment = document.getElementById('completion-comment').value.trim();
+    
+    if (!comment) {
+        alert('Пожалуйста, добавьте комментарий о выполнении');
+        return;
+    }
+    
+    if (!completionProofAttachment || !completionProofAttachment.url) {
+        alert('Пожалуйста, прикрепите файл-подтверждение');
+        return;
+    }
+    
+    const completionData = {
+        comment: comment,
+        proof: completionProofAttachment
+    };
+    
+    updateTaskSubStatus(taskId, 'completed', completionData);
+    
+    // Close modal
+    document.getElementById('completion-proof-modal').classList.remove('active');
+    completionProofAttachment = null;
+}
+
+// ========== TASK DETAILS MODAL ==========
+function openTaskDetailsModal(task) {
+    const modal = document.getElementById('task-details-modal');
+    const content = document.getElementById('task-details-content');
+    
+    // Format dates (handles ISO strings, Firebase Timestamps, and Date objects)
+    const formatDateTime = (dateValue) => {
+        if (!dateValue) return null;
+        
+        let date;
+        
+        try {
+            // Handle Firebase Timestamp (has toDate method)
+            if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+                date = dateValue.toDate();
+            }
+            // Handle Firebase Timestamp (has seconds property)
+            else if (typeof dateValue === 'object' && dateValue.seconds !== undefined) {
+                date = new Date(dateValue.seconds * 1000);
+            }
+            // Handle milliseconds timestamp (number)
+            else if (typeof dateValue === 'number') {
+                date = new Date(dateValue);
+            }
+            // Handle ISO string
+            else if (typeof dateValue === 'string') {
+                date = new Date(dateValue);
+            }
+            // Handle Date object
+            else if (dateValue instanceof Date) {
+                date = dateValue;
+            }
+            // Unknown format
+            else {
+                return null;
+            }
+            
+            // Check if date is valid
+            if (!date || isNaN(date.getTime())) {
+                return null;
+            }
+            
+            const result = date.toLocaleDateString('ru-RU', { 
+                day: 'numeric', 
+                month: 'long', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // Extra safety check
+            if (result.includes('Invalid')) {
+                return null;
+            }
+            
+            return result;
+        } catch (e) {
+            return null;
+        }
+    };
+    
+    const createdAt = formatDateTime(task.createdAt);
+    const takenToWorkAt = formatDateTime(task.takenToWorkAt);
+    const completedAt = formatDateTime(task.completedAt);
+    const archivedAt = formatDateTime(task.archivedAt);
+    const deadline = task.deadline ? new Date(task.deadline).toLocaleDateString('ru-RU', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric'
+    }) : 'Не указан';
+    
+    // Build timeline HTML
+    let timelineHTML = `
+        <div class="timeline-item">
+            <div class="timeline-icon created"><i class="fa-solid fa-plus"></i></div>
+            <div class="timeline-content">
+                <div class="timeline-label">Задача создана</div>
+                <div class="timeline-date">${createdAt || 'Дата не сохранена'}</div>
+            </div>
+        </div>
+    `;
+    
+    if (takenToWorkAt) {
+        timelineHTML += `
+            <div class="timeline-item">
+                <div class="timeline-icon in-work"><i class="fa-solid fa-person-digging"></i></div>
+                <div class="timeline-content">
+                    <div class="timeline-label">Взята в работу</div>
+                    <div class="timeline-date">${takenToWorkAt}</div>
+                </div>
+            </div>
+        `;
+    } else if (task.subStatus === 'assigned') {
+        timelineHTML += `
+            <div class="timeline-item pending">
+                <div class="timeline-icon in-work"><i class="fa-solid fa-person-digging"></i></div>
+                <div class="timeline-content">
+                    <div class="timeline-label">Ожидает принятия в работу</div>
+                    <div class="timeline-date">—</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (completedAt) {
+        timelineHTML += `
+            <div class="timeline-item">
+                <div class="timeline-icon completed"><i class="fa-solid fa-check"></i></div>
+                <div class="timeline-content">
+                    <div class="timeline-label">Завершена исполнителем${task.completedBy ? ' (' + task.completedBy + ')' : ''}</div>
+                    <div class="timeline-date">${completedAt}</div>
+                </div>
+            </div>
+        `;
+    } else if (task.subStatus === 'in_work') {
+        timelineHTML += `
+            <div class="timeline-item pending">
+                <div class="timeline-icon completed"><i class="fa-solid fa-check"></i></div>
+                <div class="timeline-content">
+                    <div class="timeline-label">Ожидает завершения</div>
+                    <div class="timeline-date">—</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (archivedAt) {
+        timelineHTML += `
+            <div class="timeline-item">
+                <div class="timeline-icon archived"><i class="fa-solid fa-check-double"></i></div>
+                <div class="timeline-content">
+                    <div class="timeline-label">Подтверждена администратором (архив)</div>
+                    <div class="timeline-date">${archivedAt}</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Completion proof section
+    let proofHTML = '';
+    if (task.completionComment || task.completionProof) {
+        proofHTML = `
+            <div class="task-details-section">
+                <h3><i class="fa-solid fa-clipboard-check"></i> Подтверждение выполнения</h3>
+                <div class="completion-proof-box">
+                    <div class="completion-proof-header">
+                        <i class="fa-solid fa-user-check"></i> Отчёт исполнителя
+                    </div>
+                    ${task.completionComment ? `
+                        <div class="completion-proof-comment">${escapeHtml(task.completionComment)}</div>
+                    ` : ''}
+                    ${task.completionProof && task.completionProof.url ? `
+                        <div class="completion-proof-file" data-proof='${JSON.stringify(task.completionProof).replace(/'/g, "\\'")}'>
+                            <i class="fa-solid ${getFileIcon(task.completionProof.type || 'other')}"></i>
+                            <div class="completion-proof-file-info">
+                                <div class="completion-proof-file-name">${escapeHtml(task.completionProof.name)}</div>
+                                <div class="completion-proof-file-size">${formatFileSize(task.completionProof.size || 0)}</div>
+                            </div>
+                            <i class="fa-solid fa-external-link" style="color: var(--text-secondary);"></i>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    } else if (task.subStatus === 'completed' || task.status === 'done') {
+        proofHTML = `
+            <div class="task-details-section">
+                <h3><i class="fa-solid fa-clipboard-check"></i> Подтверждение выполнения</h3>
+                <div class="no-proof-yet">
+                    <i class="fa-solid fa-file-circle-question"></i>
+                    <p>Подтверждение не было добавлено<br><small>(задача была завершена до введения этой функции)</small></p>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Assignees
+    const assignees = task.assignee ? task.assignee.split(',').map(n => n.trim()).filter(n => n) : [];
+    const assigneesHTML = assignees.length > 0 
+        ? assignees.map(name => `<span style="background: rgba(99, 102, 241, 0.1); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem;">${escapeHtml(name)}</span>`).join(' ')
+        : '<span style="color: var(--text-secondary);">Не назначены</span>';
+    
+    content.innerHTML = `
+        <div class="task-details-section">
+            <div class="task-details-title">${escapeHtml(task.title)}</div>
+            ${task.description ? `<div class="task-details-description">${escapeHtml(task.description)}</div>` : ''}
+            <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;">
+                <div>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Исполнители:</span><br>
+                    ${assigneesHTML}
+                </div>
+                <div>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Срок:</span><br>
+                    <span><i class="fa-regular fa-calendar"></i> ${deadline}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="task-details-section">
+            <h3><i class="fa-solid fa-clock-rotate-left"></i> История задачи</h3>
+            <div class="task-timeline">
+                ${timelineHTML}
+            </div>
+        </div>
+        
+        ${proofHTML}
+    `;
+    
+    // Add click handler for proof file
+    const proofFileEl = content.querySelector('.completion-proof-file');
+    if (proofFileEl) {
+        proofFileEl.addEventListener('click', () => {
+            try {
+                const proofData = JSON.parse(proofFileEl.dataset.proof);
+                openFilePreview(proofData);
+            } catch (e) {
+                console.error('Error parsing proof data:', e);
+            }
+        });
+    }
+    
+    modal.classList.add('active');
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function formatDate(dateString) {
@@ -1489,6 +1880,26 @@ function setupEventListeners() {
             playClickSound();
             fileInput.click();
         });
+    }
+
+    // Completion proof file handlers
+    const completionFileInput = document.getElementById('completion-file-input');
+    const addCompletionFileBtn = document.getElementById('add-completion-file-btn');
+    const completionProofForm = document.getElementById('completion-proof-form');
+    
+    if (completionFileInput) {
+        completionFileInput.addEventListener('change', handleCompletionFileSelect);
+    }
+    
+    if (addCompletionFileBtn) {
+        addCompletionFileBtn.addEventListener('click', () => {
+            playClickSound();
+            completionFileInput.click();
+        });
+    }
+    
+    if (completionProofForm) {
+        completionProofForm.addEventListener('submit', submitCompletionProof);
     }
 
     // Help button
