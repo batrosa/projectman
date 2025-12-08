@@ -567,6 +567,7 @@ let auth;
 let firebaseInitAttempts = 0;
 let isFirebaseInitialized = false;
 let taskListenerUnsubscribe = null; // To manage real-time listener for tasks
+let myTasksListenerUnsubscribe = null; // To manage real-time listener for my tasks count
 
 function initFirebase() {
     if (isFirebaseInitialized) return; // Prevent double init
@@ -2512,8 +2513,8 @@ function finishAuth(role) {
         renderBoard();
     }
     
-    // Update My Tasks count
-    updateMyTasksCount();
+    // Subscribe to real-time My Tasks updates
+    subscribeToMyTasks();
 }
 
 function showAuthScreen() {
@@ -2547,6 +2548,9 @@ function hideAuthScreen() {
 
 async function logout() {
     try {
+        // Unsubscribe from my tasks listener
+        unsubscribeFromMyTasks();
+        
         await auth.signOut();
         state.activeProjectId = null;
         document.body.classList.remove('read-only');
@@ -2554,6 +2558,11 @@ async function logout() {
         // Close sidebar on mobile
         closeSidebarOnMobile();
         
+        // Hide my tasks badge
+        if (elements.myTasksCount) {
+            elements.myTasksCount.style.display = 'none';
+        }
+
         // Reset PIN verification - require PIN again on next login
         pinVerified = false;
         currentPin = '';
@@ -3144,6 +3153,76 @@ async function updateMyTasksCount() {
         elements.myTasksCount.style.display = 'flex';
     } else {
         elements.myTasksCount.style.display = 'none';
+    }
+}
+
+// Subscribe to real-time updates for My Tasks count
+function subscribeToMyTasks() {
+    // Unsubscribe from previous listener if exists
+    if (myTasksListenerUnsubscribe) {
+        myTasksListenerUnsubscribe();
+        myTasksListenerUnsubscribe = null;
+    }
+    
+    if (!state.currentUser) return;
+    
+    // Listen to all tasks and filter on client side
+    myTasksListenerUnsubscribe = db.collection('tasks').onSnapshot(snapshot => {
+        // Recalculate my tasks count when any task changes
+        updateMyTasksCountFromSnapshot(snapshot);
+    }, error => {
+        console.error("Error listening to my tasks:", error);
+    });
+}
+
+// Update count from snapshot (faster than fetching again)
+function updateMyTasksCountFromSnapshot(snapshot) {
+    if (!state.currentUser || !elements.myTasksCount) return;
+    
+    const userEmail = state.currentUser.email?.toLowerCase();
+    const userFullName = state.currentUser.fullName || 
+        `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
+    
+    let activeCount = 0;
+    
+    snapshot.forEach(doc => {
+        const task = doc.data();
+        
+        // Skip completed tasks
+        if (task.status === 'done') return;
+        
+        let isAssignee = false;
+        
+        // Check by email
+        if (userEmail && task.assigneeEmail) {
+            const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
+            isAssignee = assigneeEmails.map(e => e.trim()).includes(userEmail);
+        }
+        
+        // Check by name if email didn't match
+        if (!isAssignee && userFullName && task.assignee) {
+            const assigneeNames = task.assignee.split(',').map(n => n.trim());
+            isAssignee = assigneeNames.includes(userFullName);
+        }
+        
+        if (isAssignee) {
+            activeCount++;
+        }
+    });
+    
+    if (activeCount > 0) {
+        elements.myTasksCount.textContent = activeCount;
+        elements.myTasksCount.style.display = 'flex';
+    } else {
+        elements.myTasksCount.style.display = 'none';
+    }
+}
+
+// Unsubscribe from my tasks listener
+function unsubscribeFromMyTasks() {
+    if (myTasksListenerUnsubscribe) {
+        myTasksListenerUnsubscribe();
+        myTasksListenerUnsubscribe = null;
     }
 }
 
