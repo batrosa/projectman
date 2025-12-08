@@ -794,12 +794,45 @@ function showOrgSelectionScreen() {
     
     // Clear current organization from state (user is switching)
     state.organization = null;
-    state.currentUser.organizationId = null;
+    if (state.currentUser) {
+        state.currentUser.organizationId = null;
+    }
     
     // Show welcome message
     if (state.currentUser) {
         const name = state.currentUser.firstName || state.currentUser.email;
         elements.orgWelcomeName.textContent = `Привет, ${name}!`;
+    }
+    
+    // Check for invite code in URL
+    checkInviteCodeFromUrl();
+}
+
+// Check URL for invite code and auto-fill
+function checkInviteCodeFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteCode = urlParams.get('invite');
+    
+    if (inviteCode && elements.orgInviteCodeInput) {
+        // Switch to join screen
+        elements.orgChoiceScreen.style.display = 'none';
+        elements.orgJoinScreen.style.display = 'block';
+        
+        // Fill in the code
+        elements.orgInviteCodeInput.value = inviteCode.toUpperCase();
+        
+        // Trigger search for organization
+        setTimeout(async () => {
+            const org = await findOrganizationByCode(inviteCode);
+            if (org) {
+                elements.orgJoinName.textContent = org.name;
+                elements.orgJoinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
+                elements.orgJoinPreview.style.display = 'block';
+            }
+        }, 100);
+        
+        // Clean URL without reload
+        window.history.replaceState({}, document.title, window.location.pathname);
     }
 }
 
@@ -980,12 +1013,13 @@ function setupOrgEventListeners() {
         elements.orgShareBtn.addEventListener('click', async () => {
             const code = state.organization?.inviteCode || '';
             const name = state.organization?.name || 'организации';
+            const inviteUrl = `${window.location.origin}?invite=${code}`;
             const shareData = {
                 title: 'Приглашение в ProjectMan',
                 text: `Присоединяйтесь к "${name}" в ProjectMan!\nКод: ${code}`,
-                url: `${window.location.origin}/join/${code}`
+                url: inviteUrl
             };
-            
+
             if (navigator.share) {
                 try {
                     await navigator.share(shareData);
@@ -997,7 +1031,7 @@ function setupOrgEventListeners() {
             } else {
                 // Fallback: copy to clipboard
                 try {
-                    await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
+                    await navigator.clipboard.writeText(inviteUrl);
                     alert('Ссылка скопирована в буфер обмена');
                 } catch (err) {
                     console.error('Copy failed:', err);
