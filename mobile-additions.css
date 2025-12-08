@@ -221,6 +221,23 @@
         min-height: 36px; /* Ensure touch target */
         
         /* Force consistent appearance */
+    }
+    
+    /* Info Task Button - Match status-badge */
+    .info-task {
+        padding: 6px 12px !important;
+        border-radius: 6px !important;
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        min-height: 36px !important;
+        height: auto !important;
+        min-width: auto !important;
+    }
+    
+    .info-task i {
+        font-size: 0.9rem !important;
         -webkit-appearance: none;
         appearance: none;
     }
@@ -732,16 +749,4 @@
         max-width: 600px;
         max-height: calc(100vh - 2rem);
     }
-}
-
-/* Info Task Button - Mobile */
-.info-task {
-    height: 30px !important;
-    min-width: 30px !important;
-    padding: 0 12px !important;
-    font-size: 0.95rem !important;
-}
-
-.info-task i {
-    font-size: 0.95rem !important;
 }
