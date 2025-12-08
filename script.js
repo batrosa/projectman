@@ -1497,7 +1497,8 @@ function setupRealtimeListeners() {
         console.log('Users loaded:', users.length, 'for org:', orgId); // Debug
         // Re-render projects and admin panel if user's access changes
         renderProjects();
-        renderUsersList(); // Update admin panel
+        renderUsersList(); // Update admin panel - users list
+        updateAccessUserSelect(); // Update admin panel - access dropdown
     }, error => {
         console.error("Error listening to users:", error);
     });
