@@ -1480,34 +1480,26 @@ function setupRealtimeListeners() {
     });
 
     // Listen for Users (filtered by organization)
-    let usersQuery = db.collection('users');
-    if (orgId) {
-        usersQuery = db.collection('users').where('organizationId', '==', orgId);
-    }
-    
-    usersListenerUnsubscribe = usersQuery.onSnapshot(snapshot => {
+    // We listen to ALL users and filter client-side to avoid index requirements
+    usersListenerUnsubscribe = db.collection('users').onSnapshot(snapshot => {
         const users = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Include users without organizationId (legacy) or matching org
-            if (!orgId || !data.organizationId || data.organizationId === orgId) {
+            // Include users matching current organization
+            if (orgId && data.organizationId === orgId) {
+                users.push({ id: doc.id, ...data });
+            } else if (!orgId) {
+                // No org filter - include all (legacy mode)
                 users.push({ id: doc.id, ...data });
             }
         });
         state.users = users;
-        // Re-render projects if user's access changes
+        console.log('Users loaded:', users.length, 'for org:', orgId); // Debug
+        // Re-render projects and admin panel if user's access changes
         renderProjects();
+        renderUsersList(); // Update admin panel
     }, error => {
         console.error("Error listening to users:", error);
-        // Fallback without filter
-        db.collection('users').onSnapshot(snapshot => {
-            const users = [];
-            snapshot.forEach(doc => {
-                users.push({ id: doc.id, ...doc.data() });
-            });
-            state.users = users;
-            renderProjects();
-        });
     });
 }
 

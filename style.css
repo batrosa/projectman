@@ -2955,10 +2955,10 @@ body.light-mode .pin-hint {
     top: calc(100% + 8px);
     left: 0;
     right: 0;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
     z-index: 1000;
     overflow: hidden;
 }
@@ -3085,9 +3085,17 @@ body.light-mode .org-menu-btn {
 }
 
 body.light-mode .org-dropdown {
-    background: white;
+    background: #ffffff;
     border-color: #e2e8f0;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+
+.org-dropdown-header {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+body.light-mode .org-dropdown-header {
+    background: rgba(99, 102, 241, 0.08);
 }
 
 body.light-mode .org-invite-code-row code {
