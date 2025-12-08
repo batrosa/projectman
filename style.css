@@ -876,10 +876,15 @@ body.read-only #theme-toggle,
 body.read-only #logout-btn,
 body.read-only #mobile-menu-btn,
 body.read-only #my-tasks-btn,
-body.read-only #completion-proof-modal .primary-btn,
-body.read-only #completion-proof-modal .secondary-btn,
-body.read-only #completion-proof-modal .modal-footer button,
+body.read-only #submit-completion-btn,
+body.read-only #cancel-completion-btn,
 body.read-only .close-modal {
+    display: flex !important;
+}
+
+/* Force show completion modal buttons */
+#submit-completion-btn,
+#cancel-completion-btn {
     display: flex !important;
 }
 
