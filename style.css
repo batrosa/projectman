@@ -2318,21 +2318,24 @@ body.light-mode .my-task-item:hover {
 
 /* Task Info Button */
 .info-task {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    color: #6366f1;
     cursor: pointer;
-    padding: 0.4rem;
-    border-radius: 4px;
+    padding: 0.5rem;
+    border-radius: 6px;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 1rem;
 }
 
 .info-task:hover {
-    color: var(--primary);
-    background: rgba(99, 102, 241, 0.1);
+    color: #ffffff;
+    background: var(--primary);
+    border-color: var(--primary);
+    transform: translateY(-1px);
 }
 
 /* Light mode adjustments */
@@ -2359,4 +2362,20 @@ body.light-mode .completion-proof-box {
     opacity: 0.3;
     margin-bottom: 0.75rem;
     display: block;
+}
+
+/* Completion Proof Modal - Mobile Fix */
+@media (max-width: 768px) {
+    #completion-proof-modal .modal-footer {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        gap: 1rem;
+        padding: 1rem 1.5rem;
+    }
+    
+    #completion-proof-modal .modal-footer button {
+        flex: 1;
+        max-width: 150px;
+    }
 }
