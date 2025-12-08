@@ -800,3 +800,67 @@
         margin-top: 0 !important;
     }
 }
+
+/* ========== PIN Screen Mobile ========== */
+@media (max-width: 768px) {
+    .pin-container {
+        padding: 1.5rem;
+    }
+    
+    .pin-logo {
+        width: 70px;
+        height: 70px;
+        border-radius: 20px;
+        margin-bottom: 1.25rem;
+    }
+    
+    .pin-logo i {
+        font-size: 2rem;
+    }
+    
+    .pin-title {
+        font-size: 1.5rem;
+    }
+    
+    .pin-subtitle {
+        font-size: 0.95rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .pin-dots {
+        gap: 0.875rem;
+    }
+    
+    .pin-dot {
+        width: 16px;
+        height: 16px;
+    }
+    
+    .pin-keypad {
+        gap: 10px;
+        max-width: 260px;
+    }
+    
+    .pin-key {
+        width: 68px;
+        height: 68px;
+        font-size: 1.5rem;
+    }
+    
+    .pin-hint {
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 380px) {
+    .pin-keypad {
+        gap: 8px;
+        max-width: 230px;
+    }
+    
+    .pin-key {
+        width: 60px;
+        height: 60px;
+        font-size: 1.35rem;
+    }
+}
