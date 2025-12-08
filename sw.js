@@ -1,4 +1,4 @@
-const CACHE_NAME = 'projectman-v9';
+const CACHE_NAME = 'projectman-v10';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -43,6 +43,19 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - Network first for HTML, Cache first (stale-while-revalidate) for others
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  
+  // Skip caching for external APIs (Cloudinary, Firebase, etc.)
+  if (url.hostname.includes('cloudinary.com') ||
+      url.hostname.includes('firebaseio.com') ||
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('firebase') ||
+      url.hostname.includes('emailjs.com') ||
+      event.request.method !== 'GET') {
+    // Don't intercept - let browser handle it directly
+    return;
+  }
+
   // For navigation requests (HTML pages), try network first to ensure we get the latest version
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -67,7 +80,8 @@ self.addEventListener('fetch', (event) => {
             }
             return networkResponse;
         }).catch(() => {
-            // Network failed, nothing to do (we have cached response hopefully)
+            // Network failed, return cached or nothing
+            return cachedResponse;
         });
 
         return cachedResponse || fetchPromise;
