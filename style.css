@@ -2324,14 +2324,14 @@ body.light-mode .my-task-item:hover {
     cursor: pointer;
     padding: 6px 12px;
     border-radius: 6px;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     font-size: 0.85rem;
     font-weight: 600;
-    min-height: 28px;
-    height: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    user-select: none;
+    width: fit-content;
 }
 
 .info-task:hover {
