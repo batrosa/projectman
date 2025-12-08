@@ -221,23 +221,6 @@
         min-height: 36px; /* Ensure touch target */
         
         /* Force consistent appearance */
-    }
-    
-    /* Info Task Button - Match status-badge */
-    .info-task {
-        padding: 6px 12px !important;
-        border-radius: 6px !important;
-        font-size: 0.85rem !important;
-        font-weight: 600 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        min-height: 36px !important;
-        height: auto !important;
-        min-width: auto !important;
-    }
-    
-    .info-task i {
-        font-size: 0.9rem !important;
         -webkit-appearance: none;
         appearance: none;
     }
@@ -750,57 +733,6 @@
         max-height: calc(100vh - 2rem);
     }
 }
-
-/* Fix: My Tasks cards centering on mobile */
-@media (max-width: 768px) {
-    .my-tasks-content {
-        padding: 1rem;
-    }
-    
-    .my-tasks-list {
-        padding-left: 0;
-        padding-right: 0;
-    }
-    
-    .my-task-item {
-        margin-left: 0;
-        margin-right: 0;
-    }
-}
-
-/* Fix: Completion Proof Modal on mobile */
-@media (max-width: 768px) {
-    #completion-proof-modal .modal-content {
-        height: auto !important;
-        max-height: 90vh !important;
-        max-height: 90dvh !important;
-        overflow-y: auto !important;
-        border-radius: 16px !important;
-        display: flex;
-        flex-direction: column;
-    }
-    
-    #completion-proof-modal form {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        overflow: hidden;
-    }
-    
-    #completion-proof-modal form > div:first-child {
-        flex: 1;
-        overflow-y: auto;
-    }
-    
-    #completion-proof-modal .modal-footer {
-        flex-shrink: 0;
-        padding: 1rem 1.5rem !important;
-        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)) !important;
-        background: var(--card-bg);
-        margin-top: 0 !important;
-    }
-}
-
 /* ========== PIN Screen Mobile ========== */
 @media (max-width: 768px) {
     .pin-container {

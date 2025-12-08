@@ -2318,43 +2318,21 @@ body.light-mode .my-task-item:hover {
 
 /* Task Info Button */
 .info-task {
-    background: rgba(99, 102, 241, 0.15);
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    color: #6366f1;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
     cursor: pointer;
-    padding: 0 12px;
-    border-radius: 6px;
+    padding: 0.4rem;
+    border-radius: 4px;
     transition: all 0.2s;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
-    margin-left: 0.5rem;
-    height: 30px;
-    min-width: 30px;
-}
-
-.info-task i {
-    font-size: 0.95rem;
 }
 
 .info-task:hover {
-    color: #ffffff;
-    background: var(--primary);
-    border-color: var(--primary);
-}
-
-/* Mobile - same size as PC since status-badge is same */
-@media (max-width: 768px) {
-    .info-task {
-        height: 30px;
-        min-width: 30px;
-        padding: 0 12px;
-    }
-    
-    .info-task i {
-        font-size: 0.95rem;
-    }
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
 }
 
 /* Light mode adjustments */
@@ -2381,52 +2359,6 @@ body.light-mode .completion-proof-box {
     opacity: 0.3;
     margin-bottom: 0.75rem;
     display: block;
-}
-
-/* Completion Proof Modal - Mobile Fix */
-@media (max-width: 768px) {
-    #completion-proof-modal .modal-footer {
-        display: flex;
-        flex-direction: row;
-        justify-content: center;
-        gap: 1rem;
-        padding: 1rem 1.5rem;
-    }
-    
-    #completion-proof-modal .modal-footer button {
-        flex: 1;
-        max-width: 150px;
-    }
-}
-
-/* Task Details Modal - Mobile Scrollable */
-@media (max-width: 768px) {
-    #task-details-modal .modal-content {
-        display: flex;
-        flex-direction: column;
-        max-height: 90vh;
-        height: 90vh;
-        margin: 5vh auto;
-    }
-    
-    #task-details-modal .modal-header {
-        flex-shrink: 0;
-        position: sticky;
-        top: 0;
-        background: #1e293b;
-        z-index: 10;
-        border-bottom: 1px solid var(--border);
-    }
-    
-    body.light-mode #task-details-modal .modal-header {
-        background: #ffffff;
-    }
-    
-    #task-details-modal #task-details-content {
-        flex: 1;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-    }
 }
 /* ========== SECRET PIN SCREEN ========== */
 .pin-screen {

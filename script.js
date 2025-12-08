@@ -39,6 +39,138 @@ function playClickSound() {
     // Sound removed per user request
 }
 
+// ========== SECRET PIN CODE ==========
+const SECRET_PIN = '1733';
+let currentPin = '';
+let pinVerified = false;
+
+function initPinScreen() {
+    const pinScreen = document.getElementById('pin-screen');
+    const pinKeys = document.querySelectorAll('.pin-key[data-value]');
+    const pinDelete = document.getElementById('pin-delete');
+    const pinDots = document.querySelectorAll('.pin-dot');
+    const pinError = document.getElementById('pin-error');
+    
+    if (!pinScreen) return;
+    
+    // Show PIN screen
+    pinScreen.style.display = 'flex';
+    
+    // Handle number keys
+    pinKeys.forEach(key => {
+        key.addEventListener('click', () => {
+            if (currentPin.length < 4) {
+                currentPin += key.dataset.value;
+                updatePinDots();
+                
+                // Check PIN when 4 digits entered
+                if (currentPin.length === 4) {
+                    setTimeout(checkPin, 200);
+                }
+            }
+        });
+    });
+    
+    // Handle delete key
+    if (pinDelete) {
+        pinDelete.addEventListener('click', () => {
+            if (currentPin.length > 0) {
+                currentPin = currentPin.slice(0, -1);
+                updatePinDots();
+                hidePinError();
+            }
+        });
+    }
+    
+    // Handle keyboard input
+    document.addEventListener('keydown', handlePinKeyboard);
+    
+    function updatePinDots() {
+        pinDots.forEach((dot, index) => {
+            dot.classList.remove('filled', 'error');
+            if (index < currentPin.length) {
+                dot.classList.add('filled');
+            }
+        });
+    }
+    
+    function checkPin() {
+        if (currentPin === SECRET_PIN) {
+            // Success!
+            pinVerified = true;
+            pinDots.forEach(dot => dot.classList.add('filled'));
+            
+            setTimeout(() => {
+                pinScreen.style.opacity = '0';
+                pinScreen.style.transition = 'opacity 0.4s ease';
+                
+                setTimeout(() => {
+                    pinScreen.style.display = 'none';
+                    document.removeEventListener('keydown', handlePinKeyboard);
+                    // Continue with normal app flow
+                    proceedAfterPin();
+                }, 400);
+            }, 300);
+        } else {
+            // Wrong PIN
+            pinDots.forEach(dot => dot.classList.add('error'));
+            showPinError('Неверный код доступа');
+            
+            setTimeout(() => {
+                currentPin = '';
+                updatePinDots();
+            }, 600);
+        }
+    }
+    
+    function showPinError(message) {
+        if (pinError) {
+            pinError.textContent = message;
+            pinError.classList.add('visible');
+        }
+    }
+    
+    function hidePinError() {
+        if (pinError) {
+            pinError.classList.remove('visible');
+        }
+    }
+    
+    function handlePinKeyboard(e) {
+        if (pinVerified) return;
+        
+        if (e.key >= '0' && e.key <= '9' && currentPin.length < 4) {
+            currentPin += e.key;
+            updatePinDots();
+            
+            if (currentPin.length === 4) {
+                setTimeout(checkPin, 200);
+            }
+        } else if (e.key === 'Backspace' && currentPin.length > 0) {
+            currentPin = currentPin.slice(0, -1);
+            updatePinDots();
+            hidePinError();
+        }
+    }
+}
+
+function proceedAfterPin() {
+    // Hide loading screen if visible
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.classList.add('hidden');
+    }
+    
+    // Now trigger auth flow based on current state
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+        // User already logged in, load their role and proceed
+        loadUserRole(auth.currentUser);
+    } else {
+        // Need to login - show auth screen
+        showAuthScreen();
+    }
+}
+
 // Button loading state helper
 function setButtonLoading(button, isLoading, originalText) {
     if (isLoading) {
@@ -98,8 +230,16 @@ function hideLoadingScreen() {
     }
 }
 
-// Start tips immediately
-document.addEventListener('DOMContentLoaded', startLoadingTips);
+// Start tips immediately and init PIN screen
+document.addEventListener('DOMContentLoaded', () => {
+    startLoadingTips();
+    
+    // Short delay to ensure CSS is loaded, then show PIN screen
+    setTimeout(() => {
+        hideLoadingScreen();
+        initPinScreen();
+    }, 500);
+});
 
 // ========== FILE ATTACHMENT FUNCTIONS ==========
 
@@ -620,7 +760,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.5'; // COMPLETION PROOF + TASK DETAILS MODAL
+    const CURRENT_VERSION = '5.7'; // FIX DATE FORMATTING FOR FIREBASE TIMESTAMPS
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -1281,20 +1421,6 @@ function createTaskCard(task) {
     toolbarLeft.className = 'toolbar-left';
     toolbarLeft.appendChild(dropdownContainer);
     
-    // Info button (next to status badge)
-    const infoBtn = document.createElement('button');
-    infoBtn.className = 'info-task';
-    infoBtn.title = 'Информация о задаче';
-    const infoIcon = document.createElement('i');
-    infoIcon.className = 'fa-solid fa-circle-info';
-    infoBtn.appendChild(infoIcon);
-    infoBtn.onclick = (e) => {
-        e.stopPropagation();
-        playClickSound();
-        openTaskDetailsModal(task);
-    };
-    toolbarLeft.appendChild(infoBtn);
-    
     // Add attachment badge if task has files
     if (task.attachments && task.attachments.length > 0) {
         const attachBadge = document.createElement('span');
@@ -1318,9 +1444,23 @@ function createTaskCard(task) {
         toolbarLeft.appendChild(attachBadge);
     }
     
-    // Right side: Edit & Delete buttons (admin only)
+    // Right side: Info, Edit & Delete buttons
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'toolbar-right';
+    
+    // Info button (always visible)
+    const infoBtn = document.createElement('button');
+    infoBtn.className = 'info-task';
+    infoBtn.title = 'Информация о задаче';
+    const infoIcon = document.createElement('i');
+    infoIcon.className = 'fa-solid fa-circle-info';
+    infoBtn.appendChild(infoIcon);
+    infoBtn.onclick = (e) => {
+        e.stopPropagation();
+        playClickSound();
+        openTaskDetailsModal(task);
+    };
+    toolbarRight.appendChild(infoBtn);
     
     if (state.role === 'admin') {
         toolbarRight.appendChild(editBtn);
@@ -1406,13 +1546,6 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null) {
     // Save timestamps for status changes
     if (newSubStatus === 'in_work') {
         updates.takenToWorkAt = new Date().toISOString();
-        
-        // Clear completion proof and archive date when returning task for revision
-        updates.completedAt = firebase.firestore.FieldValue.delete();
-        updates.completionComment = firebase.firestore.FieldValue.delete();
-        updates.completionProof = firebase.firestore.FieldValue.delete();
-        updates.completedBy = firebase.firestore.FieldValue.delete();
-        updates.archivedAt = firebase.firestore.FieldValue.delete();
     }
     
     // Sync legacy fields for backward compatibility if needed, 
@@ -1571,6 +1704,9 @@ function openTaskDetailsModal(task) {
     
     // Format dates (handles ISO strings, Firebase Timestamps, and Date objects)
     const formatDateTime = (dateValue) => {
+        // Debug log
+        console.log('formatDateTime input:', dateValue, typeof dateValue);
+        
         if (!dateValue) return null;
         
         let date;
@@ -1588,21 +1724,22 @@ function openTaskDetailsModal(task) {
             else if (typeof dateValue === 'number') {
                 date = new Date(dateValue);
             }
-            // Handle ISO string
+            // Handle ISO string or Date object
             else if (typeof dateValue === 'string') {
                 date = new Date(dateValue);
             }
-            // Handle Date object
             else if (dateValue instanceof Date) {
                 date = dateValue;
             }
-            // Unknown format
+            // Unknown format - can't parse
             else {
+                console.log('Unknown date format:', JSON.stringify(dateValue));
                 return null;
             }
             
             // Check if date is valid
             if (!date || isNaN(date.getTime())) {
+                console.log('Invalid date after parsing:', date);
                 return null;
             }
             
@@ -1614,13 +1751,14 @@ function openTaskDetailsModal(task) {
                 minute: '2-digit'
             });
             
-            // Extra safety check
+            // Extra check for "Invalid Date" string
             if (result.includes('Invalid')) {
                 return null;
             }
             
             return result;
         } catch (e) {
+            console.error('Error formatting date:', e, dateValue);
             return null;
         }
     };
@@ -2337,6 +2475,9 @@ async function loadUserRole(user) {
 }
 
 function finishAuth(role) {
+    // Only proceed if PIN is verified
+    if (!pinVerified) return;
+    
     console.log("Auth finished. Role:", role); // Debug
     state.role = role;
     state.currentUser.role = role;
@@ -2368,6 +2509,9 @@ function finishAuth(role) {
 }
 
 function showAuthScreen() {
+    // Only show auth screen if PIN is verified
+    if (!pinVerified) return;
+    
     // Hide loading screen first
     hideLoadingScreen();
 
