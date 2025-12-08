@@ -2848,7 +2848,7 @@ function renderMyTasks(tasks) {
                 statusClass = 'status-assigned';
                 statusIcon = 'fa-circle-exclamation';
                 break;
-            case 'in-work':
+            case 'in_work':
                 statusText = 'В работе';
                 statusClass = 'status-in-work';
                 statusIcon = 'fa-person-digging';
