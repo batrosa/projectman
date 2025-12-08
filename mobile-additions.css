@@ -796,3 +796,14 @@
         font-size: 1.35rem;
     }
 }
+
+/* ========== Disable double-tap zoom on mobile ========== */
+* {
+    touch-action: manipulation;
+}
+
+/* Extra protection for buttons and interactive elements */
+button, a, input, select, textarea, .task-card, .project-item, .pin-key {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
