@@ -39,130 +39,10 @@ function playClickSound() {
     // Sound removed per user request
 }
 
-// ========== SECRET PIN CODE ==========
-const SECRET_PIN = '1733';
-let currentPin = '';
-let pinVerified = false;
-let pinInitialized = false; // Prevent double initialization
+// ========== APP START ==========
 let pendingInviteCode = null; // Store invite code from URL
 
-function initPinScreen() {
-    const pinScreen = document.getElementById('pin-screen');
-    const pinKeys = document.querySelectorAll('.pin-key[data-value]');
-    const pinDelete = document.getElementById('pin-delete');
-    const pinDots = document.querySelectorAll('.pin-dot');
-    const pinError = document.getElementById('pin-error');
-    
-    if (!pinScreen) return;
-    
-    // Show PIN screen
-    pinScreen.style.display = 'flex';
-    
-    // Prevent adding event listeners multiple times
-    if (pinInitialized) return;
-    pinInitialized = true;
-    
-    // Handle number keys
-    pinKeys.forEach(key => {
-        key.addEventListener('click', () => {
-            if (pinVerified) return; // Don't accept input if already verified
-            if (currentPin.length < 4) {
-                currentPin += key.dataset.value;
-                updatePinDots();
-                
-                // Check PIN when 4 digits entered
-                if (currentPin.length === 4) {
-                    setTimeout(checkPin, 200);
-                }
-            }
-        });
-    });
-    
-    // Handle delete key
-    if (pinDelete) {
-        pinDelete.addEventListener('click', () => {
-            if (pinVerified) return;
-            if (currentPin.length > 0) {
-                currentPin = currentPin.slice(0, -1);
-                updatePinDots();
-                hidePinError();
-            }
-        });
-    }
-    
-    // Handle keyboard input
-    document.addEventListener('keydown', handlePinKeyboard);
-    
-    function updatePinDots() {
-        pinDots.forEach((dot, index) => {
-            dot.classList.remove('filled', 'error');
-            if (index < currentPin.length) {
-                dot.classList.add('filled');
-            }
-        });
-    }
-    
-    function checkPin() {
-        if (currentPin === SECRET_PIN) {
-            // Success!
-            pinVerified = true;
-            pinDots.forEach(dot => dot.classList.add('filled'));
-            
-            setTimeout(() => {
-                pinScreen.style.opacity = '0';
-                pinScreen.style.transition = 'opacity 0.4s ease';
-                
-                setTimeout(() => {
-                    pinScreen.style.display = 'none';
-                    document.removeEventListener('keydown', handlePinKeyboard);
-                    // Continue with normal app flow
-                    proceedAfterPin();
-                }, 400);
-            }, 300);
-        } else {
-            // Wrong PIN
-            pinDots.forEach(dot => dot.classList.add('error'));
-            showPinError('Неверный код доступа');
-            
-            setTimeout(() => {
-                currentPin = '';
-                updatePinDots();
-            }, 600);
-        }
-    }
-    
-    function showPinError(message) {
-        if (pinError) {
-            pinError.textContent = message;
-            pinError.classList.add('visible');
-        }
-    }
-    
-    function hidePinError() {
-        if (pinError) {
-            pinError.classList.remove('visible');
-        }
-    }
-    
-    function handlePinKeyboard(e) {
-        if (pinVerified) return;
-        
-        if (e.key >= '0' && e.key <= '9' && currentPin.length < 4) {
-            currentPin += e.key;
-            updatePinDots();
-            
-            if (currentPin.length === 4) {
-                setTimeout(checkPin, 200);
-            }
-        } else if (e.key === 'Backspace' && currentPin.length > 0) {
-            currentPin = currentPin.slice(0, -1);
-            updatePinDots();
-            hidePinError();
-        }
-    }
-}
-
-function proceedAfterPin() {
+function proceedToApp() {
     // Hide loading screen if visible
     const loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
@@ -260,10 +140,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
     document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
     
-    // Short delay to ensure CSS is loaded, then show PIN screen
+    // Short delay to ensure CSS is loaded, then start app
     setTimeout(() => {
         hideLoadingScreen();
-        initPinScreen();
+        proceedToApp();
     }, 500);
 });
 
@@ -3385,9 +3265,6 @@ async function loadUserRole(user) {
 }
 
 function finishAuth(role) {
-    // Only proceed if PIN is verified
-    if (!pinVerified) return;
-    
     console.log("Auth finished. Role:", role, "OrgRole:", state.orgRole); // Debug
     state.role = role;
     state.currentUser.role = role;
@@ -3417,9 +3294,6 @@ function finishAuthLegacy(role) {
 }
 
 function showAuthScreen() {
-    // Only show auth screen if PIN is verified
-    if (!pinVerified) return;
-    
     // Hide loading screen first
     hideLoadingScreen();
 
@@ -3462,27 +3336,12 @@ async function logout() {
             elements.myTasksCount.style.display = 'none';
         }
 
-        // Reset PIN verification - require PIN again on next login
-        pinVerified = false;
-        currentPin = '';
-        
-        // Show PIN screen again
-        const pinScreen = document.getElementById('pin-screen');
-        if (pinScreen) {
-            pinScreen.style.display = 'flex';
-            pinScreen.style.opacity = '1';
-            // Reset dots
-            document.querySelectorAll('.pin-dot').forEach(dot => {
-                dot.classList.remove('filled', 'error');
-            });
-        }
-        
-        // Hide app container
+        // Hide app container and org overlay
         document.getElementById('app-container').style.display = 'none';
-        document.getElementById('auth-overlay').style.display = 'none';
+        document.getElementById('org-overlay').style.display = 'none';
         
-        // Re-initialize PIN keyboard handler
-        initPinScreen();
+        // Show auth screen
+        showAuthScreen();
     } catch (error) {
         console.error('Error signing out:', error);
     }
