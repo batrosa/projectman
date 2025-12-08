@@ -903,10 +903,12 @@ function setupOrgEventListeners() {
     // Preview organization when typing invite code
     if (elements.orgInviteCodeInput) {
         let debounceTimer;
+        const mainSubmitBtn = document.getElementById('org-join-submit-main');
+        
         elements.orgInviteCodeInput.addEventListener('input', (e) => {
             const code = e.target.value.trim();
             elements.orgJoinError.style.display = 'none';
-            
+
             clearTimeout(debounceTimer);
             if (code.length >= 4) {
                 debounceTimer = setTimeout(async () => {
@@ -915,12 +917,15 @@ function setupOrgEventListeners() {
                         elements.orgJoinName.textContent = org.name;
                         elements.orgJoinMembers.textContent = `${org.membersCount || 1} участник(ов)`;
                         elements.orgJoinPreview.style.display = 'block';
+                        if (mainSubmitBtn) mainSubmitBtn.style.display = 'none';
                     } else {
                         elements.orgJoinPreview.style.display = 'none';
+                        if (mainSubmitBtn) mainSubmitBtn.style.display = 'none';
                     }
                 }, 500);
             } else {
                 elements.orgJoinPreview.style.display = 'none';
+                if (mainSubmitBtn) mainSubmitBtn.style.display = 'none';
             }
         });
     }

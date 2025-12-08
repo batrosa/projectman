@@ -376,10 +376,17 @@
                 </div>
                 <p id="org-join-error" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
                 <div id="org-join-preview" style="display: none; background: rgba(99, 102, 241, 0.1); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
-                    <p style="margin: 0; font-weight: 600;" id="org-join-name"></p>
-                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);" id="org-join-members"></p>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="flex: 1;">
+                            <p style="margin: 0; font-weight: 600;" id="org-join-name"></p>
+                            <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);" id="org-join-members"></p>
+                        </div>
+                        <button type="submit" class="primary-btn" id="org-join-submit-inline">
+                            <i class="fa-solid fa-right-to-bracket"></i> Войти
+                        </button>
+                    </div>
                 </div>
-                <button type="submit" class="primary-btn" style="width: 100%; justify-content: center;">
+                <button type="submit" class="primary-btn" id="org-join-submit-main" style="width: 100%; justify-content: center; display: none;">
                     <i class="fa-solid fa-right-to-bracket"></i> Присоединиться
                 </button>
             </form>
