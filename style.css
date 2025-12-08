@@ -2379,3 +2379,33 @@ body.light-mode .completion-proof-box {
         max-width: 150px;
     }
 }
+
+/* Task Details Modal - Mobile Scrollable */
+@media (max-width: 768px) {
+    #task-details-modal .modal-content {
+        display: flex;
+        flex-direction: column;
+        max-height: 90vh;
+        height: 90vh;
+        margin: 5vh auto;
+    }
+    
+    #task-details-modal .modal-header {
+        flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        background: #1e293b;
+        z-index: 10;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    body.light-mode #task-details-modal .modal-header {
+        background: #ffffff;
+    }
+    
+    #task-details-modal #task-details-content {
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
