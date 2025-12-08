@@ -799,7 +799,6 @@ function showOrgSelectionScreen(clearOrg = false) {
     // Only clear organization from state if explicitly requested (user switching)
     if (clearOrg) {
         state.organization = null;
-        // Don't clear currentUser.organizationId in DB - only in memory
     }
     
     // Show welcome message
@@ -807,6 +806,9 @@ function showOrgSelectionScreen(clearOrg = false) {
         const name = state.currentUser.firstName || state.currentUser.email;
         elements.orgWelcomeName.textContent = `Привет, ${name}!`;
     }
+    
+    // Load and render user's organizations
+    renderUserOrganizations();
     
     // Apply pending invite code if exists
     applyPendingInviteCode();
@@ -830,6 +832,94 @@ function captureInviteCodeFromUrl() {
             pendingInviteCode = stored;
         }
     }
+}
+
+// Load user's organizations
+async function loadUserOrganizations() {
+    if (!state.currentUser?.uid) return [];
+    
+    try {
+        // Get user's current organization
+        const userDoc = await db.collection('users').doc(state.currentUser.uid).get();
+        if (!userDoc.exists) return [];
+        
+        const userData = userDoc.data();
+        const orgIds = [];
+        
+        // Current organization
+        if (userData.organizationId) {
+            orgIds.push(userData.organizationId);
+        }
+        
+        // Load organization details
+        const orgs = [];
+        for (const orgId of orgIds) {
+            const orgDoc = await db.collection('organizations').doc(orgId).get();
+            if (orgDoc.exists) {
+                orgs.push({
+                    id: orgDoc.id,
+                    ...orgDoc.data(),
+                    userRole: userData.orgRole || 'employee'
+                });
+            }
+        }
+        
+        return orgs;
+    } catch (error) {
+        console.error('Error loading organizations:', error);
+        return [];
+    }
+}
+
+// Render user's organizations in the selection screen
+async function renderUserOrganizations() {
+    const section = document.getElementById('my-orgs-section');
+    const list = document.getElementById('my-orgs-list');
+    
+    if (!section || !list) return;
+    
+    const orgs = await loadUserOrganizations();
+    
+    if (orgs.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    list.innerHTML = '';
+    
+    const roleNames = {
+        owner: 'Владелец',
+        admin: 'Администратор',
+        moderator: 'Модератор',
+        employee: 'Сотрудник'
+    };
+    
+    orgs.forEach(org => {
+        const item = document.createElement('div');
+        item.className = 'my-org-item';
+        item.innerHTML = `
+            <div class="my-org-icon"><i class="fa-solid fa-building"></i></div>
+            <div class="my-org-info">
+                <div class="my-org-name">${org.name}</div>
+                <div class="my-org-role">${roleNames[org.userRole] || 'Сотрудник'}</div>
+            </div>
+            <i class="fa-solid fa-chevron-right my-org-arrow"></i>
+        `;
+        
+        item.addEventListener('click', async () => {
+            // Enter this organization
+            state.organization = org;
+            state.orgRole = org.userRole;
+            state.currentUser.organizationId = org.id;
+            state.currentUser.orgRole = org.userRole;
+            
+            hideOrgSelectionScreen();
+            enterApp();
+        });
+        
+        list.appendChild(item);
+    });
 }
 
 // Apply pending invite code to join screen
@@ -961,14 +1051,25 @@ function setupOrgEventListeners() {
     if (elements.orgJoinForm) {
         elements.orgJoinForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const code = elements.orgInviteCodeInput.value.trim();
+            const codeInput = document.getElementById('org-invite-code');
+            const code = codeInput?.value.trim();
             if (!code) return;
+
+            // Find visible submit button
+            const allBtns = elements.orgJoinForm.querySelectorAll('button[type="submit"]');
+            let submitBtn = null;
+            allBtns.forEach(btn => {
+                if (btn.offsetParent !== null) submitBtn = btn;
+            });
+            if (!submitBtn) submitBtn = allBtns[0];
             
-            const submitBtn = elements.orgJoinForm.querySelector('button[type="submit"]');
+            const originalHtml = submitBtn.innerHTML;
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Присоединение...';
-            elements.orgJoinError.style.display = 'none';
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Вход...';
             
+            const joinError = document.getElementById('org-join-error');
+            if (joinError) joinError.style.display = 'none';
+
             try {
                 const org = await joinOrganization(code);
                 state.organization = org;
@@ -976,15 +1077,20 @@ function setupOrgEventListeners() {
                 state.currentUser.organizationId = org.id;
                 state.currentUser.orgRole = 'employee';
                 
+                // Clear pending invite code
+                sessionStorage.removeItem('pendingInviteCode');
+                pendingInviteCode = null;
+
                 hideOrgSelectionScreen();
                 enterApp();
             } catch (error) {
                 console.error('Error joining organization:', error);
-                elements.orgJoinError.textContent = error.message;
-                elements.orgJoinError.style.display = 'block';
-            } finally {
+                if (joinError) {
+                    joinError.textContent = error.message;
+                    joinError.style.display = 'block';
+                }
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Присоединиться';
+                submitBtn.innerHTML = originalHtml;
             }
         });
     }

@@ -3066,6 +3066,60 @@ body.light-mode .pin-hint {
     border-color: rgba(239, 68, 68, 0.3);
 }
 
+/* My Organizations List */
+.my-org-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.my-org-item:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary);
+}
+
+.my-org-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.my-org-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.my-org-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.my-org-role {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.my-org-arrow {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
 .org-dropdown-item {
     width: 100%;
     display: flex;
