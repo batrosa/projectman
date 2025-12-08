@@ -2318,21 +2318,27 @@ body.light-mode .my-task-item:hover {
 
 /* Task Info Button */
 .info-task {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    color: #818cf8;
     cursor: pointer;
-    padding: 0.4rem;
-    border-radius: 4px;
+    padding: 6px 12px;
+    border-radius: 6px;
     transition: all 0.2s;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    min-height: 28px;
+    height: auto;
 }
 
 .info-task:hover {
-    color: var(--primary);
-    background: rgba(99, 102, 241, 0.1);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%);
+    border-color: rgba(99, 102, 241, 0.5);
+    color: #a5b4fc;
+    transform: translateY(-1px);
 }
 
 /* Light mode adjustments */
