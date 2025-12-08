@@ -587,6 +587,7 @@
     /* Regular modal footer */
     .modal-footer {
         display: flex;
+        justify-content: center;
         gap: 1rem;
         margin-top: 2rem;
         padding-top: 1.5rem;
@@ -595,8 +596,8 @@
     }
 
     .modal-footer button {
-        flex: 1;
-        padding: 1rem;
+        flex: 0 1 auto;
+        padding: 1rem 1.5rem;
         font-size: 1rem;
         min-height: 52px;
         justify-content: center;
@@ -891,10 +892,14 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
         display: flex !important;
         justify-content: center !important;
         gap: 1rem !important;
+        width: 100%;
+        box-sizing: border-box;
     }
     
     #completion-proof-modal .modal-footer button {
-        flex: 1;
-        max-width: 200px;
+        flex: 0 1 auto;
+        min-width: 120px;
+        max-width: 180px;
+        padding: 1rem 1.5rem;
     }
 }
