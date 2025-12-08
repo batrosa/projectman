@@ -534,23 +534,43 @@
     /* Forms */
     .form-group {
         margin-bottom: 1.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border);
     }
 
     .form-group:last-of-type {
         margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
     }
 
     label {
-        font-size: 1rem;
+        font-size: 0.95rem;
         margin-bottom: 0.75rem;
         font-weight: 500;
         display: block;
+        color: var(--text-secondary);
     }
 
     .form-row {
         display: flex;
         flex-direction: column;
-        gap: 1.5rem;
+        gap: 0;
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-row .form-group {
+        margin-bottom: 1.25rem;
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .form-row .form-group:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
     }
 
     input,
@@ -560,7 +580,7 @@
         padding: 1rem;
         font-size: 16px !important;
         min-height: 52px;
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid var(--border);
         background: var(--card-bg);
         color: var(--text-primary);
@@ -907,7 +927,7 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
     .assignee-picker {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.75rem;
     }
     
     .assignee-search-wrapper {
@@ -928,30 +948,38 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
     .assignee-chip {
         display: inline-flex;
         align-items: center;
-        padding: 0.4rem 0.5rem 0.4rem 0.6rem;
-        font-size: 0.8rem;
+        gap: 0.5rem;
+        padding: 0.5rem 0.6rem 0.5rem 0.5rem;
+        font-size: 0.9rem;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+        border: 1px solid rgba(99, 102, 241, 0.25);
+        border-radius: 25px;
     }
     
     .assignee-chip-avatar {
-        width: 20px;
-        height: 20px;
-        font-size: 0.65rem;
+        width: 26px;
+        height: 26px;
+        font-size: 0.7rem;
     }
     
     .assignee-chip-remove {
-        width: 22px;
-        height: 22px;
-        font-size: 0.75rem;
-        min-width: 22px;
+        width: 24px;
+        height: 24px;
+        font-size: 0.8rem;
+        min-width: 24px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
     }
     
     .assignee-search-input {
         width: 100%;
-        padding: 0.875rem 1rem;
-        font-size: 16px; /* Prevents zoom on iOS */
-        border-radius: 8px;
-        min-height: 48px;
+        padding: 1rem;
+        font-size: 16px !important;
+        border-radius: 10px;
+        min-height: 52px;
         box-sizing: border-box;
+        border: 1px solid var(--border);
+        background: var(--card-bg);
     }
     
     .assignee-dropdown {
@@ -959,27 +987,35 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
         top: 100%;
         left: 0;
         right: 0;
-        max-height: 200px;
+        max-height: 220px;
         z-index: 1001;
-        margin-top: 4px;
+        margin-top: 6px;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     }
     
     .assignee-dropdown-item {
-        padding: 0.75rem;
-        min-height: 48px;
+        padding: 0.875rem 1rem;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
     }
     
     .assignee-dropdown-avatar {
-        width: 32px;
-        height: 32px;
-        font-size: 0.8rem;
+        width: 36px;
+        height: 36px;
+        font-size: 0.85rem;
     }
     
     .assignee-dropdown-name {
-        font-size: 0.9rem;
+        font-size: 0.95rem;
+        font-weight: 500;
     }
     
     .assignee-dropdown-email {
         font-size: 0.8rem;
+        opacity: 0.7;
     }
 }

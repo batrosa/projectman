@@ -659,6 +659,11 @@ body.light-mode .project-info h1 {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
+    align-items: end;
+}
+
+.form-row .form-group {
+    margin-bottom: 0;
 }
 
 label {
