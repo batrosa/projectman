@@ -656,7 +656,6 @@ async function findOrganizationByCode(code) {
 
 // Show organization selection screen
 function showOrgSelectionScreen(clearOrg = false) {
-    hideLoadingScreen();
     elements.authOverlay.style.display = 'none';
     elements.orgOverlay.style.display = 'flex';
     elements.orgChoiceScreen.style.display = 'block';
@@ -685,8 +684,11 @@ function showOrgSelectionScreen(clearOrg = false) {
     // Load and render user's organizations
     renderUserOrganizations();
     
-    // Apply pending invite code if exists
+    // Apply pending invite code if exists (may auto-join and skip this screen)
     applyPendingInviteCode();
+    
+    // Hide loading screen after org screen is ready
+    setTimeout(() => hideLoadingScreen(), 100);
 }
 
 // Check URL for invite code on page load (call early!)
@@ -1569,16 +1571,20 @@ function setupRealtimeListeners() {
     const orgId = state.organization?.id;
     
     // Listen for ALL Projects and filter client-side
-    // This ensures legacy projects without organizationId are included
     projectsListenerUnsubscribe = db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
         const projects = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Include projects:
-            // 1. Without organizationId (legacy)
-            // 2. Matching current org
-            // 3. All if no org selected
-            if (!orgId || !data.organizationId || data.organizationId === orgId) {
+            // Include projects ONLY if:
+            // 1. We have orgId AND project's organizationId matches exactly
+            // 2. OR we don't have orgId (legacy mode - include all)
+            if (orgId) {
+                // Strict filter: only projects in THIS organization
+                if (data.organizationId === orgId) {
+                    projects.push({ id: doc.id, ...data });
+                }
+            } else {
+                // Legacy mode: include all projects
                 projects.push({ id: doc.id, ...data });
             }
         });
@@ -1607,11 +1613,16 @@ function setupRealtimeListeners() {
         const users = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Include users:
-            // 1. Without organizationId (legacy)
-            // 2. Matching current org  
-            // 3. All if no org selected
-            if (!orgId || !data.organizationId || data.organizationId === orgId) {
+            // Include users ONLY if:
+            // 1. We have orgId AND user's organizationId matches exactly
+            // 2. OR we don't have orgId (legacy mode - include all)
+            if (orgId) {
+                // Strict filter: only users in THIS organization
+                if (data.organizationId === orgId) {
+                    users.push({ id: doc.id, ...data });
+                }
+            } else {
+                // Legacy mode: include all users
                 users.push({ id: doc.id, ...data });
             }
         });
@@ -3291,7 +3302,7 @@ function finishAuthLegacy(role) {
 }
 
 function showAuthScreen() {
-    // Hide loading screen first
+    // Only hide loading screen when showing auth (user needs to login)
     hideLoadingScreen();
 
     elements.authOverlay.style.display = 'flex';
