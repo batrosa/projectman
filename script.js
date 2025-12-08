@@ -2543,6 +2543,31 @@ async function logout() {
         await auth.signOut();
         state.activeProjectId = null;
         document.body.classList.remove('read-only');
+        
+        // Close sidebar on mobile
+        closeSidebarOnMobile();
+        
+        // Reset PIN verification - require PIN again on next login
+        pinVerified = false;
+        currentPin = '';
+        
+        // Show PIN screen again
+        const pinScreen = document.getElementById('pin-screen');
+        if (pinScreen) {
+            pinScreen.style.display = 'flex';
+            pinScreen.style.opacity = '1';
+            // Reset dots
+            document.querySelectorAll('.pin-dot').forEach(dot => {
+                dot.classList.remove('filled', 'error');
+            });
+        }
+        
+        // Hide app container
+        document.getElementById('app-container').style.display = 'none';
+        document.getElementById('auth-overlay').style.display = 'none';
+        
+        // Re-initialize PIN keyboard handler
+        initPinScreen();
     } catch (error) {
         console.error('Error signing out:', error);
     }
