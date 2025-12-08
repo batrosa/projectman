@@ -674,6 +674,18 @@ function showOrgSelectionScreen(clearOrg = false) {
     if (elements.orgJoinError) elements.orgJoinError.style.display = 'none';
     if (elements.orgJoinPreview) elements.orgJoinPreview.style.display = 'none';
     
+    // Reset submit buttons
+    const joinBtn = document.getElementById('org-join-submit-btn');
+    if (joinBtn) {
+        joinBtn.disabled = false;
+        joinBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Присоединиться';
+    }
+    const createBtn = elements.orgCreateForm?.querySelector('button[type="submit"]');
+    if (createBtn) {
+        createBtn.disabled = false;
+        createBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Создать организацию';
+    }
+    
     // Only clear organization from state if explicitly requested (user switching)
     if (clearOrg) {
         state.organization = null;
