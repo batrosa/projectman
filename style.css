@@ -2554,6 +2554,12 @@ body.light-mode .pin-dot {
     border-color: rgba(0, 0, 0, 0.1);
 }
 
+body.light-mode .pin-dot.filled {
+    background: linear-gradient(135deg, #3730a3, #4f46e5);
+    border-color: #3730a3;
+    box-shadow: 0 0 15px rgba(55, 48, 163, 0.4);
+}
+
 body.light-mode .pin-key {
     background: rgba(0, 0, 0, 0.03);
     border-color: rgba(0, 0, 0, 0.1);
