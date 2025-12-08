@@ -2696,12 +2696,24 @@ function populateAssigneeDropdown() {
     // Setup search input events
     searchInput.removeEventListener('input', handleAssigneeSearch);
     searchInput.removeEventListener('focus', handleAssigneeSearch);
+    searchInput.removeEventListener('blur', handleAssigneeBlur);
     searchInput.addEventListener('input', handleAssigneeSearch);
     searchInput.addEventListener('focus', handleAssigneeSearch);
+    searchInput.addEventListener('blur', handleAssigneeBlur);
     
     // Close dropdown when clicking outside
     document.removeEventListener('click', handleAssigneeClickOutside);
     document.addEventListener('click', handleAssigneeClickOutside);
+}
+
+function handleAssigneeBlur(e) {
+    // Delay to allow click on dropdown item to register first
+    setTimeout(() => {
+        const dropdown = document.getElementById('assignee-dropdown');
+        if (dropdown) {
+            dropdown.classList.remove('active');
+        }
+    }, 200);
 }
 
 function handleAssigneeClickOutside(e) {
