@@ -2332,6 +2332,13 @@ body.light-mode .my-task-item:hover {
     font-weight: 600;
     margin-left: 0.5rem;
     gap: 6px;
+    line-height: 1;
+    min-height: 32px;
+    box-sizing: border-box;
+}
+
+.info-task i {
+    font-size: 1rem;
 }
 
 .info-task:hover {
