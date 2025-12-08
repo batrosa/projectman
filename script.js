@@ -1421,6 +1421,20 @@ function createTaskCard(task) {
     toolbarLeft.className = 'toolbar-left';
     toolbarLeft.appendChild(dropdownContainer);
     
+    // Info button (right next to status badge)
+    const infoBtn = document.createElement('button');
+    infoBtn.className = 'info-task';
+    infoBtn.title = 'Информация о задаче';
+    const infoIcon = document.createElement('i');
+    infoIcon.className = 'fa-solid fa-circle-info';
+    infoBtn.appendChild(infoIcon);
+    infoBtn.onclick = (e) => {
+        e.stopPropagation();
+        playClickSound();
+        openTaskDetailsModal(task);
+    };
+    toolbarLeft.appendChild(infoBtn);
+    
     // Add attachment badge if task has files
     if (task.attachments && task.attachments.length > 0) {
         const attachBadge = document.createElement('span');
@@ -1444,23 +1458,10 @@ function createTaskCard(task) {
         toolbarLeft.appendChild(attachBadge);
     }
     
-    // Right side: Info, Edit & Delete buttons
+    // Right side: Edit & Delete buttons (admin only)
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'toolbar-right';
     
-    // Info button (always visible)
-    const infoBtn = document.createElement('button');
-    infoBtn.className = 'info-task';
-    infoBtn.title = 'Информация о задаче';
-    const infoIcon = document.createElement('i');
-    infoIcon.className = 'fa-solid fa-circle-info';
-    infoBtn.appendChild(infoIcon);
-    infoBtn.onclick = (e) => {
-        e.stopPropagation();
-        playClickSound();
-        openTaskDetailsModal(task);
-    };
-    toolbarRight.appendChild(infoBtn);
     
     if (state.role === 'admin') {
         toolbarRight.appendChild(editBtn);
