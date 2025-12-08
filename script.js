@@ -44,14 +44,8 @@ let pendingInviteCode = null; // Store invite code from URL
 
 function proceedToApp() {
     // DON'T hide loading screen here - let it stay until fully loaded
-    // Now trigger auth flow based on current state
-    if (typeof auth !== 'undefined' && auth.currentUser) {
-        // User already logged in, load their role and proceed
-        loadUserRole(auth.currentUser);
-    } else {
-        // Need to login - show auth screen
-        showAuthScreen();
-    }
+    // Just initialize Firebase - onAuthStateChanged will handle the rest
+    initFirebase();
 }
 
 // Button loading state helper
@@ -651,7 +645,17 @@ async function findOrganizationByCode(code) {
     const snapshot = await db.collection('organizations').where('inviteCode', '==', code.toUpperCase().trim()).get();
     if (snapshot.empty) return null;
     const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() };
+    const orgData = { id: doc.id, ...doc.data() };
+    
+    // Count actual members for accurate display
+    try {
+        const membersSnapshot = await db.collection('users').where('organizationId', '==', doc.id).get();
+        orgData.membersCount = membersSnapshot.size;
+    } catch (e) {
+        console.error('Error counting members:', e);
+    }
+    
+    return orgData;
 }
 
 // Show organization selection screen
@@ -1198,12 +1202,13 @@ function hasPermission(permission) {
 function enterApp() {
     hideOrgSelectionScreen();
     hideAuthScreen();
-    
+    hideLoadingScreen(); // Hide loading ONLY when fully entering app
+
     const appContainer = document.getElementById('app-container');
     if (appContainer) {
         appContainer.style.display = 'flex';
     }
-    
+
     updateOrgUI();
     applyRoleRestrictions();
     setupRealtimeListeners();
