@@ -1,4 +1,4 @@
-const CACHE_NAME = 'projectman-v10';
+const CACHE_NAME = 'projectman-v11';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -45,13 +45,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // Skip caching for external APIs (Cloudinary, Firebase, etc.)
-  if (url.hostname.includes('cloudinary.com') ||
-      url.hostname.includes('firebaseio.com') ||
-      url.hostname.includes('googleapis.com') ||
-      url.hostname.includes('firebase') ||
-      url.hostname.includes('emailjs.com') ||
-      event.request.method !== 'GET') {
+  // Skip caching for external APIs (Cloudinary, Firebase, etc.) and non-GET requests
+  const skipDomains = ['cloudinary.com', 'cloudinary', 'firebaseio.com', 'googleapis.com', 'firebase', 'emailjs.com', 'res.cloudinary.com', 'api.cloudinary.com'];
+  const shouldSkip = skipDomains.some(domain => url.hostname.includes(domain)) || event.request.method !== 'GET';
+  
+  if (shouldSkip) {
     // Don't intercept - let browser handle it directly
     return;
   }

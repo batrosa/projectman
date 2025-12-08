@@ -280,19 +280,38 @@ async function uploadToCloudinary(file) {
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.uploadPreset);
     // Folder is already defined in the Preset settings
-    
-    const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
-        { method: 'POST', body: formData }
-    );
-    
-    if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Cloudinary error:', errorData);
-        throw new Error('Ошибка загрузки файла: ' + (errorData.error?.message || response.statusText));
+
+    try {
+        const response = await fetch(
+            `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
+            { 
+                method: 'POST', 
+                body: formData,
+                mode: 'cors'
+            }
+        );
+
+        if (!response.ok) {
+            let errorMsg = response.statusText;
+            try {
+                const errorData = await response.json();
+                console.error('Cloudinary error:', errorData);
+                errorMsg = errorData.error?.message || response.statusText;
+            } catch (e) {
+                console.error('Could not parse error response');
+            }
+            throw new Error(errorMsg);
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Upload fetch error:', error);
+        // More descriptive error for network issues
+        if (error.message === 'Failed to fetch' || error.message === 'Load failed') {
+            throw new Error('Проверьте подключение к интернету и попробуйте снова');
+        }
+        throw error;
     }
-    
-    return await response.json();
 }
 
 // Handle file selection
