@@ -1407,11 +1407,12 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null) {
     if (newSubStatus === 'in_work') {
         updates.takenToWorkAt = new Date().toISOString();
         
-        // Clear completion proof when returning task for revision
+        // Clear completion proof and archive date when returning task for revision
         updates.completedAt = firebase.firestore.FieldValue.delete();
         updates.completionComment = firebase.firestore.FieldValue.delete();
         updates.completionProof = firebase.firestore.FieldValue.delete();
         updates.completedBy = firebase.firestore.FieldValue.delete();
+        updates.archivedAt = firebase.firestore.FieldValue.delete();
     }
     
     // Sync legacy fields for backward compatibility if needed, 
