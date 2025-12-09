@@ -709,6 +709,34 @@
     #admin-panel-modal .admin-panel-content {
         padding: 0 1.5rem 1.5rem;
     }
+    
+    /* Project deadline fields centered on mobile */
+    #project-modal .form-group {
+        width: 100%;
+        text-align: center;
+    }
+    
+    #project-modal .checkbox-label {
+        justify-content: center;
+    }
+    
+    #project-modal #p-deadline-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+    
+    #project-modal #p-deadline-group label {
+        text-align: center;
+        width: 100%;
+    }
+    
+    #project-modal #p-deadline {
+        width: 100%;
+        max-width: 250px;
+        text-align: center;
+    }
 
     @media (max-height: 700px) {
         .column {
