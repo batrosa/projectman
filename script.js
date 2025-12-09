@@ -3534,27 +3534,16 @@ function renderUsersList() {
         };
 
         // Role selector - only show if user can change this role
+        // Owner role cannot be transferred - max is admin
         let roleSelector = '';
         if (canEditThisRole) {
-            // Build options based on current user's role
-            let options = '';
-            if (state.orgRole === 'owner') {
-                // Owner can assign any role including owner (transfer ownership)
-                options = `
-                    <option value="owner" ${userRole === 'owner' ? 'selected' : ''}>Владелец</option>
+            roleSelector = `
+                <select class="role-select" data-user-id="${user.id}">
                     <option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>
                     <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
                     <option value="employee" ${userRole === 'employee' ? 'selected' : ''}>Сотрудник</option>
-                `;
-            } else {
-                // Admin can only assign admin, moderator, employee
-                options = `
-                    <option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>
-                    <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
-                    <option value="employee" ${userRole === 'employee' ? 'selected' : ''}>Сотрудник</option>
-                `;
-            }
-            roleSelector = `<select class="role-select" data-user-id="${user.id}">${options}</select>`;
+                </select>
+            `;
         } else {
             roleSelector = `<span class="role-badge ${userRole}">${roleIcons[userRole]} ${roleNames[userRole]}</span>`;
         }
@@ -3586,41 +3575,6 @@ function renderUsersList() {
                 const newRole = e.target.value;
                 const userId = e.target.dataset.userId;
                 const oldRole = userRole;
-                
-                // Transfer ownership requires confirmation
-                if (newRole === 'owner') {
-                    if (!confirm('Вы уверены, что хотите передать права владельца этому пользователю?\n\nВы станете админом.')) {
-                        e.target.value = oldRole;
-                        return;
-                    }
-                    
-                    try {
-                        // Transfer ownership: new user becomes owner, current owner becomes admin
-                        await db.collection('users').doc(userId).set({ orgRole: 'owner' }, { merge: true });
-                        await db.collection('users').doc(state.currentUser.uid).set({ orgRole: 'admin' }, { merge: true });
-                        
-                        // Update organization owner
-                        await db.collection('organizations').doc(state.organization.id).update({
-                            ownerId: userId
-                        });
-                        
-                        // Update local state
-                        state.orgRole = 'admin';
-                        state.currentUser.orgRole = 'admin';
-                        
-                        playClickSound();
-                        alert('Права владельца переданы. Вы теперь админ.');
-                        
-                        // Re-apply restrictions
-                        applyRoleRestrictions();
-                        renderUsersList();
-                    } catch (error) {
-                        console.error('Error transferring ownership:', error);
-                        alert('Ошибка при передаче прав');
-                        e.target.value = oldRole;
-                    }
-                    return;
-                }
                 
                 try {
                     await db.collection('users').doc(userId).set({ orgRole: newRole }, { merge: true });
