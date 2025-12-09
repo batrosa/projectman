@@ -626,7 +626,8 @@
     }
 }
 
-/* My Tasks Button Mobile */
+/* My Tasks Button & Modal Mobile */
+@media (max-width: 768px) {
     .my-tasks-btn {
         padding: 0.875rem 1rem;
         font-size: 1rem;
@@ -641,37 +642,40 @@
         font-size: 0.8rem;
     }
 
-    /* My Tasks Modal Mobile */
     .my-tasks-modal-content {
         max-width: 100%;
+        width: 100%;
     }
 
     .my-tasks-list {
         max-height: 65vh;
+        padding: 0 1rem 1rem;
     }
 
     .my-task-item {
-        padding: 1rem;
+        padding: 0.875rem;
+        position: relative;
     }
 
     .my-task-header {
-        flex-direction: column;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-start;
         gap: 0.5rem;
+        flex-wrap: nowrap;
     }
 
     .my-task-project {
-        align-self: flex-start;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: calc(100% - 90px);
     }
 
     .my-task-status {
-        position: absolute;
-        top: 1rem;
-        right: 1rem;
-    }
-
-    .my-task-item {
-        position: relative;
-        padding-right: 5rem;
+        flex-shrink: 0;
     }
 
     .my-task-title {

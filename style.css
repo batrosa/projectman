@@ -2285,7 +2285,8 @@ body.light-mode .file-preview-container {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 1rem;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .my-task-project {
@@ -2296,9 +2297,13 @@ body.light-mode .file-preview-container {
     background: rgba(99, 102, 241, 0.15);
     color: var(--primary);
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+    flex-shrink: 1;
 }
 
 .my-task-project i {
@@ -2306,11 +2311,12 @@ body.light-mode .file-preview-container {
 }
 
 .my-task-status {
-    padding: 0.35rem 0.75rem;
+    padding: 0.35rem 0.6rem;
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     font-weight: 600;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .my-task-status.status-assigned {
@@ -2328,11 +2334,18 @@ body.light-mode .file-preview-container {
     color: #2ecc71;
 }
 
+.my-task-status.status-done {
+    background: rgba(108, 117, 125, 0.15);
+    color: #6c757d;
+}
+
 .my-task-title {
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     color: var(--text-primary);
     line-height: 1.4;
+    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .my-task-meta {

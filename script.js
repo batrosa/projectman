@@ -4080,14 +4080,27 @@ function renderMyTasks(tasks) {
         taskEl.className = 'my-task-item';
         taskEl.dataset.projectId = task.projectId;
         taskEl.dataset.taskId = task.id;
+
+        // Determine actual status (same logic as in createTaskCard)
+        let currentSubStatus = task.subStatus || 'assigned';
         
+        // Migration logic for old tasks without subStatus
+        if (!task.subStatus) {
+            if (task.assigneeCompleted) currentSubStatus = 'completed';
+            else currentSubStatus = 'assigned';
+        }
+        
+        // Override if global status is done
+        if (task.status === 'done') {
+            currentSubStatus = 'done';
+        }
+
         // Status info
-        const subStatus = task.subStatus || 'assigned';
         let statusText = '';
         let statusClass = '';
         let statusIcon = '';
-        
-        switch (subStatus) {
+
+        switch (currentSubStatus) {
             case 'assigned':
                 statusText = 'Поставлена';
                 statusClass = 'status-assigned';
@@ -4103,16 +4116,15 @@ function renderMyTasks(tasks) {
                 statusClass = 'status-completed';
                 statusIcon = 'fa-check';
                 break;
+            case 'done':
+                statusText = 'В архиве';
+                statusClass = 'status-done';
+                statusIcon = 'fa-check-double';
+                break;
             default:
-                if (task.status === 'done') {
-                    statusText = 'Готово';
-                    statusClass = 'status-completed';
-                    statusIcon = 'fa-check-double';
-                } else {
-                    statusText = 'Поставлена';
-                    statusClass = 'status-assigned';
-                    statusIcon = 'fa-circle-exclamation';
-                }
+                statusText = 'Поставлена';
+                statusClass = 'status-assigned';
+                statusIcon = 'fa-circle-exclamation';
         }
         
         // Deadline info
