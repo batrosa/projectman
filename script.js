@@ -1413,7 +1413,6 @@ const elements = {
     addProjectBtn: document.getElementById('add-project-btn'),
     helpBtn: document.getElementById('help-btn'),
     closeModalBtns: document.querySelectorAll('.close-modal'),
-    themeToggle: document.getElementById('theme-toggle'),
 
     // Auth
     authOverlay: document.getElementById('auth-overlay'),
@@ -2848,16 +2847,18 @@ function setupDragAndDrop() {
 // Theme
 function loadTheme() {
     const theme = localStorage.getItem('theme');
-    if (theme === 'light') {
+    const isLight = theme === 'light';
+    if (isLight) {
         document.body.classList.add('light-mode');
-        updateThemeIcon(true);
     }
+    // Delay UI update to ensure DOM is ready
+    setTimeout(() => updateThemeUI(isLight), 100);
 }
 
 function toggleTheme() {
     const isLight = document.body.classList.toggle('light-mode');
     localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    updateThemeIcon(isLight);
+    updateThemeUI(isLight);
 }
 
 // Close sidebar on mobile devices
@@ -2870,12 +2871,20 @@ function closeSidebarOnMobile() {
     }
 }
 
-function updateThemeIcon(isLight) {
-    const btn = elements.themeToggle;
-    if (isLight) {
-        btn.innerHTML = '<i class="fa-regular fa-moon"></i> <span>Темная тема</span>';
-    } else {
-        btn.innerHTML = '<i class="fa-regular fa-sun"></i> <span>Светлая тема</span>';
+function updateThemeUI(isLight) {
+    // Update theme icon in settings
+    const themeIcon = document.querySelector('.settings-option-icon.theme i');
+    const themeText = document.getElementById('current-theme-text');
+    const themeCheckbox = document.getElementById('theme-checkbox');
+    
+    if (themeIcon) {
+        themeIcon.className = isLight ? 'fa-regular fa-moon' : 'fa-regular fa-sun';
+    }
+    if (themeText) {
+        themeText.textContent = isLight ? 'Светлая тема' : 'Тёмная тема';
+    }
+    if (themeCheckbox) {
+        themeCheckbox.checked = isLight;
     }
 }
 
@@ -2974,20 +2983,36 @@ function setupEventListeners() {
         }
     });
 
-    // Project deadline checkbox toggle
+    // Project deadline toggle
     const projectHasDeadline = document.getElementById('p-has-deadline');
     const projectDeadlineGroup = document.getElementById('p-deadline-group');
     const projectDeadlineInput = document.getElementById('p-deadline');
     
     if (projectHasDeadline && projectDeadlineGroup) {
         projectHasDeadline.addEventListener('change', (e) => {
-            projectDeadlineGroup.style.display = e.target.checked ? 'block' : 'none';
-            if (e.target.checked && !projectDeadlineInput.value) {
-                // Set default deadline to 1 month from now
-                const defaultDate = new Date();
-                defaultDate.setMonth(defaultDate.getMonth() + 1);
-                projectDeadlineInput.value = defaultDate.toISOString().split('T')[0];
+            if (e.target.checked) {
+                projectDeadlineGroup.classList.add('active');
+                if (!projectDeadlineInput.value) {
+                    // Set default deadline to 1 month from now
+                    const defaultDate = new Date();
+                    defaultDate.setMonth(defaultDate.getMonth() + 1);
+                    projectDeadlineInput.value = defaultDate.toISOString().split('T')[0];
+                }
+            } else {
+                projectDeadlineGroup.classList.remove('active');
             }
+        });
+    }
+    
+    // Settings button
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    
+    if (settingsBtn && settingsModal) {
+        settingsBtn.addEventListener('click', () => {
+            playClickSound();
+            settingsModal.classList.add('active');
+            closeSidebarOnMobile();
         });
     }
 
@@ -3005,7 +3030,7 @@ function setupEventListeners() {
         // Reset form
         elements.projectModal.classList.remove('active');
         document.getElementById('p-has-deadline').checked = false;
-        document.getElementById('p-deadline-group').style.display = 'none';
+        document.getElementById('p-deadline-group').classList.remove('active');
     });
 
     // Logic
@@ -3128,11 +3153,26 @@ function setupEventListeners() {
 
     setupDragAndDrop();
 
-    elements.themeToggle.addEventListener('click', () => {
-        playClickSound();
-        toggleTheme();
-        closeSidebarOnMobile();
-    });
+    // Theme toggle in settings modal
+    const themeToggleOption = document.getElementById('theme-toggle');
+    const themeCheckbox = document.getElementById('theme-checkbox');
+    
+    if (themeToggleOption) {
+        themeToggleOption.addEventListener('click', (e) => {
+            // Don't toggle if clicked on checkbox itself (it handles its own state)
+            if (e.target.type !== 'checkbox') {
+                playClickSound();
+                toggleTheme();
+            }
+        });
+    }
+    
+    if (themeCheckbox) {
+        themeCheckbox.addEventListener('change', () => {
+            playClickSound();
+            toggleTheme();
+        });
+    }
 
     // Auth - Login/Register toggle
     document.getElementById('show-register').addEventListener('click', (e) => {

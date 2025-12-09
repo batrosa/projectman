@@ -3317,3 +3317,419 @@ body.light-mode .role-select {
     background: rgba(239, 68, 68, 0.2);
     border-color: rgba(239, 68, 68, 0.4);
 }
+
+/* ========== NEW PROJECT MODAL ========== */
+.project-modal-content {
+    max-width: 420px;
+    width: 90%;
+    padding: 0;
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--card-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+}
+
+body.light-mode .project-modal-content {
+    background: #ffffff;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+}
+
+.project-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.project-modal-close:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.project-modal-icon {
+    width: 72px;
+    height: 72px;
+    margin: 2rem auto 1rem;
+    border-radius: 20px;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
+    color: white;
+    box-shadow: 0 10px 40px -10px rgba(99, 102, 241, 0.5);
+}
+
+.project-modal-title {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.project-modal-subtitle {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.project-modal-form {
+    padding: 0 1.75rem 1.75rem;
+}
+
+.project-form-group {
+    margin-bottom: 1.25rem;
+}
+
+.project-form-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.project-form-group label i {
+    font-size: 0.8rem;
+    color: var(--primary);
+}
+
+.project-form-group input,
+.project-form-group textarea {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    border-radius: 12px;
+    border: 2px solid var(--border);
+    background: rgba(148, 163, 184, 0.05);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.project-form-group input:focus,
+.project-form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.project-form-group input::placeholder,
+.project-form-group textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+.project-form-group textarea {
+    resize: none;
+    min-height: 80px;
+}
+
+/* Deadline Toggle */
+.project-deadline-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.05);
+    border: 1px solid var(--border);
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.toggle-label i {
+    color: var(--primary);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    width: 48px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 26px;
+    transition: all 0.3s;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: all 0.3s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(22px);
+}
+
+/* Deadline Field */
+.project-deadline-field {
+    display: none;
+    animation: slideDown 0.3s ease;
+}
+
+.project-deadline-field.active {
+    display: block;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal Actions */
+.project-modal-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+.project-btn-cancel,
+.project-btn-create {
+    flex: 1;
+    padding: 0.875rem 1rem;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    border: none;
+}
+
+.project-btn-cancel {
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.project-btn-cancel:hover {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-primary);
+}
+
+.project-btn-create {
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    color: white;
+    box-shadow: 0 4px 15px -3px rgba(99, 102, 241, 0.4);
+}
+
+.project-btn-create:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px -3px rgba(99, 102, 241, 0.5);
+}
+
+.project-btn-create:active {
+    transform: translateY(0);
+}
+
+/* ========== SETTINGS MODAL ========== */
+.settings-modal-content {
+    max-width: 380px;
+    width: 90%;
+    padding: 0;
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--card-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+}
+
+body.light-mode .settings-modal-content {
+    background: #ffffff;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+}
+
+.settings-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.settings-modal-close:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.settings-modal-icon {
+    width: 64px;
+    height: 64px;
+    margin: 2rem auto 1rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #64748b, #475569);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+    box-shadow: 0 10px 40px -10px rgba(100, 116, 139, 0.5);
+}
+
+.settings-modal-title {
+    text-align: center;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+}
+
+.settings-options {
+    padding: 0 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.settings-option {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: 14px;
+    background: rgba(148, 163, 184, 0.05);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    width: 100%;
+}
+
+.settings-option:hover {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.2);
+}
+
+.settings-option-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.settings-option-icon.admin {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+    color: var(--primary);
+}
+
+.settings-option-icon.theme {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.2));
+    color: #f59e0b;
+}
+
+.settings-option-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.settings-option-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.settings-option-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.settings-option > i.fa-chevron-right {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* Theme toggle in settings */
+.theme-toggle-switch {
+    margin-left: auto;
+}
+
+.theme-toggle-switch .toggle-slider {
+    background: rgba(148, 163, 184, 0.3);
+}
+
+body.light-mode .theme-toggle-switch .toggle-slider {
+    background: linear-gradient(135deg, #f59e0b, #fbbf24);
+}
+
+body.light-mode .theme-toggle-switch .toggle-slider:before {
+    transform: translateX(22px);
+}

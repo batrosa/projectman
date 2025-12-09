@@ -17,8 +17,8 @@
 
     <!-- Preload critical CSS -->
     <link rel="preload" href="style.css?v=7.2" as="style">
-    <link rel="stylesheet" href="style.css?v=7.2">
-    <link rel="stylesheet" href="mobile-additions.css?v=8.2">
+    <link rel="stylesheet" href="style.css?v=8.0">
+    <link rel="stylesheet" href="mobile-additions.css?v=8.3">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -410,12 +410,8 @@
                     <i class="fa-solid fa-list-check"></i> <span>Мои задачи</span>
                     <span id="my-tasks-count" class="my-tasks-count" style="display: none;">0</span>
                 </button>
-                <button id="admin-panel-btn" class="secondary-btn"
-                    style="width: 100%; justify-content: center; display: none;">
-                    <i class="fa-solid fa-user-shield"></i> <span>Админ панель</span>
-                </button>
-                <button id="theme-toggle" class="secondary-btn" style="width: 100%; justify-content: center;">
-                    <i class="fa-regular fa-sun"></i> <span>Светлая тема</span>
+                <button id="settings-btn" class="secondary-btn" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-gear"></i> <span>Настройки</span>
                 </button>
                 <button id="logout-btn" class="danger-btn"
                     style="width: 100%; justify-content: center; background: rgba(239, 68, 68, 0.05);">
@@ -482,35 +478,103 @@
 
     <!-- Modals -->
     <div id="project-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Новый проект</h2>
-                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+        <div class="modal-content project-modal-content">
+            <button class="close-modal project-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            
+            <div class="project-modal-icon">
+                <i class="fa-solid fa-folder-plus"></i>
             </div>
-            <form id="project-form">
-                <div class="form-group">
-                    <label for="p-name">Название</label>
-                    <input type="text" id="p-name" required placeholder="">
-                </div>
-                <div class="form-group">
-                    <label for="p-desc">Описание деятельности</label>
-                    <textarea id="p-desc" rows="3" placeholder="Краткое описание..."></textarea>
-                </div>
-                <div class="form-group">
-                    <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                        <input type="checkbox" id="p-has-deadline" style="width: auto;">
-                        <span>Установить срок проекта</span>
+            
+            <h2 class="project-modal-title">Новый проект</h2>
+            <p class="project-modal-subtitle">Создайте проект для организации задач</p>
+            
+            <form id="project-form" class="project-modal-form">
+                <div class="project-form-group">
+                    <label for="p-name">
+                        <i class="fa-solid fa-pen"></i>
+                        Название проекта
                     </label>
+                    <input type="text" id="p-name" required placeholder="Введите название...">
                 </div>
-                <div class="form-group" id="p-deadline-group" style="display: none;">
-                    <label for="p-deadline">Срок выполнения</label>
+                
+                <div class="project-form-group">
+                    <label for="p-desc">
+                        <i class="fa-solid fa-align-left"></i>
+                        Описание
+                    </label>
+                    <textarea id="p-desc" rows="3" placeholder="Краткое описание проекта..."></textarea>
+                </div>
+                
+                <div class="project-deadline-toggle">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="p-has-deadline">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">
+                        <i class="fa-regular fa-calendar"></i>
+                        Установить срок
+                    </span>
+                </div>
+                
+                <div class="project-form-group project-deadline-field" id="p-deadline-group">
+                    <label for="p-deadline">
+                        <i class="fa-solid fa-clock"></i>
+                        Дедлайн проекта
+                    </label>
                     <input type="date" id="p-deadline">
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="secondary-btn close-modal">Отмена</button>
-                    <button type="submit" class="primary-btn">Создать</button>
+                
+                <div class="project-modal-actions">
+                    <button type="button" class="project-btn-cancel close-modal">
+                        <i class="fa-solid fa-xmark"></i>
+                        Отмена
+                    </button>
+                    <button type="submit" class="project-btn-create">
+                        <i class="fa-solid fa-plus"></i>
+                        Создать проект
+                    </button>
                 </div>
             </form>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content settings-modal-content">
+            <button class="close-modal settings-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            
+            <div class="settings-modal-icon">
+                <i class="fa-solid fa-gear"></i>
+            </div>
+            
+            <h2 class="settings-modal-title">Настройки</h2>
+            
+            <div class="settings-options">
+                <button id="admin-panel-btn" class="settings-option" style="display: none;">
+                    <div class="settings-option-icon admin">
+                        <i class="fa-solid fa-user-shield"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">Админ панель</span>
+                        <span class="settings-option-desc">Управление пользователями</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                
+                <button id="theme-toggle" class="settings-option">
+                    <div class="settings-option-icon theme">
+                        <i class="fa-regular fa-sun"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">Тема оформления</span>
+                        <span class="settings-option-desc" id="current-theme-text">Тёмная тема</span>
+                    </div>
+                    <label class="toggle-switch theme-toggle-switch">
+                        <input type="checkbox" id="theme-checkbox">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </button>
+            </div>
         </div>
     </div>
 
