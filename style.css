@@ -927,6 +927,7 @@ body.read-only #theme-toggle,
 body.read-only #logout-btn,
 body.read-only #mobile-menu-btn,
 body.read-only #my-tasks-btn,
+body.read-only #settings-btn,
 body.read-only #submit-completion-btn,
 body.read-only #cancel-completion-btn,
 body.read-only .close-modal,
@@ -935,6 +936,7 @@ body.read-only #org-overlay .secondary-btn,
 body.read-only #org-overlay .org-choice-btn,
 body.read-only #auth-overlay .primary-btn,
 body.read-only #auth-overlay .secondary-btn,
+body.read-only .settings-option,
 body.read-only .back-btn {
     display: flex !important;
 }
@@ -3687,6 +3689,26 @@ body.light-mode .settings-modal-content {
 .settings-option-icon.admin {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
     color: var(--primary);
+}
+
+/* Disabled admin panel button for non-admin users */
+.settings-option.disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.settings-option.disabled .settings-option-icon.admin {
+    background: linear-gradient(135deg, rgba(148, 163, 184, 0.15), rgba(148, 163, 184, 0.15));
+    color: var(--text-secondary);
+}
+
+.settings-option.disabled .settings-option-title,
+.settings-option.disabled .settings-option-desc {
+    color: var(--text-secondary);
+}
+
+.settings-option.disabled > i.fa-chevron-right {
+    opacity: 0.3;
 }
 
 .settings-option-icon.theme {

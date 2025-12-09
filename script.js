@@ -1284,10 +1284,18 @@ function applyRoleRestrictions() {
         document.body.classList.add('read-only');
     }
 
-    // Show/hide admin panel button (owner, admin only)
+    // Admin panel button - visible for all, but disabled for non-admins
     const adminPanelBtn = document.getElementById('admin-panel-btn');
+    const adminPanelDesc = document.getElementById('admin-panel-desc');
     if (adminPanelBtn) {
-        adminPanelBtn.style.display = canAccessAdmin() ? 'flex' : 'none';
+        adminPanelBtn.style.display = 'flex'; // Always visible
+        if (canAccessAdmin()) {
+            adminPanelBtn.classList.remove('disabled');
+            if (adminPanelDesc) adminPanelDesc.textContent = 'Управление пользователями';
+        } else {
+            adminPanelBtn.classList.add('disabled');
+            if (adminPanelDesc) adminPanelDesc.textContent = 'Доступ только для администраторов';
+        }
     }
 
     // Show/hide add project button (owner, admin only)
@@ -3313,6 +3321,10 @@ function setupEventListeners() {
     // Admin Panel
     if (elements.adminPanelBtn) {
         elements.adminPanelBtn.addEventListener('click', () => {
+            // Check if button is disabled (non-admin users)
+            if (elements.adminPanelBtn.classList.contains('disabled')) {
+                return; // Don't open for non-admin users
+            }
             playClickSound();
             closeSidebarOnMobile();
             elements.adminPanelModal.classList.add('active');
@@ -3600,13 +3612,21 @@ function cancelTouchDrag() {
 
 // Admin Panel Functions
 function setupAdminPanel() {
-    // Only load when user is owner or admin
-    if (!canAccessAdmin()) {
-        elements.adminPanelBtn.style.display = 'none';
-        return;
+    const adminPanelDesc = document.getElementById('admin-panel-desc');
+    
+    // Admin panel button is always visible, but disabled for non-admins
+    if (elements.adminPanelBtn) {
+        elements.adminPanelBtn.style.display = 'flex'; // Always visible
+        
+        if (!canAccessAdmin()) {
+            elements.adminPanelBtn.classList.add('disabled');
+            if (adminPanelDesc) adminPanelDesc.textContent = 'Доступ только для администраторов';
+            return;
+        }
+        
+        elements.adminPanelBtn.classList.remove('disabled');
+        if (adminPanelDesc) adminPanelDesc.textContent = 'Управление пользователями';
     }
-
-    elements.adminPanelBtn.style.display = 'flex';
 
     // Users are already loaded via setupRealtimeListeners
     // Just render if we have users
