@@ -183,29 +183,29 @@ async function uploadToCloudinary(file) {
     try {
         console.log('Starting upload to Cloudinary...', { fileName: file.name, fileSize: file.size });
         const startTime = Date.now();
-        
-        const response = await fetch(
-            `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
+    
+    const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
             { 
                 method: 'POST', 
                 body: formData,
                 mode: 'cors',
                 signal: controller.signal
             }
-        );
+    );
         
         clearTimeout(timeoutId);
         console.log('Upload response received in', Date.now() - startTime, 'ms');
-
-        if (!response.ok) {
+    
+    if (!response.ok) {
             let errorMsg = response.statusText;
             try {
-                const errorData = await response.json();
-                console.error('Cloudinary error:', errorData);
+        const errorData = await response.json();
+        console.error('Cloudinary error:', errorData);
                 errorMsg = errorData.error?.message || response.statusText;
             } catch (e) {
                 console.error('Could not parse error response');
-            }
+    }
             throw new Error(errorMsg);
         }
 
@@ -1770,7 +1770,7 @@ function updateTask(id, data) {
     if (!canManageTasks()) return;
 
     // Show loading state (button may be outside form)
-    const submitBtn = document.querySelector('button[form="task-form"]') ||
+    const submitBtn = document.querySelector('button[form="task-form"]') || 
                       elements.taskForm.querySelector('button[type="submit"]');
     if (submitBtn) setButtonLoading(submitBtn, true, 'Сохранить');
 
@@ -1805,7 +1805,7 @@ function openEditTaskModal(task) {
 
     // Populate assignees picker and load existing assignees
     populateAssigneeDropdown();
-    
+
     // Set selected assignees from task
     if (task.assigneeEmail && task.assignee) {
         setSelectedAssignees(task.assigneeEmail, task.assignee);
@@ -1853,7 +1853,7 @@ function renderProjects() {
         li.innerHTML = `
             <div class="project-item-content">
                 <div class="project-item-main">
-                    <i class="fa-solid fa-folder"></i>
+            <i class="fa-solid fa-folder"></i>
                     <span class="project-item-name">${project.name}</span>
                 </div>
                 ${deadlineHtml}
@@ -2861,6 +2861,16 @@ function toggleTheme() {
     updateThemeUI(isLight);
 }
 
+function setTheme(isLight) {
+    if (isLight) {
+        document.body.classList.add('light-mode');
+    } else {
+        document.body.classList.remove('light-mode');
+    }
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    updateThemeUI(isLight);
+}
+
 // Close sidebar on mobile devices
 function closeSidebarOnMobile() {
     if (window.innerWidth <= 768) {
@@ -3157,20 +3167,20 @@ function setupEventListeners() {
     const themeToggleOption = document.getElementById('theme-toggle');
     const themeCheckbox = document.getElementById('theme-checkbox');
     
-    if (themeToggleOption) {
+    if (themeToggleOption && themeCheckbox) {
+        // Click on the option card (but not checkbox) - toggle the checkbox
         themeToggleOption.addEventListener('click', (e) => {
-            // Don't toggle if clicked on checkbox itself (it handles its own state)
-            if (e.target.type !== 'checkbox') {
+            if (e.target !== themeCheckbox && !e.target.closest('.toggle-switch')) {
                 playClickSound();
-                toggleTheme();
+                themeCheckbox.checked = !themeCheckbox.checked;
+                setTheme(themeCheckbox.checked);
             }
         });
-    }
-    
-    if (themeCheckbox) {
+        
+        // Direct checkbox change
         themeCheckbox.addEventListener('change', () => {
             playClickSound();
-            toggleTheme();
+            setTheme(themeCheckbox.checked);
         });
     }
 
@@ -3415,7 +3425,7 @@ async function loadUserRole(user) {
     // Fetch user profile to get name, role, and organization
     try {
         const userDocPromise = db.collection('users').doc(user.uid).get();
-
+        
         // Race between fetch and timeout
         const userDoc = await Promise.race([userDocPromise, timeoutPromise]);
 
@@ -3538,7 +3548,7 @@ async function logout() {
         if (elements.myTasksCount) {
             elements.myTasksCount.style.display = 'none';
         }
-
+        
         // Hide app container and org overlay
         document.getElementById('app-container').style.display = 'none';
         document.getElementById('org-overlay').style.display = 'none';
@@ -3597,7 +3607,7 @@ function setupAdminPanel() {
     }
 
     elements.adminPanelBtn.style.display = 'flex';
-    
+
     // Users are already loaded via setupRealtimeListeners
     // Just render if we have users
     if (state.users.length > 0) {
@@ -3814,9 +3824,9 @@ function handleAssigneeSearch(e) {
         dropdown.innerHTML = '<div class="assignee-dropdown-empty">Не найдено</div>';
     } else {
         filteredUsers.forEach(user => {
-            const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
             const initials = fullName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
-            
+
             const item = document.createElement('div');
             item.className = 'assignee-dropdown-item';
             item.innerHTML = `
@@ -4261,12 +4271,12 @@ function renderMyTasks(tasks) {
         if (task.status === 'done') {
             currentSubStatus = 'done';
         }
-
+        
         // Status info
         let statusText = '';
         let statusClass = '';
         let statusIcon = '';
-
+        
         switch (currentSubStatus) {
             case 'assigned':
                 statusText = 'Поставлена';
@@ -4286,12 +4296,12 @@ function renderMyTasks(tasks) {
             case 'done':
                 statusText = 'В архиве';
                 statusClass = 'status-done';
-                statusIcon = 'fa-check-double';
+                    statusIcon = 'fa-check-double';
                 break;
             default:
-                statusText = 'Поставлена';
-                statusClass = 'status-assigned';
-                statusIcon = 'fa-circle-exclamation';
+                    statusText = 'Поставлена';
+                    statusClass = 'status-assigned';
+                    statusIcon = 'fa-circle-exclamation';
         }
         
         // Deadline info

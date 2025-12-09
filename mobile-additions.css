@@ -584,7 +584,7 @@
     #task-modal .modal-content {
         overflow-x: hidden !important;
     }
-    
+
     #task-modal .task-form-body {
         overflow-x: hidden !important;
         padding-left: 1rem !important;
@@ -596,7 +596,7 @@
         max-width: 100% !important;
         overflow-x: hidden !important;
     }
-    
+
     /* Stack form-row vertically on mobile */
     #task-modal .form-row {
         display: flex !important;
