@@ -285,18 +285,6 @@
                 </button>
             </div>
             
-            <!-- My Organizations List -->
-            <div id="my-orgs-section" style="display: none; margin-top: 2rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                    <div style="flex: 1; height: 1px; background: var(--border);"></div>
-                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Мои организации</span>
-                    <div style="flex: 1; height: 1px; background: var(--border);"></div>
-                </div>
-                <div id="my-orgs-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                    <!-- Organizations will be rendered here -->
-                </div>
-            </div>
-
             <button id="org-logout-btn" class="secondary-btn" style="width: 100%; justify-content: center; margin-top: 2rem;">
                 <i class="fa-solid fa-right-from-bracket"></i> Выйти из аккаунта
             </button>
@@ -392,11 +380,11 @@
                         </button>
                     </div>
                     <div class="org-dropdown-divider"></div>
-                    <button id="org-switch-btn" class="org-dropdown-item">
-                        <i class="fa-solid fa-rotate"></i> Сменить организацию
-                    </button>
                     <button id="org-leave-btn" class="org-dropdown-item org-leave">
                         <i class="fa-solid fa-right-from-bracket"></i> Покинуть организацию
+                    </button>
+                    <button id="org-delete-btn" class="org-dropdown-item org-delete" style="display: none; color: var(--danger);">
+                        <i class="fa-solid fa-trash"></i> Удалить организацию
                     </button>
                 </div>
             </div>

@@ -573,12 +573,15 @@ async function joinOrganization(inviteCode) {
     // Check if already member - fetch fresh data from Firestore
     const userDoc = await db.collection('users').doc(state.currentUser.uid).get();
     const userData = userDoc.exists ? userDoc.data() : {};
-    
+
     if (userData.organizationId === orgDoc.id) {
         throw new Error('Вы уже в этой организации');
     }
-
-    // Note: Member limit check removed - unlimited members allowed
+    
+    // Check if user is in another organization (one org per user)
+    if (userData.organizationId && userData.organizationId !== orgDoc.id) {
+        throw new Error('Вы уже состоите в другой организации. Сначала покиньте её.');
+    }
 
     // Update or create user document (use set with merge to handle missing docs)
     await db.collection('users').doc(state.currentUser.uid).set({
@@ -596,13 +599,13 @@ async function joinOrganization(inviteCode) {
     return { id: orgDoc.id, ...orgData };
 }
 
-// Leave organization
+// Leave organization (for non-owners)
 async function leaveOrganization() {
     if (!state.currentUser || !state.organization) return;
 
-    // Owner can't leave, must transfer ownership first
+    // Owner can't leave
     if (state.orgRole === 'owner') {
-        throw new Error('Владелец не может покинуть организацию. Сначала передайте права.');
+        throw new Error('Владелец не может покинуть организацию. Используйте "Удалить организацию".');
     }
 
     // Update user - use set with merge to handle any edge cases
@@ -611,6 +614,36 @@ async function leaveOrganization() {
         orgRole: null
     }, { merge: true });
 
+    // Clear local state
+    state.organization = null;
+    state.orgRole = null;
+    state.currentUser.organizationId = null;
+    state.currentUser.orgRole = null;
+}
+
+// Delete organization (only for owner)
+async function deleteOrganization() {
+    if (!state.currentUser || !state.organization) return;
+    
+    if (state.orgRole !== 'owner') {
+        throw new Error('Только владелец может удалить организацию');
+    }
+    
+    const orgId = state.organization.id;
+    
+    // Remove all users from this organization
+    const usersSnapshot = await db.collection('users').where('organizationId', '==', orgId).get();
+    const batch = db.batch();
+    
+    usersSnapshot.forEach(doc => {
+        batch.update(doc.ref, { organizationId: null, orgRole: null });
+    });
+    
+    // Delete the organization document
+    batch.delete(db.collection('organizations').doc(orgId));
+    
+    await batch.commit();
+    
     // Clear local state
     state.organization = null;
     state.orgRole = null;
@@ -703,9 +736,6 @@ function showOrgSelectionScreen(clearOrg = false) {
         elements.orgWelcomeName.textContent = `Привет, ${name}!`;
     }
     
-    // Load and render user's organizations
-    renderUserOrganizations();
-    
     // Apply pending invite code if exists (may auto-join and skip this screen)
     applyPendingInviteCode();
     
@@ -733,109 +763,27 @@ function captureInviteCodeFromUrl() {
     }
 }
 
-// Load user's organizations
-async function loadUserOrganizations() {
-    if (!state.currentUser?.uid) return [];
-    
-    try {
-        // Get user's current organization
-        const userDoc = await db.collection('users').doc(state.currentUser.uid).get();
-        if (!userDoc.exists) return [];
-        
-        const userData = userDoc.data();
-        const orgIds = [];
-        
-        // Current organization
-        if (userData.organizationId) {
-            orgIds.push(userData.organizationId);
-        }
-        
-        // Load organization details
-        const orgs = [];
-        for (const orgId of orgIds) {
-            const orgDoc = await db.collection('organizations').doc(orgId).get();
-            if (orgDoc.exists) {
-                orgs.push({
-                    id: orgDoc.id,
-                    ...orgDoc.data(),
-                    userRole: userData.orgRole || 'employee'
-                });
-            }
-        }
-        
-        return orgs;
-    } catch (error) {
-        console.error('Error loading organizations:', error);
-        return [];
-    }
-}
-
-// Render user's organizations in the selection screen
-async function renderUserOrganizations() {
-    const section = document.getElementById('my-orgs-section');
-    const list = document.getElementById('my-orgs-list');
-    
-    if (!section || !list) return;
-    
-    const orgs = await loadUserOrganizations();
-    
-    if (orgs.length === 0) {
-        section.style.display = 'none';
-        return;
-    }
-    
-    section.style.display = 'block';
-    list.innerHTML = '';
-    
-    const roleNames = {
-        owner: 'Владелец',
-        admin: 'Администратор',
-        moderator: 'Модератор',
-        employee: 'Сотрудник'
-    };
-    
-    orgs.forEach(org => {
-        const item = document.createElement('div');
-        item.className = 'my-org-item';
-        item.innerHTML = `
-            <div class="my-org-icon"><i class="fa-solid fa-building"></i></div>
-            <div class="my-org-info">
-                <div class="my-org-name">${org.name}</div>
-                <div class="my-org-role">${roleNames[org.userRole] || 'Сотрудник'}</div>
-            </div>
-            <i class="fa-solid fa-chevron-right my-org-arrow"></i>
-        `;
-        
-        item.addEventListener('click', async () => {
-            // Enter this organization
-            state.organization = org;
-            state.orgRole = org.userRole;
-            state.currentUser.organizationId = org.id;
-            state.currentUser.orgRole = org.userRole;
-            
-            hideOrgSelectionScreen();
-            enterApp();
-        });
-        
-        list.appendChild(item);
-    });
-}
-
 // Apply pending invite code - AUTO JOIN if code is valid
 async function applyPendingInviteCode() {
     // Try to get from sessionStorage if not in memory
     if (!pendingInviteCode) {
         pendingInviteCode = sessionStorage.getItem('pendingInviteCode');
     }
-    
+
     if (!pendingInviteCode) return;
-    
+
     const code = pendingInviteCode;
-    
+
     // Clear pending code
     pendingInviteCode = null;
     sessionStorage.removeItem('pendingInviteCode');
-    
+
+    // Check if user is already in an organization
+    if (state.currentUser?.organizationId) {
+        alert('Вы уже состоите в организации.\n\nЧтобы присоединиться к другой, сначала покиньте текущую.');
+        return;
+    }
+
     // Try to auto-join the organization
     try {
         const org = await findOrganizationByCode(code);
@@ -846,7 +794,7 @@ async function applyPendingInviteCode() {
             state.orgRole = 'employee';
             state.currentUser.organizationId = joinedOrg.id;
             state.currentUser.orgRole = 'employee';
-            
+
             hideOrgSelectionScreen();
             enterApp();
             return; // Exit - we're done
@@ -1091,36 +1039,62 @@ function setupOrgEventListeners() {
         });
     }
     
-    // Switch organization
-    if (elements.orgSwitchBtn) {
-        elements.orgSwitchBtn.addEventListener('click', () => {
-            elements.orgDropdown.style.display = 'none';
-            elements.orgHeader.classList.remove('open');
-            showOrgSelectionScreen(true); // Clear org - user is switching
-        });
-    }
-    
-    // Leave organization
+    // Leave organization (for non-owners)
     if (elements.orgLeaveBtn) {
         elements.orgLeaveBtn.addEventListener('click', async () => {
             if (state.orgRole === 'owner') {
-                alert('Владелец не может покинуть организацию. Сначала передайте права другому администратору.');
+                alert('Владелец не может покинуть организацию. Используйте "Удалить организацию".');
                 return;
             }
 
-            if (!confirm('Вы уверены, что хотите покинуть организацию?')) return;
+            if (!confirm('Вы уверены, что хотите покинуть организацию?\n\nВы потеряете доступ ко всем проектам и задачам.')) return;
 
             try {
                 await leaveOrganization();
                 elements.orgDropdown.style.display = 'none';
                 elements.orgHeader.classList.remove('open');
-                showOrgSelectionScreen(true); // Clear org - user left
+                showOrgSelectionScreen(true);
             } catch (error) {
                 alert(error.message);
             }
         });
     }
     
+    // Delete organization (only for owner)
+    if (elements.orgDeleteBtn) {
+        elements.orgDeleteBtn.addEventListener('click', async () => {
+            if (state.orgRole !== 'owner') {
+                alert('Только владелец может удалить организацию.');
+                return;
+            }
+
+            const orgName = state.organization?.name || 'организацию';
+            if (!confirm(`ВНИМАНИЕ!\n\nВы уверены, что хотите удалить "${orgName}"?\n\nВсе сотрудники будут отключены от организации.\nЭто действие НЕОБРАТИМО!`)) return;
+            
+            // Double confirmation
+            if (!confirm('Подтвердите удаление ещё раз.\n\nОрганизация будет удалена навсегда.')) return;
+
+            try {
+                const btn = elements.orgDeleteBtn;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Удаление...';
+                
+                await deleteOrganization();
+                
+                elements.orgDropdown.style.display = 'none';
+                elements.orgHeader.classList.remove('open');
+                showOrgSelectionScreen(true);
+                
+                alert('Организация удалена.');
+            } catch (error) {
+                console.error('Error deleting organization:', error);
+                alert('Ошибка: ' + error.message);
+                elements.orgDeleteBtn.disabled = false;
+                elements.orgDeleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Удалить организацию';
+            }
+        });
+    }
+
     // Regenerate invite code
     if (elements.orgRegenerateCode) {
         elements.orgRegenerateCode.addEventListener('click', async () => {
@@ -1186,9 +1160,14 @@ function updateOrgUI() {
         elements.orgInviteCodeDisplay.textContent = state.organization.inviteCode || '------';
     }
     
-    // Hide leave button for owner
+    // Show/hide leave and delete buttons based on role
     if (elements.orgLeaveBtn) {
+        // Non-owners see "Leave" button
         elements.orgLeaveBtn.style.display = state.orgRole === 'owner' ? 'none' : 'flex';
+    }
+    if (elements.orgDeleteBtn) {
+        // Only owner sees "Delete" button
+        elements.orgDeleteBtn.style.display = state.orgRole === 'owner' ? 'flex' : 'none';
     }
 }
 
@@ -1491,8 +1470,8 @@ const elements = {
     orgInviteCodeDisplay: document.getElementById('org-invite-code-display'),
     orgCopyCode: document.getElementById('org-copy-code'),
     orgShareBtn: document.getElementById('org-share-btn'),
-    orgSwitchBtn: document.getElementById('org-switch-btn'),
     orgLeaveBtn: document.getElementById('org-leave-btn'),
+    orgDeleteBtn: document.getElementById('org-delete-btn'),
     orgRegenerateCode: document.getElementById('org-regenerate-code'),
     brandLogo: document.getElementById('brand-logo'),
 };
