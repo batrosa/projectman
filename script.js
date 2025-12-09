@@ -3785,7 +3785,7 @@ function handleAssigneeSearch(e) {
                 </div>
             `;
             
-            // Use mousedown to prevent blur from closing dropdown before selection
+            // Use mousedown to prevent blur from closing dropdown before selection (desktop)
             item.addEventListener('mousedown', (e) => {
                 e.preventDefault(); // Prevent blur
                 e.stopPropagation();
@@ -3794,13 +3794,33 @@ function handleAssigneeSearch(e) {
                 dropdown.classList.remove('active');
             });
             
-            // Also handle touchend for mobile
+            // Mobile: track if scrolling to prevent accidental selection
+            let touchStartY = 0;
+            let isScrolling = false;
+            
+            item.addEventListener('touchstart', (e) => {
+                touchStartY = e.touches[0].clientY;
+                isScrolling = false;
+            }, { passive: true });
+            
+            item.addEventListener('touchmove', (e) => {
+                const touchMoveY = e.touches[0].clientY;
+                const deltaY = Math.abs(touchMoveY - touchStartY);
+                // If moved more than 10px, it's a scroll
+                if (deltaY > 10) {
+                    isScrolling = true;
+                }
+            }, { passive: true });
+            
             item.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                addAssignee(user);
-                searchInput.value = '';
-                dropdown.classList.remove('active');
+                // Only select if it wasn't a scroll
+                if (!isScrolling) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    addAssignee(user);
+                    searchInput.value = '';
+                    dropdown.classList.remove('active');
+                }
             });
             
             dropdown.appendChild(item);
