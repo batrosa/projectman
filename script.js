@@ -542,47 +542,57 @@ async function createOrganization(name) {
     };
     
     const orgRef = await db.collection('organizations').add(orgData);
-    
-    // Update user with organization
-    await db.collection('users').doc(state.currentUser.uid).update({
+
+    // Update user with organization (use set with merge to handle missing docs)
+    await db.collection('users').doc(state.currentUser.uid).set({
         organizationId: orgRef.id,
-        orgRole: 'owner'
-    });
-    
+        orgRole: 'owner',
+        email: state.currentUser.email,
+        displayName: state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User'
+    }, { merge: true });
+
     return { id: orgRef.id, ...orgData };
 }
 
 // Join organization by invite code
 async function joinOrganization(inviteCode) {
     if (!state.currentUser) throw new Error('Не авторизован');
-    
+
     const code = inviteCode.toUpperCase().trim();
-    
+
     // Find organization by invite code
     const snapshot = await db.collection('organizations').where('inviteCode', '==', code).get();
-    
+
     if (snapshot.empty) {
         throw new Error('Организация не найдена');
     }
-    
+
     const orgDoc = snapshot.docs[0];
     const orgData = orgDoc.data();
+
+    // Check if already member - fetch fresh data from Firestore
+    const userDoc = await db.collection('users').doc(state.currentUser.uid).get();
+    const userData = userDoc.exists ? userDoc.data() : {};
     
-    // Check if already member
-    if (state.currentUser.organizationId === orgDoc.id) {
+    if (userData.organizationId === orgDoc.id) {
         throw new Error('Вы уже в этой организации');
     }
+
+    // Check member limit (use dynamic count)
+    const membersSnapshot = await db.collection('users').where('organizationId', '==', orgDoc.id).get();
+    const currentMembersCount = membersSnapshot.size;
     
-    // Check member limit
-    if (orgData.membersCount >= (orgData.settings?.maxUsers || 10)) {
+    if (currentMembersCount >= (orgData.settings?.maxUsers || 50)) {
         throw new Error('Организация достигла лимита участников');
     }
-    
-    // Update user
-    await db.collection('users').doc(state.currentUser.uid).update({
+
+    // Update or create user document (use set with merge to handle missing docs)
+    await db.collection('users').doc(state.currentUser.uid).set({
         organizationId: orgDoc.id,
-        orgRole: 'employee'
-    });
+        orgRole: 'employee',
+        email: state.currentUser.email,
+        displayName: state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User'
+    }, { merge: true });
     
     // Increment members count
     await db.collection('organizations').doc(orgDoc.id).update({
@@ -601,18 +611,17 @@ async function leaveOrganization() {
         throw new Error('Владелец не может покинуть организацию. Сначала передайте права.');
     }
 
-    // Update user
-    await db.collection('users').doc(state.currentUser.uid).update({
+    // Update user - use set with merge to handle any edge cases
+    await db.collection('users').doc(state.currentUser.uid).set({
         organizationId: null,
-        orgRole: 'employee'
-    });
+        orgRole: null
+    }, { merge: true });
 
-    // Decrement members count
-    await db.collection('organizations').doc(state.organization.id).update({
-        membersCount: firebase.firestore.FieldValue.increment(-1)
-    });
-
+    // Clear local state
     state.organization = null;
+    state.orgRole = null;
+    state.currentUser.organizationId = null;
+    state.currentUser.orgRole = null;
 }
 
 // Regenerate invite code (invalidates old code)
@@ -1702,13 +1711,18 @@ function subscribeToProjectTasks(projectId) {
 }
 
 function deleteTask(id) {
-    if (state.role !== 'admin') return;
+    // Check permission - owner, admin, or moderator can delete tasks
+    const canDelete = ['owner', 'admin', 'moderator'].includes(state.orgRole) || state.role === 'admin';
+    if (!canDelete) return;
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     db.collection('tasks').doc(id).delete();
 }
 
 function deleteProject(id) {
-    if (state.role !== 'admin') return;
+    // Check permission - must be owner or admin (org role takes precedence)
+    const canDelete = ['owner', 'admin'].includes(state.orgRole) || state.role === 'admin';
+    if (!canDelete) return;
+    
     if (!confirm('Вы уверены? Все задачи этого проекта будут удалены.')) return;
 
     // Delete project
@@ -1727,10 +1741,12 @@ function deleteProject(id) {
 }
 
 function updateTask(id, data) {
-    if (state.role !== 'admin') return;
+    // Check permission - owner, admin, or moderator can update tasks
+    const canUpdate = ['owner', 'admin', 'moderator'].includes(state.orgRole) || state.role === 'admin';
+    if (!canUpdate) return;
 
     // Show loading state (button may be outside form)
-    const submitBtn = document.querySelector('button[form="task-form"]') || 
+    const submitBtn = document.querySelector('button[form="task-form"]') ||
                       elements.taskForm.querySelector('button[type="submit"]');
     if (submitBtn) setButtonLoading(submitBtn, true, 'Сохранить');
 
@@ -3266,10 +3282,10 @@ async function loadUserRole(user) {
                     } else {
                         // Organization was deleted, clear user's org
                         state.currentUser.organizationId = null;
-                        await db.collection('users').doc(user.uid).update({
+                        await db.collection('users').doc(user.uid).set({
                             organizationId: null,
-                            orgRole: 'employee'
-                        });
+                            orgRole: null
+                        }, { merge: true });
                     }
                 } catch (orgError) {
                     console.error("Error loading organization:", orgError);
@@ -3415,8 +3431,9 @@ function cancelTouchDrag() {
 
 // Admin Panel Functions
 function setupAdminPanel() {
-    // Only load when user is admin
-    if (state.role !== 'admin') {
+    // Only load when user is owner or admin
+    const canAccessAdmin = ['owner', 'admin'].includes(state.orgRole) || state.role === 'admin';
+    if (!canAccessAdmin) {
         elements.adminPanelBtn.style.display = 'none';
         return;
     }
@@ -3515,7 +3532,7 @@ function renderUsersList() {
                 const newRole = e.target.value;
                 const userId = e.target.dataset.userId;
                 try {
-                    await db.collection('users').doc(userId).update({ orgRole: newRole });
+                    await db.collection('users').doc(userId).set({ orgRole: newRole }, { merge: true });
                     playClickSound();
                 } catch (error) {
                     console.error('Error updating role:', error);
@@ -3541,20 +3558,13 @@ function renderUsersList() {
 // Remove user from organization (not delete account)
 async function removeUserFromOrganization(userId, userName) {
     if (!confirm(`Удалить ${userName} из организации?`)) return;
-    
+
     try {
-        await db.collection('users').doc(userId).update({
+        await db.collection('users').doc(userId).set({
             organizationId: null,
-            orgRole: 'employee'
-        });
-        
-        // Decrement members count
-        if (state.organization?.id) {
-            await db.collection('organizations').doc(state.organization.id).update({
-                membersCount: firebase.firestore.FieldValue.increment(-1)
-            });
-        }
-        
+            orgRole: null
+        }, { merge: true });
+
         playClickSound();
     } catch (error) {
         console.error('Error removing user:', error);
@@ -3839,7 +3849,9 @@ function checkReminders(tasks) {
 }
 
 async function deleteUser(userId, userName) {
-    if (state.role !== 'admin') return;
+    // Check permission - owner or admin can delete users
+    const canDelete = ['owner', 'admin'].includes(state.orgRole) || state.role === 'admin';
+    if (!canDelete) return;
 
     if (!confirm(`Вы уверены, что хотите удалить пользователя "${userName}"?\n\nЭто действие удалит данные пользователя из приложения, но технический аккаунт останется.`)) {
         return;
@@ -3920,9 +3932,9 @@ async function saveUserAccess() {
     }
 
     try {
-        await db.collection('users').doc(selectedUserId).update({
+        await db.collection('users').doc(selectedUserId).set({
             allowedProjects: allowedProjects
-        });
+        }, { merge: true });
 
         alert('Настройки доступа сохранены!');
     } catch (error) {
@@ -4317,10 +4329,10 @@ async function migrateToOrganization(orgName) {
             const userData = userDoc.data();
             if (!userData.organizationId) {
                 const isOwner = userDoc.id === auth.currentUser.uid;
-                await db.collection('users').doc(userDoc.id).update({
+                await db.collection('users').doc(userDoc.id).set({
                     organizationId: orgId,
                     orgRole: isOwner ? 'owner' : (userData.role === 'admin' ? 'admin' : 'employee')
-                });
+                }, { merge: true });
                 userCount++;
                 console.log('Migrated user:', userData.email, isOwner ? '(owner)' : '');
             }
