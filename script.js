@@ -621,7 +621,7 @@ async function leaveOrganization() {
 // Regenerate invite code (invalidates old code)
 async function regenerateInviteCode() {
     if (!state.organization) throw new Error('Нет организации');
-    if (!['owner', 'admin'].includes(state.orgRole)) {
+    if (!hasPermission('regenerate_invite')) {
         throw new Error('Недостаточно прав');
     }
     
@@ -1177,7 +1177,7 @@ function updateOrgUI() {
     }
     
     // Invite code (only for admin+)
-    const canSeeCode = ['owner', 'admin'].includes(state.orgRole);
+    const canSeeCode = hasPermission('view_invite_code');
     const codeSection = elements.orgDropdown?.querySelector('.org-dropdown-section');
     if (codeSection) {
         codeSection.style.display = canSeeCode ? 'block' : 'none';
@@ -1203,17 +1203,67 @@ function getRoleName(role) {
     return names[role] || 'Сотрудник';
 }
 
-// Check if current user has permission
+// Permission system
+// Owner: can do everything
+// Admin: everything except delete org and change owner's role
+// Moderator: create/edit/delete/assign tasks only
+// Employee: view and complete own tasks only
+
 function hasPermission(permission) {
-    const permissions = {
-        owner: ['all'],
-        admin: ['manage_users', 'manage_projects', 'create_tasks', 'edit_tasks', 'delete_tasks', 'view_invite_code'],
-        moderator: ['create_tasks', 'edit_tasks', 'assign_tasks'],
-        employee: ['view', 'update_own_tasks']
-    };
+    const role = state.orgRole || 'employee';
     
-    const rolePerms = permissions[state.orgRole] || permissions.employee;
-    return rolePerms.includes('all') || rolePerms.includes(permission);
+    // Owner can do everything
+    if (role === 'owner') return true;
+    
+    const permissions = {
+        admin: [
+            'admin_panel',        // Access admin panel
+            'manage_users',       // Add/remove users, change roles (except owner)
+            'manage_projects',    // Create/edit/delete projects
+            'create_tasks',       // Create tasks
+            'edit_tasks',         // Edit any task
+            'delete_tasks',       // Delete any task
+            'assign_tasks',       // Assign users to tasks
+            'complete_tasks',     // Complete any task
+            'view_invite_code',   // View invite code
+            'regenerate_invite'   // Change invite code
+        ],
+        moderator: [
+            'create_tasks',       // Create tasks
+            'edit_tasks',         // Edit any task
+            'delete_tasks',       // Delete any task
+            'assign_tasks',       // Assign users to tasks
+            'complete_tasks'      // Complete any task
+        ],
+        employee: [
+            'view',               // View projects and tasks
+            'complete_own_tasks'  // Complete only assigned tasks
+        ]
+    };
+
+    const rolePerms = permissions[role] || permissions.employee;
+    return rolePerms.includes(permission);
+}
+
+// Helper functions for common permission checks
+function canManageProjects() {
+    return ['owner', 'admin'].includes(state.orgRole);
+}
+
+function canManageTasks() {
+    return ['owner', 'admin', 'moderator'].includes(state.orgRole);
+}
+
+function canAccessAdmin() {
+    return ['owner', 'admin'].includes(state.orgRole);
+}
+
+function canChangeUserRole(targetRole) {
+    // Owner can change anyone's role
+    if (state.orgRole === 'owner') return true;
+    // Admin can change roles except owner's
+    if (state.orgRole === 'admin' && targetRole !== 'owner') return true;
+    return false;
 }
 
 // Enter app after organization is set
@@ -1235,43 +1285,41 @@ function enterApp() {
 
 // Apply role-based UI restrictions
 function applyRoleRestrictions() {
-    const role = state.orgRole;
-    
+    const role = state.orgRole || 'employee';
+
     // Remove all role classes first
     document.body.classList.remove('read-only', 'role-owner', 'role-admin', 'role-moderator', 'role-employee');
-    
+
     // Add current role class
     document.body.classList.add(`role-${role}`);
-    
-    // read-only for employees
+
+    // read-only for employees (can only view and complete own tasks)
     if (role === 'employee') {
         document.body.classList.add('read-only');
     }
-    
-    // Show/hide admin panel button
+
+    // Show/hide admin panel button (owner, admin only)
     const adminPanelBtn = document.getElementById('admin-panel-btn');
     if (adminPanelBtn) {
-        adminPanelBtn.style.display = ['owner', 'admin'].includes(role) ? 'flex' : 'none';
+        adminPanelBtn.style.display = canAccessAdmin() ? 'flex' : 'none';
     }
-    
-    // Show/hide add project button
+
+    // Show/hide add project button (owner, admin only)
     const addProjectBtn = document.getElementById('add-project-btn');
     if (addProjectBtn) {
-        addProjectBtn.style.display = ['owner', 'admin'].includes(role) ? 'flex' : 'none';
+        addProjectBtn.style.display = canManageProjects() ? 'flex' : 'none';
     }
-    
-    // Show/hide add task button based on role
+
+    // Show/hide add task button (owner, admin, moderator)
     const addTaskBtn = document.getElementById('add-task-btn');
     if (addTaskBtn) {
-        // Moderators and above can create tasks
-        const canCreateTasks = ['owner', 'admin', 'moderator'].includes(role);
-        addTaskBtn.style.display = canCreateTasks ? 'flex' : 'none';
+        addTaskBtn.style.display = canManageTasks() ? 'flex' : 'none';
     }
-    
-    // Show/hide delete project button
+
+    // Show/hide delete project button (owner, admin only)
     const deleteProjectBtn = document.getElementById('delete-project-btn');
     if (deleteProjectBtn) {
-        deleteProjectBtn.style.display = ['owner', 'admin'].includes(role) ? 'block' : 'none';
+        deleteProjectBtn.style.display = canManageProjects() ? 'block' : 'none';
     }
 }
 
@@ -1706,16 +1754,14 @@ function subscribeToProjectTasks(projectId) {
 
 function deleteTask(id) {
     // Check permission - owner, admin, or moderator can delete tasks
-    const canDelete = ['owner', 'admin', 'moderator'].includes(state.orgRole) || state.role === 'admin';
-    if (!canDelete) return;
+    if (!canManageTasks()) return;
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     db.collection('tasks').doc(id).delete();
 }
 
 function deleteProject(id) {
-    // Check permission - must be owner or admin (org role takes precedence)
-    const canDelete = ['owner', 'admin'].includes(state.orgRole) || state.role === 'admin';
-    if (!canDelete) return;
+    // Check permission - only owner or admin can delete projects
+    if (!canManageProjects()) return;
     
     if (!confirm('Вы уверены? Все задачи этого проекта будут удалены.')) return;
 
@@ -1736,8 +1782,7 @@ function deleteProject(id) {
 
 function updateTask(id, data) {
     // Check permission - owner, admin, or moderator can update tasks
-    const canUpdate = ['owner', 'admin', 'moderator'].includes(state.orgRole) || state.role === 'admin';
-    if (!canUpdate) return;
+    if (!canManageTasks()) return;
 
     // Show loading state (button may be outside form)
     const submitBtn = document.querySelector('button[form="task-form"]') ||
@@ -2891,8 +2936,8 @@ function setupEventListeners() {
 
     // Logic
     function createProject(name, description) {
-        // Check permission: owner or admin can create projects
-        if (!['owner', 'admin'].includes(state.orgRole) && state.role !== 'admin') return;
+        // Check permission: only owner or admin can create projects
+        if (!canManageProjects()) return;
 
         db.collection('projects').add({
             name,
@@ -2907,7 +2952,7 @@ function setupEventListeners() {
 
     async function createTask(title, assignee, deadline, status, assigneeEmail, description) {
         // Check permission: owner, admin, or moderator can create tasks
-        if (!['owner', 'admin', 'moderator'].includes(state.orgRole) && state.role !== 'admin') return;
+        if (!canManageTasks()) return;
         if (!state.activeProjectId) return;
 
         // Show loading state on button (may be outside form)
@@ -3426,8 +3471,7 @@ function cancelTouchDrag() {
 // Admin Panel Functions
 function setupAdminPanel() {
     // Only load when user is owner or admin
-    const canAccessAdmin = ['owner', 'admin'].includes(state.orgRole) || state.role === 'admin';
-    if (!canAccessAdmin) {
+    if (!canAccessAdmin()) {
         elements.adminPanelBtn.style.display = 'none';
         return;
     }
@@ -3468,10 +3512,12 @@ function renderUsersList() {
         const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
         const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
         const userRole = user.orgRole || 'employee';
-        const isOwner = userRole === 'owner';
+        const isTargetOwner = userRole === 'owner';
         const isCurrentUser = user.id === state.currentUser.uid;
-        const canManageRoles = ['owner', 'admin'].includes(state.orgRole);
-        const canDelete = canManageRoles && !isCurrentUser && userRole !== 'owner';
+        
+        // Permission checks using new system
+        const canEditThisRole = canChangeUserRole(userRole) && !isCurrentUser;
+        const canRemoveUser = canAccessAdmin() && !isCurrentUser && !isTargetOwner;
 
         // Role badge
         const roleIcons = {
@@ -3487,19 +3533,33 @@ function renderUsersList() {
             employee: 'Сотрудник'
         };
 
-        // Role selector (only for non-owners and if current user can manage)
+        // Role selector - only show if user can change this role
         let roleSelector = '';
-        if (canManageRoles && !isOwner && !isCurrentUser) {
-            roleSelector = `
-                <select class="role-select" data-user-id="${user.id}">
+        if (canEditThisRole) {
+            // Build options based on current user's role
+            let options = '';
+            if (state.orgRole === 'owner') {
+                // Owner can assign any role including owner (transfer ownership)
+                options = `
+                    <option value="owner" ${userRole === 'owner' ? 'selected' : ''}>Владелец</option>
                     <option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>
                     <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
                     <option value="employee" ${userRole === 'employee' ? 'selected' : ''}>Сотрудник</option>
-                </select>
-            `;
+                `;
+            } else {
+                // Admin can only assign admin, moderator, employee
+                options = `
+                    <option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>
+                    <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
+                    <option value="employee" ${userRole === 'employee' ? 'selected' : ''}>Сотрудник</option>
+                `;
+            }
+            roleSelector = `<select class="role-select" data-user-id="${user.id}">${options}</select>`;
         } else {
             roleSelector = `<span class="role-badge ${userRole}">${roleIcons[userRole]} ${roleNames[userRole]}</span>`;
         }
+        
+        const canDelete = canRemoveUser;
 
         userItem.innerHTML = `
             <div class="user-info">
@@ -3525,13 +3585,50 @@ function renderUsersList() {
             roleSelect.addEventListener('change', async (e) => {
                 const newRole = e.target.value;
                 const userId = e.target.dataset.userId;
+                const oldRole = userRole;
+                
+                // Transfer ownership requires confirmation
+                if (newRole === 'owner') {
+                    if (!confirm('Вы уверены, что хотите передать права владельца этому пользователю?\n\nВы станете админом.')) {
+                        e.target.value = oldRole;
+                        return;
+                    }
+                    
+                    try {
+                        // Transfer ownership: new user becomes owner, current owner becomes admin
+                        await db.collection('users').doc(userId).set({ orgRole: 'owner' }, { merge: true });
+                        await db.collection('users').doc(state.currentUser.uid).set({ orgRole: 'admin' }, { merge: true });
+                        
+                        // Update organization owner
+                        await db.collection('organizations').doc(state.organization.id).update({
+                            ownerId: userId
+                        });
+                        
+                        // Update local state
+                        state.orgRole = 'admin';
+                        state.currentUser.orgRole = 'admin';
+                        
+                        playClickSound();
+                        alert('Права владельца переданы. Вы теперь админ.');
+                        
+                        // Re-apply restrictions
+                        applyRoleRestrictions();
+                        renderUsersList();
+                    } catch (error) {
+                        console.error('Error transferring ownership:', error);
+                        alert('Ошибка при передаче прав');
+                        e.target.value = oldRole;
+                    }
+                    return;
+                }
+                
                 try {
                     await db.collection('users').doc(userId).set({ orgRole: newRole }, { merge: true });
                     playClickSound();
                 } catch (error) {
                     console.error('Error updating role:', error);
                     alert('Ошибка при изменении роли');
-                    e.target.value = userRole; // Revert
+                    e.target.value = oldRole;
                 }
             });
         }
@@ -3843,9 +3940,8 @@ function checkReminders(tasks) {
 }
 
 async function deleteUser(userId, userName) {
-    // Check permission - owner or admin can delete users
-    const canDelete = ['owner', 'admin'].includes(state.orgRole) || state.role === 'admin';
-    if (!canDelete) return;
+    // Check permission - only owner or admin can delete users
+    if (!canAccessAdmin()) return;
 
     if (!confirm(`Вы уверены, что хотите удалить пользователя "${userName}"?\n\nЭто действие удалит данные пользователя из приложения, но технический аккаунт останется.`)) {
         return;
@@ -4410,7 +4506,7 @@ async function updateOrgLimit(newLimit = 100) {
         return;
     }
     
-    if (!['owner', 'admin'].includes(state.orgRole)) {
+    if (!canAccessAdmin()) {
         console.error('Only owner/admin can change limits');
         return;
     }
