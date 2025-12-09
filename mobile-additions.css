@@ -533,22 +533,54 @@
 
     /* ========== Task Modal Form - Mobile adjustments ========== */
     
+    /* Prevent horizontal scroll */
+    #task-modal .modal-content {
+        overflow-x: hidden !important;
+    }
+    
+    #task-modal .task-form-body {
+        overflow-x: hidden !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    
+    #task-modal #task-form {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    
     /* Stack form-row vertically on mobile */
     #task-modal .form-row {
         display: flex !important;
         flex-direction: column !important;
         gap: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
     
     #task-modal .form-row .form-group {
         width: 100% !important;
+        max-width: 100% !important;
         margin-bottom: 1rem;
+        box-sizing: border-box !important;
     }
     
-    /* Prevent iOS zoom */
+    #task-modal .form-group {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
     #task-modal input,
     #task-modal textarea,
-    #task-modal select,
+    #task-modal select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 16px !important; /* Prevent iOS zoom */
+    }
+    
     #task-modal .assignee-search-input {
         font-size: 16px !important;
     }
