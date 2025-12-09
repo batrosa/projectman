@@ -531,14 +531,26 @@
         border-radius: 8px;
     }
 
-    /* ========== Task Modal Form - Use PC styles ========== */
-    /* Only override font-size to prevent iOS zoom */
+    /* ========== Task Modal Form - Mobile adjustments ========== */
     
+    /* Stack form-row vertically on mobile */
+    #task-modal .form-row {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0 !important;
+    }
+    
+    #task-modal .form-row .form-group {
+        width: 100% !important;
+        margin-bottom: 1rem;
+    }
+    
+    /* Prevent iOS zoom */
     #task-modal input,
     #task-modal textarea,
     #task-modal select,
     #task-modal .assignee-search-input {
-        font-size: 16px !important; /* Prevents iOS zoom */
+        font-size: 16px !important;
     }
 
     select {

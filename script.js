@@ -584,12 +584,19 @@ async function joinOrganization(inviteCode) {
     }
 
     // Update or create user document (use set with merge to handle missing docs)
-    await db.collection('users').doc(state.currentUser.uid).set({
+    // Only set displayName if user doesn't have firstName (to avoid overwriting)
+    const updateData = {
         organizationId: orgDoc.id,
         orgRole: 'employee',
-        email: state.currentUser.email,
-        displayName: state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User'
-    }, { merge: true });
+        email: state.currentUser.email
+    };
+    
+    // Only add displayName for NEW users (those without firstName)
+    if (!userData.firstName) {
+        updateData.displayName = state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User';
+    }
+    
+    await db.collection('users').doc(state.currentUser.uid).set(updateData, { merge: true });
     
     // Increment members count
     await db.collection('organizations').doc(orgDoc.id).update({
@@ -3463,17 +3470,13 @@ function setupAdminPanel() {
     }
 
     elements.adminPanelBtn.style.display = 'flex';
-
-    // Load users from Firestore
-    db.collection('users').onSnapshot(snapshot => {
-        const users = [];
-        snapshot.forEach(doc => {
-            users.push({ id: doc.id, ...doc.data() });
-        });
-        state.users = users;
+    
+    // Users are already loaded via setupRealtimeListeners
+    // Just render if we have users
+    if (state.users.length > 0) {
         renderUsersList();
         updateAccessUserSelect();
-    });
+    }
 }
 
 function renderUsersList() {
