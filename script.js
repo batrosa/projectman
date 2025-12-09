@@ -3780,7 +3780,19 @@ function handleAssigneeSearch(e) {
                 </div>
             `;
             
-            item.addEventListener('click', () => {
+            // Use mousedown to prevent blur from closing dropdown before selection
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // Prevent blur
+                e.stopPropagation();
+                addAssignee(user);
+                searchInput.value = '';
+                dropdown.classList.remove('active');
+            });
+            
+            // Also handle touchend for mobile
+            item.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 addAssignee(user);
                 searchInput.value = '';
                 dropdown.classList.remove('active');
