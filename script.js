@@ -578,13 +578,7 @@ async function joinOrganization(inviteCode) {
         throw new Error('Вы уже в этой организации');
     }
 
-    // Check member limit (use dynamic count)
-    const membersSnapshot = await db.collection('users').where('organizationId', '==', orgDoc.id).get();
-    const currentMembersCount = membersSnapshot.size;
-    
-    if (currentMembersCount >= (orgData.settings?.maxUsers || 100)) {
-        throw new Error('Организация достигла лимита участников');
-    }
+    // Note: Member limit check removed - unlimited members allowed
 
     // Update or create user document (use set with merge to handle missing docs)
     await db.collection('users').doc(state.currentUser.uid).set({
