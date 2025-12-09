@@ -536,7 +536,7 @@ async function createOrganization(name) {
         membersCount: 1,
         plan: 'free',
         settings: {
-            maxUsers: 10,
+            maxUsers: 100,
             allowInvites: true
         }
     };
@@ -582,7 +582,7 @@ async function joinOrganization(inviteCode) {
     const membersSnapshot = await db.collection('users').where('organizationId', '==', orgDoc.id).get();
     const currentMembersCount = membersSnapshot.size;
     
-    if (currentMembersCount >= (orgData.settings?.maxUsers || 50)) {
+    if (currentMembersCount >= (orgData.settings?.maxUsers || 100)) {
         throw new Error('Организация достигла лимита участников');
     }
 
@@ -4405,5 +4405,30 @@ function forceUpdate() {
         });
     } else {
         window.location.reload(true);
+    }
+}
+
+// Update organization member limit
+// Usage: updateOrgLimit(100) - set limit to 100 users
+async function updateOrgLimit(newLimit = 100) {
+    if (!state.organization?.id) {
+        console.error('No organization selected');
+        return;
+    }
+    
+    if (!['owner', 'admin'].includes(state.orgRole)) {
+        console.error('Only owner/admin can change limits');
+        return;
+    }
+    
+    try {
+        await db.collection('organizations').doc(state.organization.id).update({
+            'settings.maxUsers': newLimit
+        });
+        console.log(`✅ Limit updated to ${newLimit} users`);
+        state.organization.settings = state.organization.settings || {};
+        state.organization.settings.maxUsers = newLimit;
+    } catch (error) {
+        console.error('Error updating limit:', error);
     }
 }
