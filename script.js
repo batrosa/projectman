@@ -1941,9 +1941,10 @@ function openStatusMenu(event, task, currentSubStatus) {
     globalStatusMenu.innerHTML = '';
     globalStatusMenu.style.display = 'flex';
     
-    const isAdmin = state.role === 'admin';
+    // Check if user can manage tasks (owner, admin, moderator)
+    const canManage = canManageTasks();
     
-    // Determine assignee status again
+    // Determine assignee status
     let isAssignee = false;
     if (state.currentUser) {
         if (state.currentUser.email && task.assigneeEmail) {
@@ -1980,6 +1981,7 @@ function openStatusMenu(event, task, currentSubStatus) {
 
     // Populate options based on permissions
     if (currentSubStatus !== 'done') {
+        // Assignee options
         if (isAssignee) {
             if (currentSubStatus === 'assigned') {
                 addOption('Принять в работу', '<i class="fa-solid fa-person-digging"></i>', 'in_work');
@@ -1989,14 +1991,16 @@ function openStatusMenu(event, task, currentSubStatus) {
             }
         }
         
-        if (isAdmin) {
+        // Manager options (owner, admin, moderator)
+        if (canManage) {
              if (currentSubStatus === 'completed') {
                  addOption('Подтвердить (В архив)', '<i class="fa-solid fa-check-double"></i>', 'done');
                  addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
              } 
         }
     } else {
-        if (isAdmin) {
+        // Task is done - managers can return to work
+        if (canManage) {
             addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
         }
     }
@@ -2092,7 +2096,7 @@ function createTaskCard(task) {
 
     // Check interactions for badge cursor style
     let canInteract = false;
-    const isAdmin = state.role === 'admin';
+    const canManage = canManageTasks(); // owner, admin, moderator
     
     // Check assignee logic for interactivity check
     let isAssignee = false;
@@ -2110,14 +2114,17 @@ function createTaskCard(task) {
         }
     }
 
-    // Simplify permission check just for cursor style
+    // Permission check for cursor style
     if (currentSubStatus !== 'done') {
+        // Assignee can interact with assigned/in_work tasks
         if (isAssignee) {
             if (currentSubStatus === 'assigned' || currentSubStatus === 'in_work') canInteract = true;
         }
-        if (isAdmin && currentSubStatus === 'completed') canInteract = true;
+        // Managers (owner, admin, moderator) can interact with completed tasks
+        if (canManage && currentSubStatus === 'completed') canInteract = true;
     } else {
-        if (isAdmin) canInteract = true;
+        // Managers can return done tasks to work
+        if (canManage) canInteract = true;
     }
 
     if (canInteract) {
