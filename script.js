@@ -3742,6 +3742,11 @@ function handleAssigneeSearch(e) {
     const dropdown = document.getElementById('assignee-dropdown');
     if (!searchInput || !dropdown) return;
     
+    // Enable scrolling inside dropdown on mobile
+    dropdown.addEventListener('touchmove', (e) => {
+        e.stopPropagation();
+    }, { passive: true });
+
     const query = searchInput.value.toLowerCase().trim();
     
     // Filter users

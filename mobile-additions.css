@@ -1032,32 +1032,45 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
         top: 100%;
         left: 0;
         right: 0;
-        max-height: 200px;
-        z-index: 1001;
+        max-height: 180px !important;
+        height: auto;
+        z-index: 9999 !important;
         margin-top: 4px;
         border-radius: 10px;
-        overflow-y: auto !important;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
+        overflow-y: scroll !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
         overscroll-behavior: contain;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-        background: var(--card-bg);
-        border: 1px solid var(--border);
+        touch-action: pan-y !important;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        background: var(--card-bg) !important;
+        border: 1px solid var(--border) !important;
+    }
+    
+    .assignee-dropdown.active {
+        display: block !important;
     }
     
     .assignee-dropdown-item {
-        padding: 0.75rem 1rem;
-        min-height: 50px;
-        display: flex;
+        padding: 0.875rem 1rem;
+        min-height: 54px;
+        display: flex !important;
         align-items: center;
         gap: 0.75rem;
         cursor: pointer;
         -webkit-tap-highlight-color: rgba(99, 102, 241, 0.2);
         transition: background-color 0.15s;
+        touch-action: manipulation;
+        background: var(--card-bg);
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .assignee-dropdown-item:last-child {
+        border-bottom: none;
     }
     
     .assignee-dropdown-item:active {
-        background: rgba(99, 102, 241, 0.15);
+        background: rgba(99, 102, 241, 0.2) !important;
     }
     
     .assignee-dropdown-avatar {
