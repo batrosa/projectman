@@ -710,6 +710,11 @@
         padding: 0 1.5rem 1.5rem;
     }
     
+    /* Project form spacing on mobile */
+    #project-modal form {
+        padding-top: 1rem;
+    }
+    
     /* Project deadline fields centered on mobile */
     #project-modal .form-group {
         width: 100%;

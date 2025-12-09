@@ -1898,7 +1898,7 @@ function renderBoard() {
             year: 'numeric'
         });
         
-        let deadlineText = `📅 Срок: ${formattedDate}`;
+        let deadlineText = `<i class="fa-regular fa-calendar"></i> Срок: ${formattedDate}`;
         if (daysLeft < 0) {
             deadlineText += ' (просрочено!)';
         } else if (daysLeft === 0) {
@@ -1909,9 +1909,11 @@ function renderBoard() {
             deadlineText += ` (${daysLeft} дн.)`;
         }
         
-        descText = descText ? `${descText} • ${deadlineText}` : deadlineText;
+        descText = descText ? `${escapeHtml(descText)} • ${deadlineText}` : deadlineText;
+        elements.projectDesc.innerHTML = descText;
+    } else {
+        elements.projectDesc.textContent = descText;
     }
-    elements.projectDesc.textContent = descText;
     
     elements.addTaskBtn.disabled = false;
     elements.deleteProjectBtn.style.display = 'flex';
