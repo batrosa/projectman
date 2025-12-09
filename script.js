@@ -1828,9 +1828,37 @@ function renderProjects() {
     filteredProjects.forEach(project => {
         const li = document.createElement('li');
         li.className = `project-item ${project.id === state.activeProjectId ? 'active' : ''}`;
+        
+        // Build deadline info if exists
+        let deadlineHtml = '';
+        if (project.deadline) {
+            const deadlineDate = new Date(project.deadline);
+            const now = new Date();
+            const daysLeft = Math.ceil((deadlineDate - now) / (1000 * 60 * 60 * 24));
+            
+            let deadlineClass = 'project-deadline';
+            if (daysLeft < 0) {
+                deadlineClass += ' overdue';
+            } else if (daysLeft <= 7) {
+                deadlineClass += ' soon';
+            }
+            
+            const formattedDate = deadlineDate.toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'short'
+            });
+            
+            deadlineHtml = `<span class="${deadlineClass}"><i class="fa-regular fa-clock"></i> ${formattedDate}</span>`;
+        }
+        
         li.innerHTML = `
-            <i class="fa-solid fa-folder"></i>
-            <span>${project.name}</span>
+            <div class="project-item-content">
+                <div class="project-item-main">
+                    <i class="fa-solid fa-folder"></i>
+                    <span class="project-item-name">${project.name}</span>
+                </div>
+                ${deadlineHtml}
+            </div>
         `;
         li.onclick = () => {
             playClickSound();
@@ -1857,7 +1885,34 @@ function renderBoard() {
     elements.boardContainer.classList.add('active');
     elements.emptyState.style.display = 'none';
     elements.projectTitle.textContent = activeProject.name;
-    elements.projectDesc.textContent = activeProject.description || '';
+    
+    // Show deadline in description if exists
+    let descText = activeProject.description || '';
+    if (activeProject.deadline) {
+        const deadlineDate = new Date(activeProject.deadline);
+        const now = new Date();
+        const daysLeft = Math.ceil((deadlineDate - now) / (1000 * 60 * 60 * 24));
+        const formattedDate = deadlineDate.toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+        
+        let deadlineText = `📅 Срок: ${formattedDate}`;
+        if (daysLeft < 0) {
+            deadlineText += ' (просрочено!)';
+        } else if (daysLeft === 0) {
+            deadlineText += ' (сегодня!)';
+        } else if (daysLeft === 1) {
+            deadlineText += ' (завтра)';
+        } else if (daysLeft <= 7) {
+            deadlineText += ` (${daysLeft} дн.)`;
+        }
+        
+        descText = descText ? `${descText} • ${deadlineText}` : deadlineText;
+    }
+    elements.projectDesc.textContent = descText;
+    
     elements.addTaskBtn.disabled = false;
     elements.deleteProjectBtn.style.display = 'flex';
     elements.deleteProjectBtn.onclick = () => {
@@ -2917,27 +2972,57 @@ function setupEventListeners() {
         }
     });
 
+    // Project deadline checkbox toggle
+    const projectHasDeadline = document.getElementById('p-has-deadline');
+    const projectDeadlineGroup = document.getElementById('p-deadline-group');
+    const projectDeadlineInput = document.getElementById('p-deadline');
+    
+    if (projectHasDeadline && projectDeadlineGroup) {
+        projectHasDeadline.addEventListener('change', (e) => {
+            projectDeadlineGroup.style.display = e.target.checked ? 'block' : 'none';
+            if (e.target.checked && !projectDeadlineInput.value) {
+                // Set default deadline to 1 month from now
+                const defaultDate = new Date();
+                defaultDate.setMonth(defaultDate.getMonth() + 1);
+                projectDeadlineInput.value = defaultDate.toISOString().split('T')[0];
+            }
+        });
+    }
+
     // Forms
     elements.projectForm.addEventListener('submit', (e) => {
         e.preventDefault();
         playClickSound();
         const name = document.getElementById('p-name').value;
         const desc = document.getElementById('p-desc').value;
-        createProject(name, desc);
+        const hasDeadline = document.getElementById('p-has-deadline').checked;
+        const deadline = hasDeadline ? document.getElementById('p-deadline').value : null;
+        
+        createProject(name, desc, deadline);
+        
+        // Reset form
         elements.projectModal.classList.remove('active');
+        document.getElementById('p-has-deadline').checked = false;
+        document.getElementById('p-deadline-group').style.display = 'none';
     });
 
     // Logic
-    function createProject(name, description) {
+    function createProject(name, description, deadline = null) {
         // Check permission: only owner or admin can create projects
         if (!canManageProjects()) return;
 
-        db.collection('projects').add({
+        const projectData = {
             name,
             description,
             organizationId: state.organization?.id || null,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        }).then((docRef) => {
+        };
+        
+        if (deadline) {
+            projectData.deadline = deadline;
+        }
+
+        db.collection('projects').add(projectData).then((docRef) => {
             selectProject(docRef.id);
             closeSidebarOnMobile();
         });

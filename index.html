@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=7.1" as="style">
-    <link rel="stylesheet" href="style.css?v=7.1">
+    <link rel="preload" href="style.css?v=7.2" as="style">
+    <link rel="stylesheet" href="style.css?v=7.2">
     <link rel="stylesheet" href="mobile-additions.css?v=7.8">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -495,6 +495,16 @@
                 <div class="form-group">
                     <label for="p-desc">Описание деятельности</label>
                     <textarea id="p-desc" rows="3" placeholder="Краткое описание..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="p-has-deadline" style="width: auto;">
+                        <span>Установить срок проекта</span>
+                    </label>
+                </div>
+                <div class="form-group" id="p-deadline-group" style="display: none;">
+                    <label for="p-deadline">Срок выполнения</label>
+                    <input type="date" id="p-deadline">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="secondary-btn close-modal">Отмена</button>
