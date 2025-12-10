@@ -4400,7 +4400,8 @@ async function fetchMyTasks() {
                     isAssignee = assigneeNames.includes(userFullName);
                 }
                 
-                if (isAssignee) {
+                // Only add tasks that are NOT in archive (status !== 'done')
+                if (isAssignee && task.status !== 'done') {
                     myTasks.push({
                         ...task,
                         projectName: project.name,
@@ -4410,13 +4411,8 @@ async function fetchMyTasks() {
             });
         });
         
-        // Sort by deadline (closest first) and status
+        // Sort by deadline (closest first)
         myTasks.sort((a, b) => {
-            // Completed tasks at the end
-            if (a.status === 'done' && b.status !== 'done') return 1;
-            if (b.status === 'done' && a.status !== 'done') return -1;
-            
-            // Then by deadline
             const dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31');
             const dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31');
             return dateA - dateB;
