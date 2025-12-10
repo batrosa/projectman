@@ -1893,7 +1893,7 @@ function renderProjects() {
             <div class="project-item-content">
                 <div class="project-item-main">
             <i class="fa-solid fa-folder"></i>
-                    <span class="project-item-name">${project.name}</span>
+                    <span class="project-item-name">${escapeHtml(project.name)}</span>
                 </div>
                 ${deadlineHtml}
             </div>
@@ -3833,8 +3833,8 @@ function renderUsersList() {
             <div class="user-info">
                 <div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>
                 <div class="user-details">
-                    <div class="user-name">${fullName} ${isCurrentUser ? '<span style="color: var(--text-secondary); font-size: 0.8rem;">(вы)</span>' : ''}</div>
-                    <div class="user-email">${user.email}</div>
+                    <div class="user-name">${escapeHtml(fullName)} ${isCurrentUser ? '<span style="color: var(--text-secondary); font-size: 0.8rem;">(вы)</span>' : ''}</div>
+                    <div class="user-email">${escapeHtml(user.email)}</div>
                 </div>
             </div>
             <div class="user-actions" style="display: flex; align-items: center; gap: 0.75rem;">
@@ -4536,13 +4536,13 @@ function renderMyTasks(tasks) {
         taskEl.innerHTML = `
             <div class="my-task-header">
                 <span class="my-task-project">
-                    <i class="fa-solid fa-folder"></i> ${task.projectName}
+                    <i class="fa-solid fa-folder"></i> ${escapeHtml(task.projectName)}
                 </span>
                 <span class="my-task-status ${statusClass}">
                     <i class="fa-solid ${statusIcon}"></i> ${statusText}
                 </span>
             </div>
-            <div class="my-task-title">${task.title}</div>
+            <div class="my-task-title">${escapeHtml(task.title)}</div>
             <div class="my-task-meta">
                 ${deadlineHtml}
                 <span class="my-task-go">
