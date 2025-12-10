@@ -693,7 +693,6 @@ async function regenerateInviteCode() {
     
     state.organization.inviteCode = newCode;
     return newCode;
-    state.orgRole = 'employee';
 }
 
 // Get organization by ID
@@ -3893,6 +3892,12 @@ function renderUsersList() {
 
 // Remove user from organization (not delete account)
 async function removeUserFromOrganization(userId, userName) {
+    // Prevent removing yourself
+    if (userId === state.currentUser?.uid) {
+        alert('Вы не можете удалить себя. Используйте "Покинуть организацию".');
+        return;
+    }
+    
     if (!confirm(`Удалить ${userName} из организации?`)) return;
 
     try {
