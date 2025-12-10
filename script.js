@@ -4704,14 +4704,15 @@ const keyboardNav = {
     active: false,
     mode: 'projects', // 'projects' or 'tasks'
     focusIndex: -1,
-    hintTimeout: null
+    hintTimeout: null,
+    inactivityTimeout: null
 };
 
 function initKeyboardNavigation() {
     // Create hint element
     const hint = document.createElement('div');
     hint.className = 'keyboard-nav-hint';
-    hint.innerHTML = '<kbd>↑↓</kbd> навигация <kbd>Enter</kbd> выбор <kbd>Esc</kbd> выход';
+    hint.innerHTML = '<kbd>↑↓</kbd> навигация <kbd>←→</kbd> переключение <kbd>Enter</kbd> выбор';
     document.body.appendChild(hint);
     
     // Listen for keyboard events
@@ -4722,26 +4723,48 @@ function initKeyboardNavigation() {
     document.addEventListener('click', disableKeyboardNav);
 }
 
+function resetInactivityTimer() {
+    clearTimeout(keyboardNav.inactivityTimeout);
+    keyboardNav.inactivityTimeout = setTimeout(() => {
+        disableKeyboardNav();
+    }, 3000);
+}
+
 function handleKeyboardNavigation(e) {
     // Ignore if typing in input/textarea
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
         return;
     }
     
-    // Ignore if modal is open (except for Escape)
+    // Handle Escape - close modal if open
+    if (e.key === 'Escape') {
+        const activeModal = document.querySelector('.modal.active');
+        if (activeModal) {
+            e.preventDefault();
+            activeModal.classList.remove('active');
+            playClickSound();
+            resetInactivityTimer();
+        }
+        return;
+    }
+    
+    // Ignore other keys if modal is open
     const activeModal = document.querySelector('.modal.active');
-    if (activeModal && e.key !== 'Escape') {
+    if (activeModal) {
         return;
     }
     
     // Check for navigation keys
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
         e.preventDefault();
         
         // Enable keyboard navigation mode
         if (!keyboardNav.active) {
             enableKeyboardNav();
         }
+        
+        // Reset inactivity timer
+        resetInactivityTimer();
         
         switch (e.key) {
             case 'ArrowUp':
@@ -4771,9 +4794,6 @@ function handleKeyboardNavigation(e) {
             case 'Enter':
                 selectFocusedItem();
                 break;
-            case 'Escape':
-                disableKeyboardNav();
-                break;
         }
     }
 }
@@ -4782,6 +4802,7 @@ function enableKeyboardNav() {
     keyboardNav.active = true;
     document.body.classList.add('keyboard-nav');
     showKeyboardHint();
+    resetInactivityTimer();
 }
 
 function disableKeyboardNav() {
@@ -4792,6 +4813,7 @@ function disableKeyboardNav() {
     document.body.classList.remove('keyboard-nav');
     clearKeyboardFocus();
     hideKeyboardHint();
+    clearTimeout(keyboardNav.inactivityTimeout);
 }
 
 function showKeyboardHint() {
