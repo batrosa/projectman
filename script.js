@@ -4157,20 +4157,15 @@ function sendEmailNotification(email, name, taskTitle, deadline) {
         to_email: email,
         to_name: name,
         task_title: taskTitle,
-        task_deadline: deadline,
+        task_deadline: deadline || 'Не указан',
         project_name: document.getElementById('project-title').textContent,
-        message: `Вам назначена новая задача.
-
-📋 Задача: ${taskTitle}
-📅 Срок выполнения: ${deadline || 'Не указан'}
-
-Пожалуйста, примите задачу в работу и выполните её в срок.`
+        message: 'Вам назначена новая задача. Пожалуйста, примите её в работу и выполните в срок.',
+        message_type: 'new_task'
     };
 
     emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams)
         .then(function (response) {
             console.log('SUCCESS!', response.status, response.text);
-            // alert(`Задача создана и уведомление отправлено на ${email}`);
         }, function (error) {
             console.log('FAILED...', error);
             alert('Задача создана, но не удалось отправить email: ' + JSON.stringify(error));
@@ -4211,15 +4206,11 @@ function sendRevisionEmail(email, name, taskTitle, revisionReason, returnedBy) {
         to_name: name,
         task_title: taskTitle,
         task_deadline: '',
-        project_name: "ProjectMan — Возврат на доработку",
-        message: `Ваша задача была возвращена на доработку.
-
-📋 Причина возврата:
-${revisionReason}
-
-👤 Вернул: ${returnedBy}
-
-Пожалуйста, внесите необходимые изменения и отправьте задачу на проверку повторно.`
+        project_name: document.getElementById('project-title')?.textContent || 'ProjectMan',
+        message: 'Ваша задача была возвращена на доработку. Пожалуйста, внесите изменения и отправьте на проверку повторно.',
+        revision_reason: revisionReason,
+        returned_by: returnedBy,
+        message_type: 'revision'
     };
 
     emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams)
