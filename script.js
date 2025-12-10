@@ -1264,10 +1264,26 @@ function canAccessAdmin() {
 }
 
 function canChangeUserRole(targetRole) {
-    // Owner can change anyone's role
-    if (state.orgRole === 'owner') return true;
-    // Admin can change roles except owner's
-    if (state.orgRole === 'admin' && targetRole !== 'owner') return true;
+    // Owner can change anyone's role (except owner - that's themselves)
+    if (state.orgRole === 'owner') {
+        return targetRole !== 'owner';
+    }
+    // Admin can ONLY change employee ↔ moderator (NOT admin roles)
+    if (state.orgRole === 'admin') {
+        return ['employee', 'moderator'].includes(targetRole);
+    }
+    return false;
+}
+
+function canRemoveUserFromOrg(targetRole) {
+    // Owner can remove anyone except themselves (handled separately)
+    if (state.orgRole === 'owner') {
+        return targetRole !== 'owner';
+    }
+    // Admin can only remove employees and moderators (NOT other admins)
+    if (state.orgRole === 'admin') {
+        return ['employee', 'moderator'].includes(targetRole);
+    }
     return false;
 }
 
@@ -3807,7 +3823,7 @@ function renderUsersList() {
         
         // Permission checks using new system
         const canEditThisRole = canChangeUserRole(userRole) && !isCurrentUser;
-        const canRemoveUser = canAccessAdmin() && !isCurrentUser && !isTargetOwner;
+        const canRemoveUser = canRemoveUserFromOrg(userRole) && !isCurrentUser;
 
         // Role badge
         const roleIcons = {
@@ -3824,12 +3840,14 @@ function renderUsersList() {
         };
 
         // Role selector - only show if user can change this role
-        // Owner role cannot be transferred - max is admin
         let roleSelector = '';
         if (canEditThisRole) {
+            // Owner sees all options (admin, moderator, employee)
+            // Admin only sees moderator and employee options
+            const isOwner = state.orgRole === 'owner';
             roleSelector = `
-                <select class="role-select" data-user-id="${user.id}">
-                    <option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>
+                <select class="role-select" data-user-id="${user.id}" data-current-role="${userRole}">
+                    ${isOwner ? `<option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>` : ''}
                     <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
                     <option value="employee" ${userRole === 'employee' ? 'selected' : ''}>Сотрудник</option>
                 </select>
@@ -3864,10 +3882,26 @@ function renderUsersList() {
             roleSelect.addEventListener('change', async (e) => {
                 const newRole = e.target.value;
                 const userId = e.target.dataset.userId;
-                const oldRole = userRole;
+                const oldRole = e.target.dataset.currentRole || userRole;
+                
+                // Security validation - prevent admins from setting admin role
+                if (state.orgRole === 'admin' && newRole === 'admin') {
+                    alert('Только владелец может назначать админов');
+                    e.target.value = oldRole;
+                    return;
+                }
+                
+                // Prevent admins from changing admin's role
+                if (state.orgRole === 'admin' && oldRole === 'admin') {
+                    alert('Только владелец может изменять роль админа');
+                    e.target.value = oldRole;
+                    return;
+                }
                 
                 try {
                     await db.collection('users').doc(userId).set({ orgRole: newRole }, { merge: true });
+                    // Update the data attribute for future changes
+                    e.target.dataset.currentRole = newRole;
                     playClickSound();
                 } catch (error) {
                     console.error('Error updating role:', error);
@@ -3882,7 +3916,7 @@ function renderUsersList() {
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => {
                 playClickSound();
-                removeUserFromOrganization(user.id, fullName);
+                removeUserFromOrganization(user.id, fullName, userRole);
             });
         }
 
@@ -3891,10 +3925,22 @@ function renderUsersList() {
 }
 
 // Remove user from organization (not delete account)
-async function removeUserFromOrganization(userId, userName) {
+async function removeUserFromOrganization(userId, userName, targetRole = 'employee') {
     // Prevent removing yourself
     if (userId === state.currentUser?.uid) {
         alert('Вы не можете удалить себя. Используйте "Покинуть организацию".');
+        return;
+    }
+    
+    // Security: Admins cannot remove other admins or owner
+    if (state.orgRole === 'admin' && ['admin', 'owner'].includes(targetRole)) {
+        alert('Только владелец может исключить админа из организации.');
+        return;
+    }
+    
+    // Security: No one can remove owner
+    if (targetRole === 'owner') {
+        alert('Невозможно удалить владельца организации.');
         return;
     }
     
