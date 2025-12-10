@@ -4158,7 +4158,13 @@ function sendEmailNotification(email, name, taskTitle, deadline) {
         to_name: name,
         task_title: taskTitle,
         task_deadline: deadline,
-        project_name: document.getElementById('project-title').textContent
+        project_name: document.getElementById('project-title').textContent,
+        message: `Вам назначена новая задача.
+
+📋 Задача: ${taskTitle}
+📅 Срок выполнения: ${deadline || 'Не указан'}
+
+Пожалуйста, примите задачу в работу и выполните её в срок.`
     };
 
     emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams)
