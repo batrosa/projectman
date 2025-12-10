@@ -4218,3 +4218,51 @@ body.light-mode .theme-toggle-switch .toggle-slider {
 body.light-mode .theme-toggle-switch .toggle-slider:before {
     transform: translateX(22px);
 }
+
+/* ========== KEYBOARD NAVIGATION ========== */
+body.keyboard-nav .project-item.keyboard-focus,
+body.keyboard-nav .task-card.keyboard-focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+}
+
+body.keyboard-nav .project-item.keyboard-focus {
+    background: var(--card-hover);
+}
+
+body.keyboard-nav .task-card.keyboard-focus {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2), var(--shadow);
+}
+
+/* Keyboard nav indicator */
+.keyboard-nav-hint {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.keyboard-nav-hint.visible {
+    opacity: 1;
+}
+
+.keyboard-nav-hint kbd {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+}

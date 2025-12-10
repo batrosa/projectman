@@ -4699,8 +4699,204 @@ function getFilteredProjects() {
     return state.projects.filter(p => allowedProjects.includes(p.id));
 }
 
+// ========== KEYBOARD NAVIGATION ==========
+const keyboardNav = {
+    active: false,
+    mode: 'projects', // 'projects' or 'tasks'
+    focusIndex: -1,
+    hintTimeout: null
+};
+
+function initKeyboardNavigation() {
+    // Create hint element
+    const hint = document.createElement('div');
+    hint.className = 'keyboard-nav-hint';
+    hint.innerHTML = '<kbd>↑↓</kbd> навигация <kbd>Enter</kbd> выбор <kbd>Esc</kbd> выход';
+    document.body.appendChild(hint);
+    
+    // Listen for keyboard events
+    document.addEventListener('keydown', handleKeyboardNavigation);
+    
+    // Listen for mouse movement to disable keyboard mode
+    document.addEventListener('mousemove', disableKeyboardNav);
+    document.addEventListener('click', disableKeyboardNav);
+}
+
+function handleKeyboardNavigation(e) {
+    // Ignore if typing in input/textarea
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+        return;
+    }
+    
+    // Ignore if modal is open (except for Escape)
+    const activeModal = document.querySelector('.modal.active');
+    if (activeModal && e.key !== 'Escape') {
+        return;
+    }
+    
+    // Check for navigation keys
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) {
+        e.preventDefault();
+        
+        // Enable keyboard navigation mode
+        if (!keyboardNav.active) {
+            enableKeyboardNav();
+        }
+        
+        switch (e.key) {
+            case 'ArrowUp':
+                navigateUp();
+                break;
+            case 'ArrowDown':
+                navigateDown();
+                break;
+            case 'ArrowLeft':
+                // Switch to projects mode
+                if (keyboardNav.mode === 'tasks') {
+                    keyboardNav.mode = 'projects';
+                    keyboardNav.focusIndex = -1;
+                    clearKeyboardFocus();
+                    navigateDown(); // Focus first project
+                }
+                break;
+            case 'ArrowRight':
+                // Switch to tasks mode
+                if (keyboardNav.mode === 'projects' && state.activeProjectId) {
+                    keyboardNav.mode = 'tasks';
+                    keyboardNav.focusIndex = -1;
+                    clearKeyboardFocus();
+                    navigateDown(); // Focus first task
+                }
+                break;
+            case 'Enter':
+                selectFocusedItem();
+                break;
+            case 'Escape':
+                disableKeyboardNav();
+                break;
+        }
+    }
+}
+
+function enableKeyboardNav() {
+    keyboardNav.active = true;
+    document.body.classList.add('keyboard-nav');
+    showKeyboardHint();
+}
+
+function disableKeyboardNav() {
+    if (!keyboardNav.active) return;
+    
+    keyboardNav.active = false;
+    keyboardNav.focusIndex = -1;
+    document.body.classList.remove('keyboard-nav');
+    clearKeyboardFocus();
+    hideKeyboardHint();
+}
+
+function showKeyboardHint() {
+    const hint = document.querySelector('.keyboard-nav-hint');
+    if (hint) {
+        hint.classList.add('visible');
+        
+        // Auto-hide after 3 seconds
+        clearTimeout(keyboardNav.hintTimeout);
+        keyboardNav.hintTimeout = setTimeout(() => {
+            hint.classList.remove('visible');
+        }, 3000);
+    }
+}
+
+function hideKeyboardHint() {
+    const hint = document.querySelector('.keyboard-nav-hint');
+    if (hint) {
+        hint.classList.remove('visible');
+    }
+    clearTimeout(keyboardNav.hintTimeout);
+}
+
+function clearKeyboardFocus() {
+    document.querySelectorAll('.keyboard-focus').forEach(el => {
+        el.classList.remove('keyboard-focus');
+    });
+}
+
+function navigateUp() {
+    const items = getNavigableItems();
+    if (items.length === 0) return;
+    
+    clearKeyboardFocus();
+    
+    if (keyboardNav.focusIndex <= 0) {
+        keyboardNav.focusIndex = items.length - 1;
+    } else {
+        keyboardNav.focusIndex--;
+    }
+    
+    const item = items[keyboardNav.focusIndex];
+    item.classList.add('keyboard-focus');
+    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function navigateDown() {
+    const items = getNavigableItems();
+    if (items.length === 0) return;
+    
+    clearKeyboardFocus();
+    
+    if (keyboardNav.focusIndex >= items.length - 1) {
+        keyboardNav.focusIndex = 0;
+    } else {
+        keyboardNav.focusIndex++;
+    }
+    
+    const item = items[keyboardNav.focusIndex];
+    item.classList.add('keyboard-focus');
+    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function getNavigableItems() {
+    if (keyboardNav.mode === 'projects') {
+        return Array.from(document.querySelectorAll('.project-item'));
+    } else {
+        // Get all visible task cards
+        return Array.from(document.querySelectorAll('.task-card'));
+    }
+}
+
+function selectFocusedItem() {
+    const focusedItem = document.querySelector('.keyboard-focus');
+    if (!focusedItem) return;
+    
+    playClickSound();
+    
+    if (keyboardNav.mode === 'projects') {
+        // Click the project to select it
+        focusedItem.click();
+        
+        // Switch to tasks mode after selecting project
+        setTimeout(() => {
+            keyboardNav.mode = 'tasks';
+            keyboardNav.focusIndex = -1;
+            clearKeyboardFocus();
+        }, 100);
+    } else {
+        // Open task info modal
+        const taskId = focusedItem.dataset.id || focusedItem.dataset.taskId;
+        if (taskId) {
+            const task = state.tasks.find(t => t.id === taskId);
+            if (task) {
+                openTaskDetailsModal(task);
+            }
+        }
+    }
+}
+
 // Start
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+    initKeyboardNavigation();
+});
 
 // ========== MIGRATION FUNCTION ==========
 // Run this ONCE from browser console: migrateToOrganization('TEKO Group')
