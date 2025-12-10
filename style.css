@@ -3102,6 +3102,57 @@ body.light-mode .completion-proof-box {
     margin-bottom: 0.75rem;
     display: block;
 }
+
+/* Revision Reason Section */
+.revision-reason-box {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-top: 1rem;
+}
+
+.revision-reason-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    color: #f59e0b;
+    font-weight: 600;
+}
+
+.revision-reason-text {
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+}
+
+.revision-reason-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.revision-reason-meta span {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+body.light-mode .revision-reason-box {
+    background: rgba(245, 158, 11, 0.1);
+}
+
+body.light-mode .revision-reason-text {
+    background: rgba(0, 0, 0, 0.03);
+}
+
 /* ========== SECRET PIN SCREEN ========== */
 .pin-screen {
     position: fixed;

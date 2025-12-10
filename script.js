@@ -2040,7 +2040,7 @@ function openStatusMenu(event, task, currentSubStatus) {
         }
     }
     
-    const addOption = (label, icon, newStatus, requiresProof = false) => {
+    const addOption = (label, icon, newStatus, requiresProof = false, requiresRevisionReason = false) => {
         const opt = document.createElement('div');
         opt.className = 'status-option';
         opt.innerHTML = `${icon} ${label}`;
@@ -2052,7 +2052,12 @@ function openStatusMenu(event, task, currentSubStatus) {
             // If completing task, require proof first
             if (requiresProof) {
                 openCompletionProofModal(task.id);
-            } else {
+            } 
+            // If returning task, require revision reason
+            else if (requiresRevisionReason) {
+                openRevisionReasonModal(task.id);
+            }
+            else {
                 updateTaskSubStatus(task.id, newStatus);
             }
         };
@@ -2075,13 +2080,14 @@ function openStatusMenu(event, task, currentSubStatus) {
         if (canManage) {
              if (currentSubStatus === 'completed') {
                  addOption('Подтвердить (В архив)', '<i class="fa-solid fa-check-double"></i>', 'done');
-                 addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
+                 // Require revision reason when returning task
+                 addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work', false, true);
              } 
         }
     } else {
-        // Task is done - managers can return to work
+        // Task is done - managers can return to work (requires revision reason)
         if (canManage) {
-            addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work');
+            addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work', false, true);
         }
     }
     
@@ -2454,7 +2460,7 @@ function createTaskCard(task) {
 }
 
 // Update SubStatus Function
-function updateTaskSubStatus(taskId, newSubStatus, completionData = null) {
+function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisionData = null) {
     const updates = {
         subStatus: newSubStatus
     };
@@ -2477,6 +2483,13 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null) {
         updates.completionProof = null;
         updates.completedBy = null;
         updates.archivedAt = null;
+        
+        // Add revision data if this is a return for revision
+        if (revisionData) {
+            updates.revisionReason = revisionData.reason;
+            updates.revisionReturnedBy = revisionData.returnedBy;
+            updates.revisionReturnedAt = revisionData.returnedAt;
+        }
     }
     
     // Sync legacy fields for backward compatibility if needed, 
@@ -2492,6 +2505,11 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null) {
             updates.completedBy = state.currentUser ? 
                 `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() : 'Unknown';
         }
+        
+        // Clear revision data when task is completed again
+        updates.revisionReason = null;
+        updates.revisionReturnedBy = null;
+        updates.revisionReturnedAt = null;
     } else {
         updates.assigneeCompleted = false;
     }
@@ -2626,6 +2644,38 @@ function submitCompletionProof(e) {
     // Close modal
     document.getElementById('completion-proof-modal').classList.remove('active');
     completionProofAttachment = null;
+}
+
+// ========== REVISION REASON MODAL ==========
+function openRevisionReasonModal(taskId) {
+    const modal = document.getElementById('revision-reason-modal');
+    document.getElementById('revision-task-id').value = taskId;
+    document.getElementById('revision-reason').value = '';
+    modal.classList.add('active');
+}
+
+function submitRevisionReason(e) {
+    e.preventDefault();
+    
+    const taskId = document.getElementById('revision-task-id').value;
+    const reason = document.getElementById('revision-reason').value.trim();
+    
+    if (!reason) {
+        alert('Пожалуйста, укажите причину возврата');
+        return;
+    }
+    
+    const revisionData = {
+        reason: reason,
+        returnedBy: state.currentUser ? 
+            `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : 'Администратор',
+        returnedAt: new Date().toISOString()
+    };
+    
+    updateTaskSubStatus(taskId, 'in_work', null, revisionData);
+    
+    // Close modal
+    document.getElementById('revision-reason-modal').classList.remove('active');
 }
 
 // ========== TASK DETAILS MODAL ==========
@@ -2809,6 +2859,27 @@ function openTaskDetailsModal(task) {
         `;
     }
     
+    // Revision reason section (if task was returned for revision)
+    let revisionHTML = '';
+    if (task.revisionReason) {
+        const revisionDate = task.revisionReturnedAt ? formatDateTime(task.revisionReturnedAt) : null;
+        revisionHTML = `
+            <div class="task-details-section">
+                <h3><i class="fa-solid fa-rotate-left" style="color: #f59e0b;"></i> Возвращено на доработку</h3>
+                <div class="revision-reason-box">
+                    <div class="revision-reason-header">
+                        <i class="fa-solid fa-comment-dots"></i> Комментарий руководителя
+                    </div>
+                    <div class="revision-reason-text">${escapeHtml(task.revisionReason)}</div>
+                    <div class="revision-reason-meta">
+                        <span><i class="fa-solid fa-user"></i> ${escapeHtml(task.revisionReturnedBy || 'Администратор')}</span>
+                        ${revisionDate ? `<span><i class="fa-regular fa-clock"></i> ${revisionDate}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
     // Assignees
     const assignees = task.assignee ? task.assignee.split(',').map(n => n.trim()).filter(n => n) : [];
     const assigneesHTML = assignees.length > 0 
@@ -2837,6 +2908,8 @@ function openTaskDetailsModal(task) {
                 ${timelineHTML}
             </div>
         </div>
+        
+        ${revisionHTML}
         
         ${proofHTML}
     `;
@@ -2999,6 +3072,12 @@ function setupEventListeners() {
     
     if (completionProofForm) {
         completionProofForm.addEventListener('submit', submitCompletionProof);
+    }
+    
+    // Revision reason form
+    const revisionReasonForm = document.getElementById('revision-reason-form');
+    if (revisionReasonForm) {
+        revisionReasonForm.addEventListener('submit', submitRevisionReason);
     }
 
     // Help button

@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=8.2" as="style">
-    <link rel="stylesheet" href="style.css?v=8.2">
+    <link rel="preload" href="style.css?v=8.3" as="style">
+    <link rel="stylesheet" href="style.css?v=8.3">
     <link rel="stylesheet" href="mobile-additions.css?v=8.3">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -1223,6 +1223,34 @@
                     <button type="button" class="secondary-btn close-modal" id="cancel-completion-btn">Отмена</button>
                     <button type="submit" class="primary-btn" id="submit-completion-btn">
                         <i class="fa-solid fa-check"></i> Завершить задачу
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Revision Reason Modal (when admin/moderator returns task) -->
+    <div id="revision-reason-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-rotate-left"></i> Возврат на доработку</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="revision-reason-form">
+                <div style="padding: 1.5rem;">
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                        Укажите причину возврата задачи. Исполнитель увидит этот комментарий.
+                    </p>
+                    <div class="form-group">
+                        <label for="revision-reason">Причина возврата <span style="color: var(--danger);">*</span></label>
+                        <textarea id="revision-reason" rows="4" required placeholder="Опишите, что нужно доработать..."></textarea>
+                    </div>
+                    <input type="hidden" id="revision-task-id">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="secondary-btn close-modal">Отмена</button>
+                    <button type="submit" class="primary-btn">
+                        <i class="fa-solid fa-rotate-left"></i> Вернуть на доработку
                     </button>
                 </div>
             </form>
