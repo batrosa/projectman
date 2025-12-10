@@ -2466,10 +2466,15 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         subStatus: newSubStatus
     };
 
+    // Get current user name
+    const currentUserName = state.currentUser ? 
+        `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : '';
+
     if (newSubStatus === 'done') {
         updates.status = 'done';
         updates.subStatus = 'completed'; // Keep visual state but move to done list
         updates.archivedAt = new Date().toISOString();
+        updates.archivedBy = currentUserName;
     } else {
         updates.status = 'in-progress';
     }
@@ -2477,6 +2482,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
     // Save timestamps for status changes
     if (newSubStatus === 'in_work') {
         updates.takenToWorkAt = new Date().toISOString();
+        updates.takenToWorkBy = currentUserName;
         
         // Clear completion data when returning to work
         updates.completedAt = null;
@@ -2484,6 +2490,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         updates.completionProof = null;
         updates.completedBy = null;
         updates.archivedAt = null;
+        updates.archivedBy = null;
         
         // Add revision data if this is a return for revision
         if (revisionData) {
@@ -2777,7 +2784,7 @@ function openTaskDetailsModal(task) {
         <div class="timeline-item">
             <div class="timeline-icon created"><i class="fa-solid fa-plus"></i></div>
             <div class="timeline-content">
-                <div class="timeline-label">Задача создана</div>
+                <div class="timeline-label">Задача создана${task.createdBy ? ' <span class="timeline-user">| ' + escapeHtml(task.createdBy) + '</span>' : ''}</div>
                 <div class="timeline-date">${createdAt || 'Дата не сохранена'}</div>
             </div>
         </div>
@@ -2788,7 +2795,7 @@ function openTaskDetailsModal(task) {
             <div class="timeline-item">
                 <div class="timeline-icon in-work"><i class="fa-solid fa-person-digging"></i></div>
                 <div class="timeline-content">
-                    <div class="timeline-label">Взята в работу</div>
+                    <div class="timeline-label">Взята в работу${task.takenToWorkBy ? ' <span class="timeline-user">| ' + escapeHtml(task.takenToWorkBy) + '</span>' : ''}</div>
                     <div class="timeline-date">${takenToWorkAt}</div>
                 </div>
             </div>
@@ -2810,7 +2817,7 @@ function openTaskDetailsModal(task) {
             <div class="timeline-item">
                 <div class="timeline-icon completed"><i class="fa-solid fa-check"></i></div>
                 <div class="timeline-content">
-                    <div class="timeline-label">Завершена исполнителем${task.completedBy ? ' (' + task.completedBy + ')' : ''}</div>
+                    <div class="timeline-label">Завершена${task.completedBy ? ' <span class="timeline-user">| ' + escapeHtml(task.completedBy) + '</span>' : ''}</div>
                     <div class="timeline-date">${completedAt}</div>
                 </div>
             </div>
@@ -2832,7 +2839,7 @@ function openTaskDetailsModal(task) {
             <div class="timeline-item">
                 <div class="timeline-icon archived"><i class="fa-solid fa-check-double"></i></div>
                 <div class="timeline-content">
-                    <div class="timeline-label">Подтверждена администратором (архив)</div>
+                    <div class="timeline-label">В архиве${task.archivedBy ? ' <span class="timeline-user">| ' + escapeHtml(task.archivedBy) + '</span>' : ''}</div>
                     <div class="timeline-date">${archivedAt}</div>
                 </div>
             </div>
@@ -3216,6 +3223,10 @@ function setupEventListeners() {
             // Prepare attachments (filter out any still uploading)
             const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
             
+            // Get creator name
+            const createdBy = state.currentUser ? 
+                `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : '';
+
             await db.collection('tasks').add({
                 projectId: state.activeProjectId,
                 organizationId: state.organization?.id || null,
@@ -3228,7 +3239,8 @@ function setupEventListeners() {
                 subStatus: 'assigned', // Default status for new system
                 assigneeCompleted: false,
                 attachments: attachments, // Add attachments array
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdBy: createdBy
             });
 
             if (assigneeEmail) {
