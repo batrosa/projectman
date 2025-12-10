@@ -3676,25 +3676,13 @@ async function logout() {
         unsubscribeFromMyTasks();
         
         await auth.signOut();
-        state.activeProjectId = null;
-        document.body.classList.remove('read-only');
         
-        // Close sidebar on mobile
-        closeSidebarOnMobile();
-        
-        // Hide my tasks badge
-        if (elements.myTasksCount) {
-            elements.myTasksCount.style.display = 'none';
-        }
-        
-        // Hide app container and org overlay
-        document.getElementById('app-container').style.display = 'none';
-        document.getElementById('org-overlay').style.display = 'none';
-        
-        // Show auth screen
-        showAuthScreen();
+        // Reload page to ensure clean state
+        window.location.reload();
     } catch (error) {
         console.error('Error signing out:', error);
+        // Force reload even on error
+        window.location.reload();
     }
 }
 
