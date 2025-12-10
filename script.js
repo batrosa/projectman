@@ -4704,6 +4704,7 @@ function getFilteredProjects() {
 const keyboardNav = {
     active: false,
     mode: 'projects', // 'projects' or 'tasks'
+    taskColumn: 'in-progress', // 'in-progress' or 'done'
     focusIndex: -1,
     hintTimeout: null,
     inactivityTimeout: null
@@ -4713,7 +4714,7 @@ function initKeyboardNavigation() {
     // Create hint element
     const hint = document.createElement('div');
     hint.className = 'keyboard-nav-hint';
-    hint.innerHTML = '<kbd>↑↓</kbd> проекты/задачи <kbd>→</kbd> к задачам <kbd>Enter</kbd> инфо';
+    hint.innerHTML = '<kbd>↑↓</kbd> навигация <kbd>←→</kbd> колонки <kbd>Enter</kbd> инфо';
     document.body.appendChild(hint);
     
     // Listen for keyboard events
@@ -4796,21 +4797,36 @@ function handleKeyboardNavigation(e) {
                 navigateDown();
                 break;
             case 'ArrowLeft':
-                // Switch to projects mode
                 if (keyboardNav.mode === 'tasks') {
-                    keyboardNav.mode = 'projects';
-                    keyboardNav.focusIndex = -1;
-                    clearKeyboardFocus();
-                    navigateDown(); // Focus first project
+                    // If in "done" column, switch to "in-progress"
+                    if (keyboardNav.taskColumn === 'done') {
+                        keyboardNav.taskColumn = 'in-progress';
+                        keyboardNav.focusIndex = -1;
+                        clearKeyboardFocus();
+                        navigateDown();
+                    } else {
+                        // Switch to projects mode
+                        keyboardNav.mode = 'projects';
+                        keyboardNav.focusIndex = -1;
+                        clearKeyboardFocus();
+                        navigateDown();
+                    }
                 }
                 break;
             case 'ArrowRight':
-                // Switch to tasks mode
                 if (keyboardNav.mode === 'projects' && state.activeProjectId) {
+                    // Switch to tasks mode (in-progress column)
                     keyboardNav.mode = 'tasks';
+                    keyboardNav.taskColumn = 'in-progress';
                     keyboardNav.focusIndex = -1;
                     clearKeyboardFocus();
-                    navigateDown(); // Focus first task
+                    navigateDown();
+                } else if (keyboardNav.mode === 'tasks' && keyboardNav.taskColumn === 'in-progress') {
+                    // Switch to "done" column
+                    keyboardNav.taskColumn = 'done';
+                    keyboardNav.focusIndex = -1;
+                    clearKeyboardFocus();
+                    navigateDown();
                 }
                 break;
             case 'Enter':
@@ -4916,8 +4932,9 @@ function getNavigableItems() {
     if (keyboardNav.mode === 'projects') {
         return Array.from(document.querySelectorAll('.project-item'));
     } else {
-        // Get all visible task cards
-        return Array.from(document.querySelectorAll('.task-card'));
+        // Get task cards from the current column
+        const columnId = keyboardNav.taskColumn === 'done' ? 'list-done' : 'list-in-progress';
+        return Array.from(document.querySelectorAll(`#${columnId} .task-card`));
     }
 }
 
