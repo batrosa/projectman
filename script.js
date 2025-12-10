@@ -3227,7 +3227,7 @@ function setupEventListeners() {
         playClickSound();
         e.preventDefault();
         elements.loginForm.style.display = 'none';
-        elements.registerForm.style.display = 'block';
+        elements.registerForm.style.display = 'flex';
         document.getElementById('auth-title').textContent = 'Регистрация';
         document.getElementById('auth-subtitle').textContent = 'Создайте новый аккаунт';
     });
@@ -3236,9 +3236,9 @@ function setupEventListeners() {
         playClickSound();
         e.preventDefault();
         elements.registerForm.style.display = 'none';
-        elements.loginForm.style.display = 'block';
+        elements.loginForm.style.display = 'flex';
         document.getElementById('auth-title').textContent = 'Вход в систему';
-        document.getElementById('auth-subtitle').textContent = 'Войдите или зарегистрируйтесь';
+        document.getElementById('auth-subtitle').textContent = 'Войдите в свой аккаунт для продолжения';
     });
 
     // Login form

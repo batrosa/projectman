@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=7.2" as="style">
-    <link rel="stylesheet" href="style.css?v=8.0">
+    <link rel="preload" href="style.css?v=8.1" as="style">
+    <link rel="stylesheet" href="style.css?v=8.1">
     <link rel="stylesheet" href="mobile-additions.css?v=8.3">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -481,7 +481,7 @@
             <p id="auth-subtitle" class="auth-subtitle">Войдите в свой аккаунт для продолжения</p>
 
             <!-- Login Form -->
-            <form id="login-form" class="auth-form">
+            <form id="login-form" class="auth-form" style="display: flex;">
                 <div class="auth-form-group">
                     <label for="login-email">
                         <i class="fa-solid fa-envelope"></i>
@@ -507,7 +507,7 @@
             </form>
 
             <!-- Registration Form -->
-            <form id="register-form" class="auth-form" style="display: none;">
+            <form id="register-form" class="auth-form" style="display: none; flex-direction: column;">
                 <div class="auth-form-row">
                     <div class="auth-form-group">
                         <label for="register-first-name">
