@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=8.1" as="style">
-    <link rel="stylesheet" href="style.css?v=8.1">
+    <link rel="preload" href="style.css?v=8.2" as="style">
+    <link rel="stylesheet" href="style.css?v=8.2">
     <link rel="stylesheet" href="mobile-additions.css?v=8.3">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -1231,12 +1231,12 @@
 
     <!-- Task Details Modal (history and completion info) -->
     <div id="task-details-modal" class="modal">
-        <div class="modal-content" style="max-width: 600px;">
-            <div class="modal-header">
+        <div class="modal-content task-details-modal-content">
+            <div class="modal-header task-details-header">
                 <h2><i class="fa-solid fa-circle-info"></i> Информация о задаче</h2>
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div id="task-details-content" style="padding: 1.5rem;">
+            <div id="task-details-content" class="task-details-body">
                 <!-- Task details will be loaded here -->
             </div>
         </div>

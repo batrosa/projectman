@@ -2120,6 +2120,46 @@ body.light-mode .assignee-dropdown-item:hover {
     flex: 1;
 }
 
+/* Task Details Modal - scrollable content */
+.task-details-modal-content {
+    max-width: 600px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+.task-details-header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    margin-bottom: 0;
+}
+
+.task-details-body {
+    padding: 1.5rem 2rem;
+    overflow-y: auto;
+    flex: 1;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile adjustments for task details */
+@media (max-width: 480px) {
+    .task-details-modal-content {
+        max-height: 90vh;
+        border-radius: 12px 12px 0 0;
+    }
+    
+    .task-details-header {
+        padding: 1.25rem 1.5rem;
+    }
+    
+    .task-details-body {
+        padding: 1.25rem 1.5rem;
+    }
+}
+
 /* Light mode adjustments */
 body.light-mode .user-item {
     background: #f8fafc;
