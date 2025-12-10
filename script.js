@@ -2665,12 +2665,29 @@ function submitRevisionReason(e) {
         return;
     }
     
+    const returnedBy = state.currentUser ? 
+        `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : 'Администратор';
+    
     const revisionData = {
         reason: reason,
-        returnedBy: state.currentUser ? 
-            `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : 'Администратор',
+        returnedBy: returnedBy,
         returnedAt: new Date().toISOString()
     };
+    
+    // Find task to get assignee info for email
+    const task = state.tasks.find(t => t.id === taskId);
+    if (task && task.assigneeEmail) {
+        // Send email to all assignees
+        const emails = task.assigneeEmail.split(',');
+        const names = task.assignee ? task.assignee.split(', ') : [];
+        
+        emails.forEach((email, index) => {
+            if (email && email.trim()) {
+                const name = names[index] || 'Коллега';
+                sendRevisionEmail(email.trim(), name, task.title, reason, returnedBy);
+            }
+        });
+    }
     
     updateTaskSubStatus(taskId, 'in_work', null, revisionData);
     
@@ -4171,6 +4188,39 @@ function sendReminderEmail(email, name, taskTitle, deadline) {
             console.log('Reminder sent!', response.status, response.text);
         }, function (error) {
             console.log('Reminder failed...', error);
+        });
+}
+
+// Send email when task is returned for revision
+function sendRevisionEmail(email, name, taskTitle, revisionReason, returnedBy) {
+    if (!emailConfig.serviceID || emailConfig.serviceID === "YOUR_SERVICE_ID") {
+        console.error("EmailJS not configured correctly");
+        return;
+    }
+
+    console.log(`[EmailJS] Sending revision notification to: ${email}`);
+
+    const templateParams = {
+        to_email: email,
+        to_name: name,
+        task_title: taskTitle,
+        task_deadline: '',
+        project_name: "ProjectMan — Возврат на доработку",
+        message: `Ваша задача была возвращена на доработку.
+
+📋 Причина возврата:
+${revisionReason}
+
+👤 Вернул: ${returnedBy}
+
+Пожалуйста, внесите необходимые изменения и отправьте задачу на проверку повторно.`
+    };
+
+    emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams)
+        .then(function (response) {
+            console.log('Revision notification sent!', response.status, response.text);
+        }, function (error) {
+            console.log('Revision notification failed...', error);
         });
 }
 
