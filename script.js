@@ -1865,6 +1865,7 @@ function renderProjects() {
     filteredProjects.forEach(project => {
         const li = document.createElement('li');
         li.className = `project-item ${project.id === state.activeProjectId ? 'active' : ''}`;
+        li.dataset.id = project.id;
         
         // Build deadline info if exists
         let deadlineHtml = '';
