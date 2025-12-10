@@ -471,95 +471,113 @@
     <!-- Auth Overlay - Hidden by default, shown only if not logged in -->
     <div id="auth-overlay" class="login-overlay" style="display: none;">
         <!-- Registration/Login Screen -->
-        <div id="auth-screen" class="login-card">
-            <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
-                <i class="fa-solid fa-layer-group"></i> ProjectMan
+        <div id="auth-screen" class="auth-card">
+            <div class="auth-logo">
+                <div class="auth-logo-bg"></div>
+                <i class="fa-solid fa-layer-group"></i>
             </div>
-            <h2 id="auth-title">Вход в систему</h2>
-            <p id="auth-subtitle" style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
-                Войдите или зарегистрируйтесь
-            </p>
+            <h1 class="auth-brand">ProjectMan</h1>
+            <h2 id="auth-title" class="auth-title">Вход в систему</h2>
+            <p id="auth-subtitle" class="auth-subtitle">Войдите в свой аккаунт для продолжения</p>
 
             <!-- Login Form -->
-            <form id="login-form" style="display: block; width: 100%;">
-                <div class="form-group">
-                    <label for="login-email">Email</label>
-                    <input type="email" id="login-email" required placeholder="your@email.com">
+            <form id="login-form" class="auth-form">
+                <div class="auth-form-group">
+                    <label for="login-email">
+                        <i class="fa-solid fa-envelope"></i>
+                        Email
+                    </label>
+                    <input type="email" id="login-email" required placeholder="your@email.com" autocomplete="email">
                 </div>
-                <div class="form-group">
-                    <label for="login-password">Пароль</label>
-                    <input type="password" id="login-password" required placeholder="Введите пароль">
+                <div class="auth-form-group">
+                    <label for="login-password">
+                        <i class="fa-solid fa-lock"></i>
+                        Пароль
+                    </label>
+                    <input type="password" id="login-password" required placeholder="Введите пароль" autocomplete="current-password">
                 </div>
-                <p id="login-error"
-                    style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none; text-align: left;">
-                </p>
-                <button type="submit" class="primary-btn"
-                    style="width: 100%; justify-content: center; margin-bottom: 1rem;">Войти</button>
-                <p style="text-align: center; font-size: 0.9rem; color: var(--text-secondary);">
-                    Нет аккаунта? <a href="#" id="show-register"
-                        style="color: var(--primary); text-decoration: none; font-weight: 500;">Зарегистрироваться</a>
+                <p id="login-error" class="auth-error"></p>
+                <button type="submit" class="auth-submit-btn">
+                    <i class="fa-solid fa-right-to-bracket"></i>
+                    Войти
+                </button>
+                <p class="auth-switch">
+                    Нет аккаунта? <a href="#" id="show-register">Зарегистрироваться</a>
                 </p>
             </form>
 
             <!-- Registration Form -->
-            <form id="register-form" style="display: none; width: 100%;">
-                <div class="form-row" style="gap: 1rem;">
-                    <div class="form-group" style="flex: 1;">
-                        <label for="register-first-name">Имя</label>
-                        <input type="text" id="register-first-name" required placeholder="Иван">
+            <form id="register-form" class="auth-form" style="display: none;">
+                <div class="auth-form-row">
+                    <div class="auth-form-group">
+                        <label for="register-first-name">
+                            <i class="fa-solid fa-user"></i>
+                            Имя
+                        </label>
+                        <input type="text" id="register-first-name" required placeholder="Иван" autocomplete="given-name">
                     </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label for="register-last-name">Фамилия</label>
-                        <input type="text" id="register-last-name" required placeholder="Иванов">
+                    <div class="auth-form-group">
+                        <label for="register-last-name">
+                            <i class="fa-solid fa-user"></i>
+                            Фамилия
+                        </label>
+                        <input type="text" id="register-last-name" required placeholder="Иванов" autocomplete="family-name">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="register-email">Email</label>
-                    <input type="email" id="register-email" required placeholder="your@email.com">
+                <div class="auth-form-group">
+                    <label for="register-email">
+                        <i class="fa-solid fa-envelope"></i>
+                        Email
+                    </label>
+                    <input type="email" id="register-email" required placeholder="your@email.com" autocomplete="email">
                 </div>
-                <div class="form-group">
-                    <label for="register-password">Пароль</label>
-                    <input type="password" id="register-password" required placeholder="Минимум 6 символов">
+                <div class="auth-form-group">
+                    <label for="register-password">
+                        <i class="fa-solid fa-lock"></i>
+                        Пароль
+                    </label>
+                    <input type="password" id="register-password" required placeholder="Минимум 6 символов" autocomplete="new-password">
                 </div>
-                <div class="form-group">
-                    <label for="register-password-confirm">Подтвердите пароль</label>
-                    <input type="password" id="register-password-confirm" required placeholder="Повторите пароль">
+                <div class="auth-form-group">
+                    <label for="register-password-confirm">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        Подтвердите пароль
+                    </label>
+                    <input type="password" id="register-password-confirm" required placeholder="Повторите пароль" autocomplete="new-password">
                 </div>
-                <p id="register-error"
-                    style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none; text-align: left;">
-                </p>
-                <button type="submit" class="primary-btn"
-                    style="width: 100%; justify-content: center; margin-bottom: 1rem;">Зарегистрироваться</button>
-                <p style="text-align: center; font-size: 0.9rem; color: var(--text-secondary);">
-                    Уже есть аккаунт? <a href="#" id="show-login"
-                        style="color: var(--primary); text-decoration: none; font-weight: 500;">Войти</a>
+                <p id="register-error" class="auth-error"></p>
+                <button type="submit" class="auth-submit-btn">
+                    <i class="fa-solid fa-user-plus"></i>
+                    Создать аккаунт
+                </button>
+                <p class="auth-switch">
+                    Уже есть аккаунт? <a href="#" id="show-login">Войти</a>
                 </p>
             </form>
         </div>
 
-        <!-- Role Selection Screen (Removed) -->
-        
         <!-- Admin Password Verification Modal -->
-        <div id="admin-verify-screen" class="login-card" style="display: none;">
-            <div class="brand" style="justify-content: center; margin-bottom: 2rem;">
+        <div id="admin-verify-screen" class="auth-card" style="display: none;">
+            <div class="auth-logo" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
                 <i class="fa-solid fa-shield-halved"></i>
             </div>
-            <h2>Подтверждение администратора</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">Введите пароль
-                администратора</p>
+            <h2 class="auth-title">Подтверждение</h2>
+            <p class="auth-subtitle">Введите пароль администратора</p>
 
-            <div class="form-group">
-                <label for="admin-verify-password">Пароль администратора</label>
-                <input type="password" id="admin-verify-password" placeholder="Введите пароль"
-                    style="margin-bottom: 1rem;">
+            <div class="auth-form-group" style="width: 100%;">
+                <label for="admin-verify-password">
+                    <i class="fa-solid fa-key"></i>
+                    Пароль администратора
+                </label>
+                <input type="password" id="admin-verify-password" placeholder="Введите пароль">
             </div>
-            <p id="admin-verify-error"
-                style="color: var(--danger); font-size: 0.8rem; margin-bottom: 1rem; display: none;">Неверный пароль</p>
-            <div style="display: flex; gap: 1rem;">
-                <button id="admin-verify-cancel" class="secondary-btn"
-                    style="flex: 1; justify-content: center;">Отмена</button>
-                <button id="admin-verify-submit" class="primary-btn"
-                    style="flex: 1; justify-content: center;">Подтвердить</button>
+            <p id="admin-verify-error" class="auth-error">Неверный пароль</p>
+            <div class="auth-buttons-row">
+                <button id="admin-verify-cancel" class="auth-cancel-btn">Отмена</button>
+                <button id="admin-verify-submit" class="auth-submit-btn" style="flex: 1;">
+                    <i class="fa-solid fa-check"></i>
+                    Подтвердить
+                </button>
             </div>
         </div>
     </div>

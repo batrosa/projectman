@@ -583,20 +583,33 @@ async function joinOrganization(inviteCode) {
         throw new Error('Вы уже состоите в другой организации. Сначала покиньте её.');
     }
 
-    // Update or create user document (use set with merge to handle missing docs)
-    // Only set displayName if user doesn't have firstName (to avoid overwriting)
+    // Build update data - preserve existing firstName/lastName if they exist
     const updateData = {
         organizationId: orgDoc.id,
         orgRole: 'employee',
         email: state.currentUser.email
     };
     
-    // Only add displayName for NEW users (those without firstName)
+    // If user document exists but has no firstName, try to get from state or displayName
     if (!userData.firstName) {
-        updateData.displayName = state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User';
+        // Try to get name from current state (from recent login)
+        if (state.currentUser.firstName) {
+            updateData.firstName = state.currentUser.firstName;
+            updateData.lastName = state.currentUser.lastName || '';
+        } else {
+            // Fallback: parse from displayName or email
+            const displayName = state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User';
+            updateData.displayName = displayName;
+        }
     }
     
     await db.collection('users').doc(state.currentUser.uid).set(updateData, { merge: true });
+    
+    // Update local state with the name
+    if (userData.firstName) {
+        state.currentUser.firstName = userData.firstName;
+        state.currentUser.lastName = userData.lastName || '';
+    }
     
     // Increment members count
     await db.collection('organizations').doc(orgDoc.id).update({
@@ -615,11 +628,18 @@ async function leaveOrganization() {
         throw new Error('Владелец не может покинуть организацию. Используйте "Удалить организацию".');
     }
 
+    const orgId = state.organization.id;
+
     // Update user - use set with merge to handle any edge cases
     await db.collection('users').doc(state.currentUser.uid).set({
         organizationId: null,
         orgRole: null
     }, { merge: true });
+    
+    // Decrement members count
+    await db.collection('organizations').doc(orgId).update({
+        membersCount: firebase.firestore.FieldValue.increment(-1)
+    });
 
     // Clear local state
     state.organization = null;
@@ -1675,8 +1695,18 @@ function setupRealtimeListeners() {
     // We listen to ALL users and filter client-side to avoid index requirements
     usersListenerUnsubscribe = db.collection('users').onSnapshot(snapshot => {
         const users = [];
+        const seenIds = new Set(); // Prevent duplicates
+        
         snapshot.forEach(doc => {
             const data = doc.data();
+            
+            // Skip if we've already seen this ID (shouldn't happen, but safeguard)
+            if (seenIds.has(doc.id)) {
+                console.warn('Duplicate user detected:', doc.id);
+                return;
+            }
+            seenIds.add(doc.id);
+            
             // Include users ONLY if:
             // 1. We have orgId AND user's organizationId matches exactly
             // 2. OR we don't have orgId (legacy mode - include all)
@@ -3648,15 +3678,33 @@ function renderUsersList() {
         const aOrder = roleOrder[a.orgRole] ?? 3;
         const bOrder = roleOrder[b.orgRole] ?? 3;
         if (aOrder !== bOrder) return aOrder - bOrder;
-        return (a.firstName || '').localeCompare(b.firstName || '');
+        
+        // Compare by name (with fallbacks)
+        const aName = a.firstName || a.displayName || a.email || '';
+        const bName = b.firstName || b.displayName || b.email || '';
+        return aName.localeCompare(bName);
     });
 
     sortedUsers.forEach(user => {
         const userItem = document.createElement('div');
         userItem.className = 'user-item';
 
-        const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
-        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
+        // Build full name with fallbacks
+        let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (!fullName && user.displayName) {
+            fullName = user.displayName;
+        }
+        if (!fullName) {
+            // Last resort: use email prefix
+            fullName = user.email ? user.email.split('@')[0] : 'Без имени';
+        }
+        
+        // Build initials from fullName
+        const nameParts = fullName.split(' ').filter(Boolean);
+        const initials = nameParts.length >= 2 
+            ? (nameParts[0][0] || '') + (nameParts[1][0] || '')
+            : (fullName[0] || 'U');
+        
         const userRole = user.orgRole || 'employee';
         const isTargetOwner = userRole === 'owner';
         const isCurrentUser = user.id === state.currentUser.uid;
@@ -3751,10 +3799,18 @@ async function removeUserFromOrganization(userId, userName) {
     if (!confirm(`Удалить ${userName} из организации?`)) return;
 
     try {
+        // Remove user from organization
         await db.collection('users').doc(userId).set({
             organizationId: null,
             orgRole: null
         }, { merge: true });
+        
+        // Decrement members count
+        if (state.organization?.id) {
+            await db.collection('organizations').doc(state.organization.id).update({
+                membersCount: firebase.firestore.FieldValue.increment(-1)
+            });
+        }
 
         playClickSound();
     } catch (error) {
@@ -3823,7 +3879,10 @@ function handleAssigneeSearch(e) {
     
     // Filter users
     const filteredUsers = state.users.filter(user => {
-        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim().toLowerCase();
+        let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (!fullName && user.displayName) fullName = user.displayName;
+        if (!fullName && user.email) fullName = user.email.split('@')[0];
+        fullName = fullName.toLowerCase();
         const email = (user.email || '').toLowerCase();
         
         // Check if already selected
@@ -3844,13 +3903,19 @@ function handleAssigneeSearch(e) {
         dropdown.innerHTML = '<div class="assignee-dropdown-empty">Не найдено</div>';
     } else {
         filteredUsers.forEach(user => {
-        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
-            const initials = fullName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+            let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+            if (!fullName && user.displayName) fullName = user.displayName;
+            if (!fullName) fullName = user.email || 'Без имени';
+            const nameParts = fullName.split(' ').filter(Boolean);
+            const initials = nameParts.length >= 2 
+                ? (nameParts[0][0] || '') + (nameParts[1][0] || '')
+                : (fullName[0] || 'U');
+            const initialsUpper = initials.toUpperCase().substring(0, 2);
 
             const item = document.createElement('div');
             item.className = 'assignee-dropdown-item';
             item.innerHTML = `
-                <div class="assignee-dropdown-avatar">${initials}</div>
+                <div class="assignee-dropdown-avatar">${initialsUpper}</div>
                 <div class="assignee-dropdown-info">
                     <div class="assignee-dropdown-name">${escapeHtml(fullName)}</div>
                     <div class="assignee-dropdown-email">${escapeHtml(user.email || '')}</div>
@@ -3903,7 +3968,9 @@ function handleAssigneeSearch(e) {
 }
 
 function addAssignee(user) {
-    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+    let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!fullName && user.displayName) fullName = user.displayName;
+    if (!fullName) fullName = user.email || 'Без имени';
     
     // Check if already added
     if (selectedAssignees.some(a => a.email === user.email)) return;
@@ -4099,10 +4166,14 @@ function updateAccessUserSelect() {
     elements.accessUserSelect.innerHTML = '<option value="">Выберите пользователя...</option>';
 
     state.users.forEach(user => {
-        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
+        let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (!fullName && user.displayName) fullName = user.displayName;
+        if (!fullName && user.email) fullName = user.email.split('@')[0];
+        if (!fullName) fullName = 'Без имени';
+        
         const option = document.createElement('option');
         option.value = user.id;
-        option.textContent = `${fullName} (${user.email})`;
+        option.textContent = `${fullName} (${user.email || 'нет email'})`;
         elements.accessUserSelect.appendChild(option);
     });
 }
