@@ -4712,7 +4712,7 @@ function initKeyboardNavigation() {
     // Create hint element
     const hint = document.createElement('div');
     hint.className = 'keyboard-nav-hint';
-    hint.innerHTML = '<kbd>↑↓</kbd> навигация <kbd>←→</kbd> переключение <kbd>Enter</kbd> выбор';
+    hint.innerHTML = '<kbd>↑↓</kbd> проекты/задачи <kbd>→</kbd> к задачам <kbd>Enter</kbd> инфо';
     document.body.appendChild(hint);
     
     // Listen for keyboard events
@@ -4744,11 +4744,32 @@ function handleKeyboardNavigation(e) {
             activeModal.classList.remove('active');
             playClickSound();
             resetInactivityTimer();
+            // Return to tasks mode after closing modal
+            keyboardNav.mode = 'tasks';
         }
         return;
     }
     
-    // Ignore other keys if modal is open
+    // Check if task details modal is open - allow scrolling with arrows
+    const taskDetailsModal = document.getElementById('task-details-modal');
+    if (taskDetailsModal && taskDetailsModal.classList.contains('active')) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const content = document.querySelector('.task-details-body');
+            if (content) {
+                const scrollAmount = 50;
+                if (e.key === 'ArrowUp') {
+                    content.scrollTop -= scrollAmount;
+                } else {
+                    content.scrollTop += scrollAmount;
+                }
+            }
+            resetInactivityTimer();
+            return;
+        }
+    }
+    
+    // Ignore other keys if modal is open (except task details which we handle above)
     const activeModal = document.querySelector('.modal.active');
     if (activeModal) {
         return;
@@ -4792,7 +4813,10 @@ function handleKeyboardNavigation(e) {
                 }
                 break;
             case 'Enter':
-                selectFocusedItem();
+                // Enter only opens task info panel
+                if (keyboardNav.mode === 'tasks') {
+                    openFocusedTaskInfo();
+                }
                 break;
         }
     }
@@ -4858,6 +4882,11 @@ function navigateUp() {
     const item = items[keyboardNav.focusIndex];
     item.classList.add('keyboard-focus');
     item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    
+    // Auto-select project when navigating
+    if (keyboardNav.mode === 'projects') {
+        selectProjectByKeyboard(item);
+    }
 }
 
 function navigateDown() {
@@ -4875,6 +4904,11 @@ function navigateDown() {
     const item = items[keyboardNav.focusIndex];
     item.classList.add('keyboard-focus');
     item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    
+    // Auto-select project when navigating
+    if (keyboardNav.mode === 'projects') {
+        selectProjectByKeyboard(item);
+    }
 }
 
 function getNavigableItems() {
@@ -4886,30 +4920,28 @@ function getNavigableItems() {
     }
 }
 
-function selectFocusedItem() {
+function selectProjectByKeyboard(projectItem) {
+    // Get project ID from the item
+    const projectId = projectItem.dataset.id;
+    if (projectId && projectId !== state.activeProjectId) {
+        playClickSound();
+        // Trigger project selection
+        selectProject(projectId);
+    }
+}
+
+function openFocusedTaskInfo() {
     const focusedItem = document.querySelector('.keyboard-focus');
     if (!focusedItem) return;
     
     playClickSound();
     
-    if (keyboardNav.mode === 'projects') {
-        // Click the project to select it
-        focusedItem.click();
-        
-        // Switch to tasks mode after selecting project
-        setTimeout(() => {
-            keyboardNav.mode = 'tasks';
-            keyboardNav.focusIndex = -1;
-            clearKeyboardFocus();
-        }, 100);
-    } else {
-        // Open task info modal
-        const taskId = focusedItem.dataset.id || focusedItem.dataset.taskId;
-        if (taskId) {
-            const task = state.tasks.find(t => t.id === taskId);
-            if (task) {
-                openTaskDetailsModal(task);
-            }
+    // Open task info modal
+    const taskId = focusedItem.dataset.id || focusedItem.dataset.taskId;
+    if (taskId) {
+        const task = state.tasks.find(t => t.id === taskId);
+        if (task) {
+            openTaskDetailsModal(task);
         }
     }
 }
