@@ -6174,11 +6174,13 @@ function openLeaderboardModal() {
             const onTimeTasks = u.onTimeTasksCount || 0;
             // Calculate on-time percentage (0 if no completed tasks)
             const onTimePercent = completedTasks > 0 ? Math.round((onTimeTasks / completedTasks) * 100) : 0;
+            const level = getLevelFromXP(u.totalXP || 0);
             return {
                 ...u,
                 completedTasks,
                 onTimeTasks,
-                onTimePercent
+                onTimePercent,
+                level
             };
         });
     
@@ -6225,6 +6227,7 @@ function openLeaderboardModal() {
         const percentText = user.completedTasks > 0 
             ? `${user.onTimePercent}%`
             : '—';
+        const levelText = `Ур. ${user.level.level} • ${user.level.title}`;
         
         podiumHTML += `
             <div class="podium-place ${place}">
@@ -6237,7 +6240,8 @@ function openLeaderboardModal() {
                 </div>
                 <div class="podium-info">
                     <div class="podium-name">${escapeHtml(fullName)}</div>
-                    <div class="podium-level">${statsText}</div>
+                    <div class="podium-level">${levelText}</div>
+                    <div class="podium-stats">${statsText}</div>
                 </div>
                 <div class="podium-xp">${percentText}</div>
             </div>

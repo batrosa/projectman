@@ -4859,7 +4859,14 @@ body.keyboard-nav .task-card.keyboard-focus {
 
 .podium-info .podium-level {
     font-size: 0.8rem;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.podium-info .podium-stats {
+    font-size: 0.75rem;
     color: var(--text-secondary);
+    margin-top: 0.1rem;
 }
 
 .podium-place > .podium-xp {
@@ -4993,6 +5000,10 @@ body.keyboard-nav .task-card.keyboard-focus {
     
     .podium-info .podium-level {
         font-size: 0.75rem;
+    }
+    
+    .podium-info .podium-stats {
+        font-size: 0.7rem;
     }
     
     .podium-place > .podium-xp {
