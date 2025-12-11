@@ -4888,12 +4888,27 @@ function checkReminders(tasks) {
         // 2. Check for overdue notification (status = in_work, deadline passed)
         // Send notification the day AFTER the deadline (not on the deadline day itself)
         if (currentSubStatus === 'in_work' && task.assigneeEmail && !task.overdueNotificationSent) {
-            // Create "day after deadline" date (midnight of the next day)
-            const dayAfterDeadline = new Date(deadlineDate);
-            dayAfterDeadline.setDate(dayAfterDeadline.getDate() + 1);
-            dayAfterDeadline.setHours(0, 0, 0, 0);
+            // Compare dates only (ignore time), using local timezone
+            const todayDate = new Date();
+            todayDate.setHours(0, 0, 0, 0);
             
-            if (now >= dayAfterDeadline) {
+            // Parse deadline as local date (not UTC)
+            // Deadline format is typically "YYYY-MM-DD" from date input
+            let deadlineDateLocal;
+            if (typeof task.deadline === 'string' && task.deadline.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                // Parse as local date by splitting and using Date constructor
+                const [year, month, day] = task.deadline.split('-').map(Number);
+                deadlineDateLocal = new Date(year, month - 1, day);
+            } else {
+                deadlineDateLocal = new Date(task.deadline);
+            }
+            deadlineDateLocal.setHours(0, 0, 0, 0);
+            
+            // Calculate difference in days
+            const diffDays = Math.floor((todayDate - deadlineDateLocal) / (1000 * 60 * 60 * 24));
+            
+            // Send notification only if we're at least 1 day AFTER the deadline
+            if (diffDays >= 1) {
                 const emails = task.assigneeEmail.split(',');
                 emails.forEach((email) => {
                     if (email && email.trim()) {
