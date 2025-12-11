@@ -6065,8 +6065,9 @@ function openLeaderboardModal() {
     
     let podiumHTML = '';
     
-    // Reorder for podium display: silver (2nd), gold (1st/center), bronze (3rd)
-    const podiumOrder = [1, 0, 2]; // silver, gold, bronze order in HTML
+    // On mobile: render in order 1, 2, 3. On desktop: silver, gold, bronze for podium look
+    const isMobile = window.innerWidth <= 768;
+    const podiumOrder = isMobile ? [0, 1, 2] : [1, 0, 2];
     
     podiumOrder.forEach((orderIndex) => {
         const user = top3[orderIndex];
@@ -6086,9 +6087,11 @@ function openLeaderboardModal() {
                     }
                     <div class="podium-medal">${medal}</div>
                 </div>
-                <div class="podium-name">${escapeHtml(fullName)}</div>
+                <div class="podium-info">
+                    <div class="podium-name">${escapeHtml(fullName)}</div>
+                    <div class="podium-level">Ур. ${user.level.level} • ${user.level.title}</div>
+                </div>
                 <div class="podium-xp">${user.totalXP} XP</div>
-                <div class="podium-level">Ур. ${user.level.level} • ${user.level.title}</div>
             </div>
         `;
     });

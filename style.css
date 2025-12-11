@@ -4770,6 +4770,10 @@ body.keyboard-nav .task-card.keyboard-focus {
     color: #5a3d1a;
 }
 
+.podium-info {
+    display: none;
+}
+
 .podium-name {
     font-size: 0.85rem;
     font-weight: 600;
@@ -4881,12 +4885,87 @@ body.keyboard-nav .task-card.keyboard-focus {
     }
     
     .leaderboard-modal-content {
-        width: 95%;
-        max-width: 400px;
+        width: 92%;
+        max-width: 360px;
         height: auto;
-        max-height: 80vh;
+        max-height: none;
         margin: auto;
+        border-radius: 20px;
+        overflow: hidden;
+    }
+    
+    .leaderboard-content {
+        padding: 1rem;
+    }
+    
+    .leaderboard-podium {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 0;
+    }
+    
+    .podium-place {
+        flex-direction: row;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
         border-radius: 16px;
+        text-align: left;
+    }
+    
+    .podium-place.gold {
+        order: 1;
+        background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 184, 0, 0.1));
+        border: 1px solid rgba(255, 215, 0, 0.3);
+    }
+    
+    .podium-place.silver {
+        order: 2;
+        background: linear-gradient(135deg, rgba(192, 192, 192, 0.15), rgba(168, 168, 168, 0.1));
+        border: 1px solid rgba(192, 192, 192, 0.3);
+    }
+    
+    .podium-place.bronze {
+        order: 3;
+        background: linear-gradient(135deg, rgba(205, 127, 50, 0.15), rgba(184, 114, 45, 0.1));
+        border: 1px solid rgba(205, 127, 50, 0.3);
+    }
+    
+    .podium-place .podium-avatar {
+        margin-bottom: 0;
+        flex-shrink: 0;
+    }
+    
+    .podium-info {
+        display: block;
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .podium-place > .podium-name,
+    .podium-place > .podium-level {
+        display: none;
+    }
+    
+    .podium-info .podium-name {
+        max-width: none;
+        font-size: 0.95rem;
+        margin-bottom: 0.15rem;
+        display: block;
+    }
+    
+    .podium-info .podium-level {
+        font-size: 0.75rem;
+        display: block;
+        color: var(--text-secondary);
+    }
+    
+    .podium-place > .podium-xp {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--primary);
+        white-space: nowrap;
     }
     
     .profile-stats {
@@ -4903,20 +4982,23 @@ body.keyboard-nav .task-card.keyboard-focus {
     }
     
     .podium-avatar {
-        width: 50px;
-        height: 50px;
-        font-size: 1rem;
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 1rem !important;
     }
     
     .podium-place.gold .podium-avatar {
-        width: 65px;
-        height: 65px;
-        font-size: 1.25rem;
+        width: 56px !important;
+        height: 56px !important;
+        font-size: 1.1rem !important;
     }
     
-    .podium-name {
-        font-size: 0.8rem;
-        max-width: 80px;
+    .podium-medal {
+        width: 20px;
+        height: 20px;
+        font-size: 0.65rem;
+        bottom: -2px;
+        right: -2px;
     }
 }
 
