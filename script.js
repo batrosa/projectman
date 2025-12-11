@@ -4889,11 +4889,6 @@ function checkReminders(tasks) {
         // Send notification the day AFTER the deadline (not on the deadline day itself)
         // Also don't send if task was just taken into work (within last hour)
         if (currentSubStatus === 'in_work' && task.assigneeEmail && !task.overdueNotificationSent) {
-            
-            console.log('=== OVERDUE CHECK ===');
-            console.log('Task:', task.title);
-            console.log('Deadline raw:', task.deadline, typeof task.deadline);
-            
             // Check if task was taken into work recently (within last hour) - don't notify yet
             let takenToWorkTime = null;
             if (task.takenToWorkAt) {
@@ -4904,19 +4899,11 @@ function checkReminders(tasks) {
                 }
             }
             
-            console.log('takenToWorkAt raw:', task.takenToWorkAt);
-            console.log('takenToWorkTime parsed:', takenToWorkTime);
-            
             const ONE_HOUR_MS = 60 * 60 * 1000;
             const timeSinceTakenToWork = takenToWorkTime ? (now - takenToWorkTime) : Infinity;
             
-            console.log('timeSinceTakenToWork (ms):', timeSinceTakenToWork);
-            console.log('ONE_HOUR_MS:', ONE_HOUR_MS);
-            console.log('Is less than 1 hour?', timeSinceTakenToWork < ONE_HOUR_MS);
-            
             // Skip if task was taken into work less than 1 hour ago
             if (timeSinceTakenToWork < ONE_HOUR_MS) {
-                console.log('SKIPPING - task taken to work less than 1 hour ago');
                 return; // Don't send notification yet, give grace period
             }
             
@@ -4925,10 +4912,8 @@ function checkReminders(tasks) {
             todayDate.setHours(0, 0, 0, 0);
             
             // Parse deadline as local date (not UTC)
-            // Deadline format is typically "YYYY-MM-DD" from date input
             let deadlineDateLocal;
             if (typeof task.deadline === 'string' && task.deadline.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                // Parse as local date by splitting and using Date constructor
                 const [year, month, day] = task.deadline.split('-').map(Number);
                 deadlineDateLocal = new Date(year, month - 1, day);
             } else {
@@ -4939,14 +4924,8 @@ function checkReminders(tasks) {
             // Calculate difference in days
             const diffDays = Math.floor((todayDate - deadlineDateLocal) / (1000 * 60 * 60 * 24));
             
-            console.log('todayDate:', todayDate);
-            console.log('deadlineDateLocal:', deadlineDateLocal);
-            console.log('diffDays:', diffDays);
-            console.log('Should send (diffDays >= 1)?', diffDays >= 1);
-            
             // Send notification only if we're at least 1 day AFTER the deadline
             if (diffDays >= 1) {
-                console.log('SENDING overdue notification!');
                 const emails = task.assigneeEmail.split(',');
                 emails.forEach((email) => {
                     if (email && email.trim()) {
@@ -4956,10 +4935,7 @@ function checkReminders(tasks) {
                 
                 // Mark as sent
                 db.collection('tasks').doc(task.id).update({ overdueNotificationSent: true });
-            } else {
-                console.log('NOT sending - deadline is today or in the future');
             }
-            console.log('=== END OVERDUE CHECK ===');
         }
 
         // 3. Original deadline reminder (less than 20% time left)
