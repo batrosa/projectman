@@ -5987,6 +5987,41 @@ function cropImageToCircle() {
         const cropImage = document.getElementById('crop-image');
         const container = document.getElementById('crop-container');
         
+        // Get the actual displayed image rect
+        const imgRect = cropImage.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        
+        // Circle position (centered in container, 200px size)
+        const circleSize = 200;
+        const circleCenterX = containerRect.left + containerRect.width / 2;
+        const circleCenterY = containerRect.top + containerRect.height / 2;
+        
+        // Calculate what part of the natural image is in the circle
+        // The image on screen has been transformed, so we need to reverse-calculate
+        
+        // Image center on screen
+        const imgCenterX = imgRect.left + imgRect.width / 2;
+        const imgCenterY = imgRect.top + imgRect.height / 2;
+        
+        // How far is the circle center from the image center (in screen pixels)
+        const diffX = circleCenterX - imgCenterX;
+        const diffY = circleCenterY - imgCenterY;
+        
+        // Scale from displayed size to natural size
+        const scaleToNatural = cropImage.naturalWidth / imgRect.width;
+        
+        // Circle radius in natural image pixels
+        const radiusNatural = (circleSize / 2) * scaleToNatural;
+        
+        // Center of crop area in natural image coordinates
+        const naturalCenterX = cropImage.naturalWidth / 2 + diffX * scaleToNatural;
+        const naturalCenterY = cropImage.naturalHeight / 2 + diffY * scaleToNatural;
+        
+        // Source rectangle in natural image
+        const sourceX = naturalCenterX - radiusNatural;
+        const sourceY = naturalCenterY - radiusNatural;
+        const sourceSize = radiusNatural * 2;
+        
         // Output canvas
         const canvas = document.createElement('canvas');
         const outputSize = 200;
@@ -5994,57 +6029,7 @@ function cropImageToCircle() {
         canvas.height = outputSize;
         const ctx = canvas.getContext('2d');
         
-        // Get dimensions
-        const containerRect = container.getBoundingClientRect();
-        const containerWidth = containerRect.width;
-        const containerHeight = containerRect.height;
-        
-        // The crop circle is 200px and centered in container
-        const circleSize = 200;
-        const circleLeft = (containerWidth - circleSize) / 2;
-        const circleTop = (containerHeight - circleSize) / 2;
-        
-        // Create a temporary canvas the size of the container to render the image as displayed
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = containerWidth;
-        tempCanvas.height = containerHeight;
-        const tempCtx = tempCanvas.getContext('2d');
-        
-        // Calculate where the image is drawn (centered, then offset and scaled)
-        const imgWidth = cropImage.naturalWidth;
-        const imgHeight = cropImage.naturalHeight;
-        
-        // The image is displayed with max-width/max-height constraints
-        // Calculate displayed size
-        const containerAspect = containerWidth / containerHeight;
-        const imgAspect = imgWidth / imgHeight;
-        
-        let displayWidth, displayHeight;
-        if (imgAspect > containerAspect) {
-            displayWidth = containerWidth;
-            displayHeight = containerWidth / imgAspect;
-        } else {
-            displayHeight = containerHeight;
-            displayWidth = containerHeight * imgAspect;
-        }
-        
-        // Image is centered in container, then transformed
-        const baseX = (containerWidth - displayWidth) / 2;
-        const baseY = (containerHeight - displayHeight) / 2;
-        
-        // Apply transform: translate then scale from center
-        const centerX = containerWidth / 2;
-        const centerY = containerHeight / 2;
-        
-        // Draw the image as it appears on screen
-        tempCtx.save();
-        tempCtx.translate(centerX, centerY);
-        tempCtx.scale(cropState.zoom, cropState.zoom);
-        tempCtx.translate(-centerX + cropState.offsetX, -centerY + cropState.offsetY);
-        tempCtx.drawImage(cropImage, baseX, baseY, displayWidth, displayHeight);
-        tempCtx.restore();
-        
-        // Now extract the circle area from temp canvas to output canvas
+        // Create circular clip
         ctx.beginPath();
         ctx.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, Math.PI * 2);
         ctx.closePath();
@@ -6052,8 +6037,8 @@ function cropImageToCircle() {
         
         // Draw the cropped area
         ctx.drawImage(
-            tempCanvas,
-            circleLeft, circleTop, circleSize, circleSize,
+            cropImage,
+            sourceX, sourceY, sourceSize, sourceSize,
             0, 0, outputSize, outputSize
         );
         
