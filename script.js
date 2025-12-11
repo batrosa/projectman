@@ -4319,8 +4319,11 @@ function initTelegramConnection() {
     
     // Open modal
     if (connectBtn) {
-        connectBtn.addEventListener('click', async () => {
+        connectBtn.addEventListener('click', () => {
             playClickSound();
+            
+            // Open modal immediately
+            modal.classList.add('active');
             
             // Check if already connected
             if (state.currentUser?.telegramChatId) {
@@ -4331,13 +4334,12 @@ function initTelegramConnection() {
             } else {
                 connectScreen.style.display = 'block';
                 connectedScreen.style.display = 'none';
-                // Generate new code and save to Firestore
+                // Generate new code
                 currentCode = generateTelegramCode();
                 codeEl.textContent = currentCode;
-                await saveTelegramCode(currentCode);
+                // Save to Firestore in background (don't wait)
+                saveTelegramCode(currentCode);
             }
-            
-            modal.classList.add('active');
         });
     }
     
