@@ -3851,11 +3851,15 @@ function renderUsersList() {
         
         const canDelete = canRemoveUser;
 
+        // Telegram connected indicator
+        const telegramIcon = user.telegramChatId ? 
+            '<i class="fa-brands fa-telegram" style="color: #0088cc; font-size: 0.9rem; margin-left: 0.4rem;" title="Telegram подключен"></i>' : '';
+
         userItem.innerHTML = `
             <div class="user-info">
                 <div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>
                 <div class="user-details">
-                    <div class="user-name">${escapeHtml(fullName)} ${isCurrentUser ? '<span style="color: var(--text-secondary); font-size: 0.8rem;">(вы)</span>' : ''}</div>
+                    <div class="user-name">${escapeHtml(fullName)}${telegramIcon} ${isCurrentUser ? '<span style="color: var(--text-secondary); font-size: 0.8rem;">(вы)</span>' : ''}</div>
                     <div class="user-email">${escapeHtml(user.email)}</div>
                 </div>
             </div>
