@@ -4871,14 +4871,22 @@ body.keyboard-nav .task-card.keyboard-focus {
 
 /* Mobile styles for profile and leaderboard */
 @media (max-width: 768px) {
-    .profile-modal-content,
-    .leaderboard-modal-content {
+    .profile-modal-content {
         width: 100%;
         max-width: 100%;
         height: 100vh;
         max-height: 100vh;
         margin: 0;
         border-radius: 0;
+    }
+    
+    .leaderboard-modal-content {
+        width: 95%;
+        max-width: 400px;
+        height: auto;
+        max-height: 80vh;
+        margin: auto;
+        border-radius: 16px;
     }
     
     .profile-stats {
