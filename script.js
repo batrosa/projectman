@@ -4313,13 +4313,20 @@ async function awardXP(userId, taskId, wasOnTime, wasReturned) {
         const userDoc = await userRef.get();
         
         if (userDoc.exists) {
-            const currentXP = userDoc.data().totalXP || 0;
+            const userData = userDoc.data();
+            const currentXP = userData.totalXP || 0;
             const newXP = currentXP + xpToAward;
             const newLevel = getLevelFromXP(newXP);
             
+            // Increment task counters (persists even if task is deleted)
+            const completedTasks = (userData.completedTasksCount || 0) + 1;
+            const onTimeTasks = wasOnTime ? (userData.onTimeTasksCount || 0) + 1 : (userData.onTimeTasksCount || 0);
+            
             await userRef.update({
                 totalXP: newXP,
-                level: newLevel.level
+                level: newLevel.level,
+                completedTasksCount: completedTasks,
+                onTimeTasksCount: onTimeTasks
             });
             
             console.log(`Awarded ${xpToAward} XP to user ${userId}. New total: ${newXP}, Level: ${newLevel.level}`);
@@ -5699,31 +5706,32 @@ function openProfileModal() {
     document.getElementById('profile-xp-next').textContent = nextLevelXP;
     document.getElementById('profile-xp-progress').style.width = `${progress}%`;
     
-    // Show loading state for stats
+    // Use stored counters for completed stats (persists even if tasks deleted)
+    const completedTasks = userData.completedTasksCount || 0;
+    const onTimeTasks = userData.onTimeTasksCount || 0;
+    const onTimePercent = completedTasks > 0 ? Math.round((onTimeTasks / completedTasks) * 100) : 0;
+    
+    document.getElementById('profile-completed-tasks').textContent = completedTasks;
+    document.getElementById('profile-ontime-tasks').textContent = onTimeTasks;
+    document.getElementById('profile-ontime-percent').textContent = `${onTimePercent}%`;
+    
+    // Show loading state for active tasks only
     document.getElementById('profile-active-tasks').textContent = '...';
-    document.getElementById('profile-completed-tasks').textContent = '...';
-    document.getElementById('profile-ontime-tasks').textContent = '...';
-    document.getElementById('profile-ontime-percent').textContent = '...';
     
     // Open modal immediately
     modal.classList.add('active');
     
-    // Load stats asynchronously (don't block modal opening)
-    calculateUserStats(userData.email).then(stats => {
-        document.getElementById('profile-active-tasks').textContent = stats.activeTasks;
-        document.getElementById('profile-completed-tasks').textContent = stats.completedTasks;
-        document.getElementById('profile-ontime-tasks').textContent = stats.onTimeTasks;
-        document.getElementById('profile-ontime-percent').textContent = `${stats.onTimePercent}%`;
+    // Load active tasks count asynchronously (these need to be queried from tasks)
+    countActiveTasks(userData.email).then(activeTasks => {
+        document.getElementById('profile-active-tasks').textContent = activeTasks;
     });
 }
 
-async function calculateUserStats(userEmail) {
-    if (!userEmail) return { activeTasks: 0, completedTasks: 0, onTimeTasks: 0, onTimePercent: 0 };
+async function countActiveTasks(userEmail) {
+    if (!userEmail) return 0;
     
     const email = userEmail.toLowerCase();
     let activeTasks = 0;
-    let completedTasks = 0;
-    let onTimeTasks = 0;
     
     // Get all tasks from all projects
     const projectsSnapshot = await db.collection('projects')
@@ -5738,26 +5746,17 @@ async function calculateUserStats(userEmail) {
         tasksSnapshot.forEach(taskDoc => {
             const task = taskDoc.data();
             
-            // Check if user is assignee
-            if (task.assigneeEmail) {
+            // Check if user is assignee and task is not done
+            if (task.assigneeEmail && task.status !== 'done') {
                 const assigneeEmails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
                 if (assigneeEmails.includes(email)) {
-                    if (task.status === 'done') {
-                        completedTasks++;
-                        if (task.completedOnTime) {
-                            onTimeTasks++;
-                        }
-                    } else {
-                        activeTasks++;
-                    }
+                    activeTasks++;
                 }
             }
         });
     }
     
-    const onTimePercent = completedTasks > 0 ? Math.round((onTimeTasks / completedTasks) * 100) : 0;
-    
-    return { activeTasks, completedTasks, onTimeTasks, onTimePercent };
+    return activeTasks;
 }
 
 // ========== PHOTO CROP SYSTEM ==========
