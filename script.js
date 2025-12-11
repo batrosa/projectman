@@ -4358,6 +4358,89 @@ function initTelegramConnection() {
         });
     }
     
+    // Verify connection
+    const verifyBtn = document.getElementById('verify-telegram-btn');
+    const errorEl = document.getElementById('telegram-error');
+    
+    if (verifyBtn) {
+        verifyBtn.addEventListener('click', async () => {
+            verifyBtn.disabled = true;
+            verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Проверяю...';
+            if (errorEl) errorEl.style.display = 'none';
+            
+            try {
+                // Temporarily delete webhook to use getUpdates
+                await fetch(`${TELEGRAM_API}/deleteWebhook`);
+                
+                // Get updates
+                const response = await fetch(`${TELEGRAM_API}/getUpdates?limit=100`);
+                const result = await response.json();
+                
+                // Restore webhook
+                await fetch(`${TELEGRAM_API}/setWebhook?url=https://projectman-git-main-batrosas-projects.vercel.app/api/webhook`);
+                
+                if (result.ok) {
+                    // Find message with the code
+                    const updates = result.result || [];
+                    let found = null;
+                    
+                    for (const update of updates.reverse()) {
+                        const msg = update.message;
+                        if (msg && msg.text && msg.text.toUpperCase().includes(currentCode)) {
+                            found = {
+                                chatId: msg.chat.id,
+                                username: msg.from.username
+                            };
+                            break;
+                        }
+                    }
+                    
+                    if (found) {
+                        // Save to Firestore
+                        await db.collection('users').doc(state.currentUser.uid).update({
+                            telegramChatId: String(found.chatId),
+                            telegramUsername: found.username || null
+                        });
+                        
+                        state.currentUser.telegramChatId = String(found.chatId);
+                        state.currentUser.telegramUsername = found.username;
+                        
+                        // Show success
+                        connectScreen.style.display = 'none';
+                        connectedScreen.style.display = 'block';
+                        userInfoEl.textContent = found.username ? `@${found.username}` : 'Telegram подключен';
+                        window.updateTelegramStatus && window.updateTelegramStatus();
+                        
+                        // Send welcome message
+                        await sendTelegramNotification(found.chatId, 
+                            '✅ <b>Telegram успешно подключен!</b>\n\nТеперь вы будете получать уведомления о новых задачах и возвратах на доработку.');
+                        
+                        playClickSound();
+                    } else {
+                        if (errorEl) {
+                            errorEl.textContent = 'Код не найден. Убедитесь, что отправили код боту.';
+                            errorEl.style.display = 'block';
+                        }
+                    }
+                } else {
+                    if (errorEl) {
+                        errorEl.textContent = 'Ошибка проверки. Попробуйте ещё раз.';
+                        errorEl.style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('Verify error:', error);
+                if (errorEl) {
+                    errorEl.textContent = 'Ошибка соединения. Попробуйте ещё раз.';
+                    errorEl.style.display = 'block';
+                }
+            }
+            
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Проверить подключение';
+        });
+    }
+    
     // Disconnect
     if (disconnectBtn) {
         disconnectBtn.addEventListener('click', async () => {

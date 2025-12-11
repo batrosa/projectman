@@ -1306,7 +1306,9 @@ body.read-only #telegram-connect-btn,
 body.read-only #telegram-modal,
 body.read-only #telegram-modal .primary-btn,
 body.read-only #telegram-modal .danger-btn,
-body.read-only #telegram-modal .copy-code-btn {
+body.read-only #telegram-modal .copy-code-btn,
+body.read-only #verify-telegram-btn,
+body.read-only #disconnect-telegram-btn {
     display: flex !important;
 }
 

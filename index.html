@@ -948,11 +948,18 @@
                             </button>
                         </div>
                     </div>
+                    <div class="telegram-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <p>Нажмите для проверки:</p>
+                            <button type="button" class="primary-btn" id="verify-telegram-btn" style="width: 100%;">
+                                <i class="fa-solid fa-check"></i> Проверить подключение
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 
-                <p style="color: var(--text-secondary); margin-top: 1.5rem; text-align: center; font-size: 0.9rem;">
-                    <i class="fa-solid fa-magic"></i> После отправки кода подключение произойдёт автоматически
-                </p>
+                <div id="telegram-error" style="display: none; color: var(--danger); margin-top: 1rem; text-align: center;"></div>
             </div>
             
             <div id="telegram-connected-screen" style="padding: 1.5rem; display: none;">
