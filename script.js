@@ -4281,7 +4281,8 @@ function sendRevisionEmail(email, name, taskTitle, revisionReason, returnedBy) {
 }
 
 // ========== TELEGRAM NOTIFICATIONS ==========
-const TELEGRAM_API_URL = '/api/telegram';
+const TELEGRAM_BOT_TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Generate random code for Telegram verification
 function generateTelegramCode() {
@@ -4293,26 +4294,26 @@ function generateTelegramCode() {
     return code;
 }
 
-// Send Telegram notification
+// Send Telegram notification directly
 async function sendTelegramNotification(chatId, message) {
     if (!chatId) return;
     
     try {
-        const response = await fetch(TELEGRAM_API_URL, {
+        const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                action: 'send',
-                chatId: chatId,
-                message: message
+                chat_id: chatId,
+                text: message,
+                parse_mode: 'HTML'
             })
         });
         
         const result = await response.json();
-        if (result.success) {
+        if (result.ok) {
             console.log('Telegram notification sent successfully');
         } else {
-            console.error('Telegram notification failed:', result.error);
+            console.error('Telegram notification failed:', result.description);
         }
     } catch (error) {
         console.error('Telegram notification error:', error);
@@ -4365,19 +4366,31 @@ function escapeHtmlForTelegram(text) {
         .replace(/>/g, '&gt;');
 }
 
-// Verify Telegram connection
+// Verify Telegram connection - get updates and find code
 async function verifyTelegramConnection(code) {
     try {
-        const response = await fetch(TELEGRAM_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'verify',
-                code: code
-            })
-        });
+        const response = await fetch(`${TELEGRAM_API}/getUpdates?limit=100`);
+        const result = await response.json();
         
-        return await response.json();
+        if (!result.ok) {
+            return { error: 'Ошибка получения данных от Telegram' };
+        }
+        
+        // Find message with the code
+        const updates = result.result || [];
+        for (const update of updates.reverse()) {
+            const msg = update.message;
+            if (msg && msg.text && msg.text.includes(code)) {
+                return {
+                    success: true,
+                    chatId: msg.chat.id,
+                    firstName: msg.from.first_name,
+                    username: msg.from.username
+                };
+            }
+        }
+        
+        return { error: 'Код не найден. Убедитесь, что отправили код боту.' };
     } catch (error) {
         console.error('Telegram verification error:', error);
         return { error: error.message };
