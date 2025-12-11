@@ -5987,73 +5987,74 @@ function cropImageToCircle() {
         const cropImage = document.getElementById('crop-image');
         const container = document.getElementById('crop-container');
         
+        // Output canvas
         const canvas = document.createElement('canvas');
-        const size = 200; // Output size
-        canvas.width = size;
-        canvas.height = size;
+        const outputSize = 200;
+        canvas.width = outputSize;
+        canvas.height = outputSize;
         const ctx = canvas.getContext('2d');
         
-        // Get container and image info
+        // Get dimensions
         const containerRect = container.getBoundingClientRect();
-        const containerCenterX = containerRect.width / 2;
-        const containerCenterY = containerRect.height / 2;
-        const circleRadius = 100; // Half of crop circle size (200px / 2)
+        const containerWidth = containerRect.width;
+        const containerHeight = containerRect.height;
         
-        // Natural image dimensions
-        const naturalWidth = cropImage.naturalWidth;
-        const naturalHeight = cropImage.naturalHeight;
+        // The crop circle is 200px and centered in container
+        const circleSize = 200;
+        const circleLeft = (containerWidth - circleSize) / 2;
+        const circleTop = (containerHeight - circleSize) / 2;
         
-        // Displayed image dimensions (before zoom)
-        const displayedWidth = cropImage.width;
-        const displayedHeight = cropImage.height;
+        // Create a temporary canvas the size of the container to render the image as displayed
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = containerWidth;
+        tempCanvas.height = containerHeight;
+        const tempCtx = tempCanvas.getContext('2d');
         
-        // Scale between natural and displayed size
-        const scaleX = naturalWidth / displayedWidth;
-        const scaleY = naturalHeight / displayedHeight;
+        // Calculate where the image is drawn (centered, then offset and scaled)
+        const imgWidth = cropImage.naturalWidth;
+        const imgHeight = cropImage.naturalHeight;
         
-        // Image center in container (accounting for centering in flex container)
-        const imgDisplayCenterX = containerCenterX;
-        const imgDisplayCenterY = containerCenterY;
+        // The image is displayed with max-width/max-height constraints
+        // Calculate displayed size
+        const containerAspect = containerWidth / containerHeight;
+        const imgAspect = imgWidth / imgHeight;
         
-        // The crop circle center in image coordinates (accounting for drag offset and zoom)
-        // When offset is 0, the crop circle is at the center of the image
-        // When user drags, the image moves, so the crop area moves in opposite direction relative to image
-        const cropCenterInImgX = (imgDisplayCenterX - cropState.offsetX) / cropState.zoom;
-        const cropCenterInImgY = (imgDisplayCenterY - cropState.offsetY) / cropState.zoom;
+        let displayWidth, displayHeight;
+        if (imgAspect > containerAspect) {
+            displayWidth = containerWidth;
+            displayHeight = containerWidth / imgAspect;
+        } else {
+            displayHeight = containerHeight;
+            displayWidth = containerHeight * imgAspect;
+        }
         
-        // Convert to natural image coordinates
-        // First, get the position relative to displayed image center
-        const relX = cropCenterInImgX - displayedWidth / 2;
-        const relY = cropCenterInImgY - displayedHeight / 2;
+        // Image is centered in container, then transformed
+        const baseX = (containerWidth - displayWidth) / 2;
+        const baseY = (containerHeight - displayHeight) / 2;
         
-        // Convert to natural coordinates (relative to natural center)
-        const naturalRelX = relX * scaleX;
-        const naturalRelY = relY * scaleY;
+        // Apply transform: translate then scale from center
+        const centerX = containerWidth / 2;
+        const centerY = containerHeight / 2;
         
-        // Get absolute position in natural image
-        const naturalCropCenterX = naturalWidth / 2 + naturalRelX;
-        const naturalCropCenterY = naturalHeight / 2 + naturalRelY;
+        // Draw the image as it appears on screen
+        tempCtx.save();
+        tempCtx.translate(centerX, centerY);
+        tempCtx.scale(cropState.zoom, cropState.zoom);
+        tempCtx.translate(-centerX + cropState.offsetX, -centerY + cropState.offsetY);
+        tempCtx.drawImage(cropImage, baseX, baseY, displayWidth, displayHeight);
+        tempCtx.restore();
         
-        // Calculate the crop area size in natural coordinates
-        const cropSizeInDisplay = circleRadius * 2 / cropState.zoom;
-        const cropSizeNatural = cropSizeInDisplay * Math.max(scaleX, scaleY);
-        
-        // Source rectangle
-        const sourceX = naturalCropCenterX - cropSizeNatural / 2;
-        const sourceY = naturalCropCenterY - cropSizeNatural / 2;
-        const sourceSize = cropSizeNatural;
-        
-        // Create circular clip
+        // Now extract the circle area from temp canvas to output canvas
         ctx.beginPath();
-        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, Math.PI * 2);
         ctx.closePath();
         ctx.clip();
         
-        // Draw image
+        // Draw the cropped area
         ctx.drawImage(
-            cropImage,
-            sourceX, sourceY, sourceSize, sourceSize,
-            0, 0, size, size
+            tempCanvas,
+            circleLeft, circleTop, circleSize, circleSize,
+            0, 0, outputSize, outputSize
         );
         
         resolve(canvas.toDataURL('image/jpeg', 0.9));
