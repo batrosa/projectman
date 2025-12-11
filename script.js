@@ -6166,24 +6166,40 @@ function openLeaderboardModal() {
     
     const podiumContainer = document.getElementById('leaderboard-podium');
     
-    // Get all users with XP, sorted by totalXP
-    const usersWithXP = state.users
+    // Get all users with stats, sorted by on-time completion percentage
+    const usersWithStats = state.users
         .filter(u => u.organizationId === state.organization?.id)
-        .map(u => ({
-            ...u,
-            totalXP: u.totalXP || 0,
-            level: getLevelFromXP(u.totalXP || 0)
-        }))
-        .sort((a, b) => b.totalXP - a.totalXP);
+        .map(u => {
+            const completedTasks = u.completedTasksCount || 0;
+            const onTimeTasks = u.onTimeTasksCount || 0;
+            // Calculate on-time percentage (0 if no completed tasks)
+            const onTimePercent = completedTasks > 0 ? Math.round((onTimeTasks / completedTasks) * 100) : 0;
+            return {
+                ...u,
+                completedTasks,
+                onTimeTasks,
+                onTimePercent,
+                level: getLevelFromXP(u.totalXP || 0)
+            };
+        })
+        // Only include users who have completed at least 1 task
+        .filter(u => u.completedTasks > 0)
+        // Sort by on-time percentage (descending), then by total completed tasks as tiebreaker
+        .sort((a, b) => {
+            if (b.onTimePercent !== a.onTimePercent) {
+                return b.onTimePercent - a.onTimePercent;
+            }
+            return b.completedTasks - a.completedTasks;
+        });
     
-    if (usersWithXP.length === 0) {
-        podiumContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет данных о рейтинге</p></div>';
+    if (usersWithStats.length === 0) {
+        podiumContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет данных о рейтинге</p><p style="font-size: 0.85rem; margin-top: 0.5rem;">Завершите хотя бы одну задачу</p></div>';
         modal.classList.add('active');
         return;
     }
     
     // Render podium (top 3 only)
-    const top3 = usersWithXP.slice(0, 3);
+    const top3 = usersWithStats.slice(0, 3);
     const places = ['gold', 'silver', 'bronze'];
     const medals = ['1', '2', '3'];
     
@@ -6212,9 +6228,9 @@ function openLeaderboardModal() {
                 </div>
                 <div class="podium-info">
                     <div class="podium-name">${escapeHtml(fullName)}</div>
-                    <div class="podium-level">Ур. ${user.level.level} • ${user.level.title}</div>
+                    <div class="podium-level">${user.onTimeTasks} из ${user.completedTasks} в срок</div>
                 </div>
-                <div class="podium-xp">${user.totalXP} XP</div>
+                <div class="podium-xp">${user.onTimePercent}%</div>
             </div>
         `;
     });
