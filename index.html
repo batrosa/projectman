@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=8.5" as="style">
-    <link rel="stylesheet" href="style.css?v=8.5">
+    <link rel="preload" href="style.css?v=8.6" as="style">
+    <link rel="stylesheet" href="style.css?v=8.6">
     <link rel="stylesheet" href="mobile-additions.css?v=8.3">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -901,6 +901,78 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </button>
+                
+                <button id="telegram-connect-btn" class="settings-option">
+                    <div class="settings-option-icon telegram">
+                        <i class="fa-brands fa-telegram"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">Telegram уведомления</span>
+                        <span class="settings-option-desc" id="telegram-status">Не подключен</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right" id="telegram-chevron"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Telegram Connect Modal -->
+    <div id="telegram-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2><i class="fa-brands fa-telegram"></i> Подключить Telegram</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="telegram-connect-screen" style="padding: 1.5rem;">
+                <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                    Получайте уведомления о новых задачах и возвратах прямо в Telegram!
+                </p>
+                
+                <div class="telegram-steps">
+                    <div class="telegram-step">
+                        <span class="step-number">1</span>
+                        <div class="step-content">
+                            <p>Откройте бота в Telegram:</p>
+                            <a href="https://t.me/projectman_teko_bot" target="_blank" class="telegram-bot-link">
+                                <i class="fa-brands fa-telegram"></i> @projectman_teko_bot
+                            </a>
+                        </div>
+                    </div>
+                    <div class="telegram-step">
+                        <span class="step-number">2</span>
+                        <div class="step-content">
+                            <p>Отправьте боту этот код:</p>
+                            <div class="telegram-code" id="telegram-code">------</div>
+                            <button type="button" class="copy-code-btn" id="copy-telegram-code">
+                                <i class="fa-solid fa-copy"></i> Копировать
+                            </button>
+                        </div>
+                    </div>
+                    <div class="telegram-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <p>Нажмите кнопку для проверки:</p>
+                            <button type="button" class="primary-btn" id="verify-telegram-btn" style="width: 100%;">
+                                <i class="fa-solid fa-check"></i> Проверить подключение
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="telegram-error" style="display: none; color: var(--danger); margin-top: 1rem; text-align: center;"></div>
+            </div>
+            
+            <div id="telegram-connected-screen" style="padding: 1.5rem; display: none;">
+                <div style="text-align: center;">
+                    <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #0088cc, #00a2e8); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
+                        <i class="fa-brands fa-telegram" style="font-size: 2.5rem; color: white;"></i>
+                    </div>
+                    <h3 style="color: var(--success); margin-bottom: 0.5rem;">Telegram подключен!</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;" id="telegram-user-info">@username</p>
+                    <button type="button" class="danger-btn" id="disconnect-telegram-btn" style="width: 100%;">
+                        <i class="fa-solid fa-unlink"></i> Отключить Telegram
+                    </button>
+                </div>
             </div>
         </div>
     </div>

@@ -2697,17 +2697,20 @@ function submitRevisionReason(e) {
         returnedAt: new Date().toISOString()
     };
     
-    // Find task to get assignee info for email
+    // Find task to get assignee info for notifications
     const task = state.tasks.find(t => t.id === taskId);
     if (task && task.assigneeEmail) {
-        // Send email to all assignees
+        // Send notifications to all assignees
         const emails = task.assigneeEmail.split(',');
         const names = task.assignee ? task.assignee.split(', ') : [];
         
         emails.forEach((email, index) => {
             if (email && email.trim()) {
                 const name = names[index] || 'Коллега';
+                // Send Email
                 sendRevisionEmail(email.trim(), name, task.title, reason, returnedBy);
+                // Send Telegram
+                sendTelegramRevisionNotification(email.trim(), task.title, reason, returnedBy);
             }
         });
     }
@@ -3259,14 +3262,18 @@ function setupEventListeners() {
             });
 
             if (assigneeEmail) {
-                // Send email to all assignees
+                // Send notifications to all assignees
                 const emails = assigneeEmail.split(',');
                 const names = assignee.split(', ');
+                const projectName = document.getElementById('project-title')?.textContent || 'Проект';
 
                 emails.forEach((email, index) => {
                     if (email && email.trim()) {
                         const name = names[index] || 'Коллега';
+                        // Send Email
                         sendEmailNotification(email.trim(), name, title, deadline);
+                        // Send Telegram
+                        sendTelegramTaskNotification(email.trim(), title, projectName, deadline);
                     }
                 });
             }
@@ -4273,6 +4280,250 @@ function sendRevisionEmail(email, name, taskTitle, revisionReason, returnedBy) {
         });
 }
 
+// ========== TELEGRAM NOTIFICATIONS ==========
+const TELEGRAM_API_URL = '/api/telegram';
+
+// Generate random code for Telegram verification
+function generateTelegramCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// Send Telegram notification
+async function sendTelegramNotification(chatId, message) {
+    if (!chatId) return;
+    
+    try {
+        const response = await fetch(TELEGRAM_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'send',
+                chatId: chatId,
+                message: message
+            })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            console.log('Telegram notification sent successfully');
+        } else {
+            console.error('Telegram notification failed:', result.error);
+        }
+    } catch (error) {
+        console.error('Telegram notification error:', error);
+    }
+}
+
+// Send task notification via Telegram
+async function sendTelegramTaskNotification(userEmail, taskTitle, projectName, deadline) {
+    // Find user by email
+    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
+    if (!user || !user.telegramChatId) return;
+    
+    const message = `📋 <b>Новая задача!</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Срок:</b> ${deadline || 'Не указан'}
+
+Откройте ProjectMan для подробностей.`;
+    
+    await sendTelegramNotification(user.telegramChatId, message);
+}
+
+// Send revision notification via Telegram
+async function sendTelegramRevisionNotification(userEmail, taskTitle, revisionReason, returnedBy) {
+    // Find user by email
+    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
+    if (!user || !user.telegramChatId) return;
+    
+    const message = `🔄 <b>Задача возвращена на доработку</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
+
+<b>Причина:</b>
+${escapeHtmlForTelegram(revisionReason)}
+
+<b>Вернул:</b> ${escapeHtmlForTelegram(returnedBy)}
+
+Пожалуйста, внесите изменения и отправьте на проверку.`;
+    
+    await sendTelegramNotification(user.telegramChatId, message);
+}
+
+// Escape HTML for Telegram
+function escapeHtmlForTelegram(text) {
+    if (!text) return '';
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// Verify Telegram connection
+async function verifyTelegramConnection(code) {
+    try {
+        const response = await fetch(TELEGRAM_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'verify',
+                code: code
+            })
+        });
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Telegram verification error:', error);
+        return { error: error.message };
+    }
+}
+
+// Initialize Telegram connection UI
+function initTelegramConnection() {
+    const connectBtn = document.getElementById('telegram-connect-btn');
+    const modal = document.getElementById('telegram-modal');
+    const codeEl = document.getElementById('telegram-code');
+    const copyBtn = document.getElementById('copy-telegram-code');
+    const verifyBtn = document.getElementById('verify-telegram-btn');
+    const disconnectBtn = document.getElementById('disconnect-telegram-btn');
+    const errorEl = document.getElementById('telegram-error');
+    const connectScreen = document.getElementById('telegram-connect-screen');
+    const connectedScreen = document.getElementById('telegram-connected-screen');
+    const statusEl = document.getElementById('telegram-status');
+    const userInfoEl = document.getElementById('telegram-user-info');
+    
+    let currentCode = '';
+    
+    // Update status based on user data
+    function updateTelegramStatus() {
+        if (state.currentUser?.telegramChatId) {
+            statusEl.textContent = 'Подключен ✓';
+            statusEl.style.color = 'var(--success)';
+        } else {
+            statusEl.textContent = 'Не подключен';
+            statusEl.style.color = '';
+        }
+    }
+    
+    // Open modal
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+            playClickSound();
+            
+            // Check if already connected
+            if (state.currentUser?.telegramChatId) {
+                connectScreen.style.display = 'none';
+                connectedScreen.style.display = 'block';
+                userInfoEl.textContent = state.currentUser.telegramUsername ? 
+                    `@${state.currentUser.telegramUsername}` : 'Telegram подключен';
+            } else {
+                connectScreen.style.display = 'block';
+                connectedScreen.style.display = 'none';
+                // Generate new code
+                currentCode = generateTelegramCode();
+                codeEl.textContent = currentCode;
+                errorEl.style.display = 'none';
+            }
+            
+            modal.classList.add('active');
+        });
+    }
+    
+    // Copy code
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(currentCode).then(() => {
+                copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Скопировано!';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Копировать';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            });
+        });
+    }
+    
+    // Verify connection
+    if (verifyBtn) {
+        verifyBtn.addEventListener('click', async () => {
+            verifyBtn.disabled = true;
+            verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Проверяю...';
+            errorEl.style.display = 'none';
+            
+            const result = await verifyTelegramConnection(currentCode);
+            
+            if (result.success && result.chatId) {
+                // Save to Firestore
+                try {
+                    await db.collection('users').doc(state.currentUser.uid).update({
+                        telegramChatId: result.chatId,
+                        telegramUsername: result.username || null
+                    });
+                    
+                    // Update local state
+                    state.currentUser.telegramChatId = result.chatId;
+                    state.currentUser.telegramUsername = result.username;
+                    
+                    // Show success
+                    connectScreen.style.display = 'none';
+                    connectedScreen.style.display = 'block';
+                    userInfoEl.textContent = result.username ? `@${result.username}` : 'Telegram подключен';
+                    updateTelegramStatus();
+                    
+                    // Send welcome message
+                    await sendTelegramNotification(result.chatId, 
+                        '✅ <b>Telegram успешно подключен!</b>\n\nТеперь вы будете получать уведомления о новых задачах и возвратах на доработку.');
+                    
+                    playClickSound();
+                } catch (error) {
+                    console.error('Error saving Telegram data:', error);
+                    errorEl.textContent = 'Ошибка сохранения. Попробуйте ещё раз.';
+                    errorEl.style.display = 'block';
+                }
+            } else {
+                errorEl.textContent = result.error || 'Код не найден. Убедитесь, что отправили код боту.';
+                errorEl.style.display = 'block';
+            }
+            
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Проверить подключение';
+        });
+    }
+    
+    // Disconnect
+    if (disconnectBtn) {
+        disconnectBtn.addEventListener('click', async () => {
+            if (!confirm('Отключить Telegram уведомления?')) return;
+            
+            try {
+                await db.collection('users').doc(state.currentUser.uid).update({
+                    telegramChatId: null,
+                    telegramUsername: null
+                });
+                
+                state.currentUser.telegramChatId = null;
+                state.currentUser.telegramUsername = null;
+                
+                modal.classList.remove('active');
+                updateTelegramStatus();
+                playClickSound();
+            } catch (error) {
+                console.error('Error disconnecting Telegram:', error);
+                alert('Ошибка при отключении');
+            }
+        });
+    }
+    
+    // Initial status update
+    setTimeout(updateTelegramStatus, 1000);
+}
+
 function checkReminders(tasks) {
     // Only run if we have users loaded to find emails
     if (!state.users || state.users.length === 0) return;
@@ -5031,6 +5282,7 @@ function openFocusedTaskInfo() {
 document.addEventListener('DOMContentLoaded', () => {
     init();
     initKeyboardNavigation();
+    initTelegramConnection();
 });
 
 // ========== MIGRATION FUNCTION ==========

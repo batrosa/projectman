@@ -4225,6 +4225,103 @@ body.light-mode .theme-toggle-switch .toggle-slider:before {
     transform: translateX(22px);
 }
 
+/* ========== TELEGRAM SETTINGS ========== */
+.settings-option-icon.telegram {
+    background: linear-gradient(135deg, rgba(0, 136, 204, 0.2), rgba(0, 162, 232, 0.2));
+    color: #0088cc;
+}
+
+.telegram-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.telegram-step {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.step-number {
+    width: 28px;
+    height: 28px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.step-content {
+    flex: 1;
+}
+
+.step-content p {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.telegram-bot-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, #0088cc, #00a2e8);
+    color: white;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.telegram-bot-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 136, 204, 0.3);
+}
+
+.telegram-code {
+    background: var(--bg-secondary, #1e293b);
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-align: center;
+    letter-spacing: 0.3rem;
+    color: var(--primary);
+    margin-bottom: 0.75rem;
+}
+
+.copy-code-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.copy-code-btn:hover {
+    background: var(--card-hover);
+    color: var(--text-primary);
+}
+
+.copy-code-btn.copied {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: var(--success);
+    color: var(--success);
+}
+
 /* ========== KEYBOARD NAVIGATION ========== */
 body.keyboard-nav .project-item.keyboard-focus,
 body.keyboard-nav .task-card.keyboard-focus {
