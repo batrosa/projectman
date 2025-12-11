@@ -5649,7 +5649,7 @@ async function updateOrgLimit(newLimit = 100) {
 }
 
 // ========== PERSONAL PROFILE ==========
-async function openProfileModal() {
+function openProfileModal() {
     const modal = document.getElementById('profile-modal');
     if (!modal || !state.currentUser) return;
     
@@ -5689,15 +5689,22 @@ async function openProfileModal() {
     document.getElementById('profile-xp-next').textContent = nextLevelXP;
     document.getElementById('profile-xp-progress').style.width = `${progress}%`;
     
-    // Calculate stats from tasks
-    const stats = await calculateUserStats(userData.email);
+    // Show loading state for stats
+    document.getElementById('profile-active-tasks').textContent = '...';
+    document.getElementById('profile-completed-tasks').textContent = '...';
+    document.getElementById('profile-ontime-tasks').textContent = '...';
+    document.getElementById('profile-ontime-percent').textContent = '...';
     
-    document.getElementById('profile-active-tasks').textContent = stats.activeTasks;
-    document.getElementById('profile-completed-tasks').textContent = stats.completedTasks;
-    document.getElementById('profile-ontime-tasks').textContent = stats.onTimeTasks;
-    document.getElementById('profile-ontime-percent').textContent = `${stats.onTimePercent}%`;
-    
+    // Open modal immediately
     modal.classList.add('active');
+    
+    // Load stats asynchronously (don't block modal opening)
+    calculateUserStats(userData.email).then(stats => {
+        document.getElementById('profile-active-tasks').textContent = stats.activeTasks;
+        document.getElementById('profile-completed-tasks').textContent = stats.completedTasks;
+        document.getElementById('profile-ontime-tasks').textContent = stats.onTimeTasks;
+        document.getElementById('profile-ontime-percent').textContent = `${stats.onTimePercent}%`;
+    });
 }
 
 async function calculateUserStats(userEmail) {
@@ -5819,12 +5826,11 @@ function resizeImage(base64, maxWidth, maxHeight) {
 }
 
 // ========== LEADERBOARD ==========
-async function openLeaderboardModal() {
+function openLeaderboardModal() {
     const modal = document.getElementById('leaderboard-modal');
     if (!modal) return;
     
     const podiumContainer = document.getElementById('leaderboard-podium');
-    const listContainer = document.getElementById('leaderboard-list');
     
     // Get all users with XP, sorted by totalXP
     const usersWithXP = state.users
@@ -5837,23 +5843,22 @@ async function openLeaderboardModal() {
         .sort((a, b) => b.totalXP - a.totalXP);
     
     if (usersWithXP.length === 0) {
-        podiumContainer.innerHTML = '';
-        listContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет данных о рейтинге</p></div>';
+        podiumContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет данных о рейтинге</p></div>';
         modal.classList.add('active');
         return;
     }
     
-    // Render podium (top 3)
+    // Render podium (top 3 only)
     const top3 = usersWithXP.slice(0, 3);
     const places = ['gold', 'silver', 'bronze'];
     const medals = ['1', '2', '3'];
     
     let podiumHTML = '';
     
-    // Reorder for podium display: silver (1st place), gold (2nd/center), bronze (3rd)
+    // Reorder for podium display: silver (2nd), gold (1st/center), bronze (3rd)
     const podiumOrder = [1, 0, 2]; // silver, gold, bronze order in HTML
     
-    podiumOrder.forEach((orderIndex, i) => {
+    podiumOrder.forEach((orderIndex) => {
         const user = top3[orderIndex];
         if (!user) return;
         
@@ -5873,44 +5878,12 @@ async function openLeaderboardModal() {
                 </div>
                 <div class="podium-name">${escapeHtml(fullName)}</div>
                 <div class="podium-xp">${user.totalXP} XP</div>
-                <div class="podium-level">Ур. ${user.level.level}</div>
+                <div class="podium-level">Ур. ${user.level.level} • ${user.level.title}</div>
             </div>
         `;
     });
     
     podiumContainer.innerHTML = podiumHTML;
-    
-    // Render rest of users (4th place and below)
-    const rest = usersWithXP.slice(3);
-    
-    if (rest.length === 0) {
-        listContainer.innerHTML = '';
-    } else {
-        let listHTML = '';
-        rest.forEach((user, index) => {
-            const rank = index + 4;
-            const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
-            const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
-            
-            listHTML += `
-                <div class="leaderboard-item">
-                    <div class="leaderboard-rank">${rank}</div>
-                    <div class="leaderboard-avatar">
-                        ${user.profilePhotoUrl 
-                            ? `<img src="${user.profilePhotoUrl}" alt="${fullName}">`
-                            : initials.toUpperCase() || 'U'
-                        }
-                    </div>
-                    <div class="leaderboard-info">
-                        <div class="leaderboard-name">${escapeHtml(fullName)}</div>
-                        <div class="leaderboard-stats">Уровень ${user.level.level} • ${user.level.title}</div>
-                    </div>
-                    <div class="leaderboard-xp">${user.totalXP} XP</div>
-                </div>
-            `;
-        });
-        listContainer.innerHTML = listHTML;
-    }
     
     modal.classList.add('active');
 }
