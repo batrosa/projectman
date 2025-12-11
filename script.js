@@ -2583,13 +2583,26 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         updates.revisionReturnedBy = null;
         updates.revisionReturnedAt = null;
         
-        // Send notification to task creator about completion
-        const task = state.tasks.find(t => t.id === taskId);
-        if (task && task.createdByEmail) {
-            const project = state.projects.find(p => p.id === task.projectId);
-            const projectName = project?.name || 'Проект';
-            sendTelegramCompletionNotification(task.createdByEmail, task.title, projectName, completedByName);
-        }
+        // Send notification to task creator about completion (async, don't wait)
+        (async () => {
+            try {
+                const taskDoc = await db.collection('tasks').doc(taskId).get();
+                if (taskDoc.exists) {
+                    const taskData = taskDoc.data();
+                    const creatorEmail = taskData.createdByEmail;
+                    if (creatorEmail) {
+                        const project = state.projects.find(p => p.id === taskData.projectId);
+                        const projectName = project?.name || 'Проект';
+                        await sendTelegramCompletionNotification(creatorEmail, taskData.title, projectName, completedByName);
+                        console.log('Completion notification sent to:', creatorEmail);
+                    } else {
+                        console.log('No createdByEmail for task, notification not sent');
+                    }
+                }
+            } catch (err) {
+                console.error('Error sending completion notification:', err);
+            }
+        })();
     } else {
         updates.assigneeCompleted = false;
     }
@@ -4873,8 +4886,14 @@ function checkReminders(tasks) {
         }
 
         // 2. Check for overdue notification (status = in_work, deadline passed)
+        // Send notification the day AFTER the deadline (not on the deadline day itself)
         if (currentSubStatus === 'in_work' && task.assigneeEmail && !task.overdueNotificationSent) {
-            if (now > deadlineDate) {
+            // Create "day after deadline" date (midnight of the next day)
+            const dayAfterDeadline = new Date(deadlineDate);
+            dayAfterDeadline.setDate(dayAfterDeadline.getDate() + 1);
+            dayAfterDeadline.setHours(0, 0, 0, 0);
+            
+            if (now >= dayAfterDeadline) {
                 const emails = task.assigneeEmail.split(',');
                 emails.forEach((email) => {
                     if (email && email.trim()) {
