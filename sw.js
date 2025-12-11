@@ -1,4 +1,4 @@
-const CACHE_NAME = 'projectman-v46';
+const CACHE_NAME = 'projectman-v47';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -41,7 +41,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - Network first for HTML, Cache first (stale-while-revalidate) for others
+// Fetch event - NETWORK FIRST for all app files to ensure fresh content
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
@@ -54,36 +54,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For navigation requests (HTML pages), try network first to ensure we get the latest version
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => {
-            return caches.match(event.request) || caches.match('./index.html');
-        })
-    );
-    return;
-  }
-
-  // For other requests (CSS, JS, Images), try cache first, but update in background
+  // Network first strategy for ALL requests - always try to get fresh content
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request).then((networkResponse) => {
-            // Update cache with new version
-            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-                const responseToCache = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, responseToCache);
-                });
-            }
-            return networkResponse;
-        }).catch(() => {
-            // Network failed, return cached or nothing
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Got fresh response - update cache and return it
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return networkResponse;
+      })
+      .catch(() => {
+        // Network failed - try cache as fallback (offline mode)
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
             return cachedResponse;
+          }
+          // For navigation, return index.html as fallback
+          if (event.request.mode === 'navigate') {
+            return caches.match('./index.html');
+          }
+          return new Response('Offline', { status: 503 });
         });
-
-        return cachedResponse || fetchPromise;
-    })
+      })
   );
 });
 
