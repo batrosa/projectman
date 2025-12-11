@@ -1091,6 +1091,33 @@
             </div>
         </div>
     </div>
+    
+    <!-- Photo Crop Modal -->
+    <div id="crop-modal" class="modal">
+        <div class="modal-content crop-modal-content">
+            <div class="crop-header">
+                <h3><i class="fa-solid fa-crop"></i> Обрезать фото</h3>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="crop-container" id="crop-container">
+                <img id="crop-image" class="crop-image" src="" alt="Crop">
+                <div class="crop-overlay">
+                    <div class="crop-circle"></div>
+                </div>
+            </div>
+            <div class="crop-zoom">
+                <label><i class="fa-solid fa-magnifying-glass-minus"></i></label>
+                <input type="range" id="crop-zoom" min="1" max="3" step="0.1" value="1">
+                <label><i class="fa-solid fa-magnifying-glass-plus"></i></label>
+            </div>
+            <div class="crop-footer">
+                <button type="button" class="secondary-btn" id="crop-cancel">Отмена</button>
+                <button type="button" class="primary-btn" id="crop-save">
+                    <i class="fa-solid fa-check"></i> Сохранить
+                </button>
+            </div>
+        </div>
+    </div>
 
     <div id="task-modal" class="modal">
         <div class="modal-content">

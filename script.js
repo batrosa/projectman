@@ -5750,7 +5750,18 @@ async function calculateUserStats(userEmail) {
     return { activeTasks, completedTasks, onTimeTasks, onTimePercent };
 }
 
-async function uploadProfilePhoto(file) {
+// ========== PHOTO CROP SYSTEM ==========
+let cropState = {
+    image: null,
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    isDragging: false,
+    startX: 0,
+    startY: 0
+};
+
+function openPhotoCrop(file) {
     if (!file || !state.currentUser) return;
     
     // Validate file type
@@ -5759,69 +5770,197 @@ async function uploadProfilePhoto(file) {
         return;
     }
     
-    // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-        alert('Размер файла не должен превышать 2MB');
+    // Validate file size (max 5MB for cropping)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('Размер файла не должен превышать 5MB');
         return;
     }
     
-    try {
-        // Convert to base64 (simple approach without Firebase Storage)
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const base64 = e.target.result;
-            
-            // Resize image to max 200x200 for efficiency
-            const resized = await resizeImage(base64, 200, 200);
-            
-            // Save to user document
-            await db.collection('users').doc(state.currentUser.uid).update({
-                profilePhotoUrl: resized
-            });
-            
-            // Update UI
-            const avatarImg = document.getElementById('profile-avatar-img');
-            const avatarText = document.getElementById('profile-avatar-text');
-            avatarImg.src = resized;
-            avatarImg.style.display = 'block';
-            avatarText.style.display = 'none';
-            
-            playClickSound();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const cropModal = document.getElementById('crop-modal');
+        const cropImage = document.getElementById('crop-image');
+        
+        // Reset crop state
+        cropState = {
+            image: null,
+            zoom: 1,
+            offsetX: 0,
+            offsetY: 0,
+            isDragging: false,
+            startX: 0,
+            startY: 0
         };
-        reader.readAsDataURL(file);
-    } catch (error) {
-        console.error('Error uploading photo:', error);
-        alert('Ошибка загрузки фото');
+        
+        // Set image
+        cropImage.src = e.target.result;
+        document.getElementById('crop-zoom').value = 1;
+        
+        // Wait for image to load
+        cropImage.onload = () => {
+            cropState.image = cropImage;
+            updateCropTransform();
+            cropModal.classList.add('active');
+        };
+    };
+    reader.readAsDataURL(file);
+}
+
+function updateCropTransform() {
+    const cropImage = document.getElementById('crop-image');
+    if (cropImage) {
+        cropImage.style.transform = `translate(${cropState.offsetX}px, ${cropState.offsetY}px) scale(${cropState.zoom})`;
     }
 }
 
-function resizeImage(base64, maxWidth, maxHeight) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > height) {
-                if (width > maxWidth) {
-                    height *= maxWidth / width;
-                    width = maxWidth;
-                }
-            } else {
-                if (height > maxHeight) {
-                    width *= maxHeight / height;
-                    height = maxHeight;
-                }
+function initPhotoCrop() {
+    const cropModal = document.getElementById('crop-modal');
+    const cropImage = document.getElementById('crop-image');
+    const cropContainer = document.getElementById('crop-container');
+    const cropZoom = document.getElementById('crop-zoom');
+    const cropCancel = document.getElementById('crop-cancel');
+    const cropSave = document.getElementById('crop-save');
+    
+    if (!cropModal) return;
+    
+    // Zoom control
+    if (cropZoom) {
+        cropZoom.addEventListener('input', (e) => {
+            cropState.zoom = parseFloat(e.target.value);
+            updateCropTransform();
+        });
+    }
+    
+    // Drag to pan
+    if (cropContainer) {
+        cropContainer.addEventListener('mousedown', (e) => {
+            if (e.target === cropImage) {
+                cropState.isDragging = true;
+                cropState.startX = e.clientX - cropState.offsetX;
+                cropState.startY = e.clientY - cropState.offsetY;
+                cropImage.style.cursor = 'grabbing';
             }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.src = base64;
+        });
+        
+        cropContainer.addEventListener('mousemove', (e) => {
+            if (cropState.isDragging) {
+                cropState.offsetX = e.clientX - cropState.startX;
+                cropState.offsetY = e.clientY - cropState.startY;
+                updateCropTransform();
+            }
+        });
+        
+        cropContainer.addEventListener('mouseup', () => {
+            cropState.isDragging = false;
+            cropImage.style.cursor = 'move';
+        });
+        
+        cropContainer.addEventListener('mouseleave', () => {
+            cropState.isDragging = false;
+            cropImage.style.cursor = 'move';
+        });
+        
+        // Touch support
+        cropContainer.addEventListener('touchstart', (e) => {
+            if (e.target === cropImage) {
+                cropState.isDragging = true;
+                const touch = e.touches[0];
+                cropState.startX = touch.clientX - cropState.offsetX;
+                cropState.startY = touch.clientY - cropState.offsetY;
+            }
+        });
+        
+        cropContainer.addEventListener('touchmove', (e) => {
+            if (cropState.isDragging) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                cropState.offsetX = touch.clientX - cropState.startX;
+                cropState.offsetY = touch.clientY - cropState.startY;
+                updateCropTransform();
+            }
+        });
+        
+        cropContainer.addEventListener('touchend', () => {
+            cropState.isDragging = false;
+        });
+    }
+    
+    // Cancel button
+    if (cropCancel) {
+        cropCancel.addEventListener('click', () => {
+            cropModal.classList.remove('active');
+            document.getElementById('profile-photo-input').value = '';
+        });
+    }
+    
+    // Save button
+    if (cropSave) {
+        cropSave.addEventListener('click', async () => {
+            try {
+                const croppedImage = await cropImageToCircle();
+                
+                // Save to user document
+                await db.collection('users').doc(state.currentUser.uid).update({
+                    profilePhotoUrl: croppedImage
+                });
+                
+                // Update UI
+                const avatarImg = document.getElementById('profile-avatar-img');
+                const avatarText = document.getElementById('profile-avatar-text');
+                avatarImg.src = croppedImage;
+                avatarImg.style.display = 'block';
+                avatarText.style.display = 'none';
+                
+                cropModal.classList.remove('active');
+                document.getElementById('profile-photo-input').value = '';
+                playClickSound();
+            } catch (error) {
+                console.error('Error saving cropped photo:', error);
+                alert('Ошибка сохранения фото');
+            }
+        });
+    }
+}
+
+function cropImageToCircle() {
+    return new Promise((resolve) => {
+        const cropImage = document.getElementById('crop-image');
+        const container = document.getElementById('crop-container');
+        
+        const canvas = document.createElement('canvas');
+        const size = 200; // Output size
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        
+        // Get container dimensions
+        const containerRect = container.getBoundingClientRect();
+        const centerX = containerRect.width / 2;
+        const centerY = containerRect.height / 2;
+        const circleRadius = 100; // Half of crop circle size (200px / 2)
+        
+        // Calculate source coordinates
+        const imgRect = cropImage.getBoundingClientRect();
+        const scale = cropImage.naturalWidth / imgRect.width;
+        
+        const sourceX = (centerX - imgRect.left + containerRect.left - circleRadius) * scale / cropState.zoom;
+        const sourceY = (centerY - imgRect.top + containerRect.top - circleRadius) * scale / cropState.zoom;
+        const sourceSize = (circleRadius * 2) * scale / cropState.zoom;
+        
+        // Create circular clip
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        
+        // Draw image
+        ctx.drawImage(
+            cropImage,
+            sourceX, sourceY, sourceSize, sourceSize,
+            0, 0, size, size
+        );
+        
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
     });
 }
 
@@ -5912,8 +6051,11 @@ function initProfileAndLeaderboard() {
         photoInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
-                uploadProfilePhoto(file);
+                openPhotoCrop(file);
             }
         });
     }
+    
+    // Initialize photo crop
+    initPhotoCrop();
 }
