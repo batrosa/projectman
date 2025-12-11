@@ -61,5 +61,13 @@ service cloud.firestore {
             && canViewProject(resource.data.projectId) 
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assigneeCompleted', 'reminderSent', 'subStatus', 'attachments']));
     }
+    
+    // Коллекция telegramCodes - временные коды для подключения Telegram
+    match /telegramCodes/{code} {
+      // Пользователь может создать код для себя
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // Чтение и удаление - для серверных функций (через API key)
+      allow read, delete: if true;
+    }
   }
 }

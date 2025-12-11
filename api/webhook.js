@@ -1,6 +1,46 @@
 const TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 
+// Firebase Admin for serverless
+const FIREBASE_PROJECT_ID = 'projectman-96d3c';
+const FIREBASE_API_KEY = 'AIzaSyBqNCgLUmlxfIKlDCwmx0-9D-JJm63RpuU';
+
+// Firestore REST API helper
+async function firestoreGet(collection, docId) {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?key=${FIREBASE_API_KEY}`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    return await response.json();
+}
+
+async function firestoreUpdate(collection, docId, fields) {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?updateMask.fieldPaths=${Object.keys(fields).join('&updateMask.fieldPaths=')}&key=${FIREBASE_API_KEY}`;
+    
+    // Convert to Firestore format
+    const firestoreFields = {};
+    for (const [key, value] of Object.entries(fields)) {
+        if (value === null) {
+            firestoreFields[key] = { nullValue: null };
+        } else if (typeof value === 'string') {
+            firestoreFields[key] = { stringValue: value };
+        } else if (typeof value === 'number') {
+            firestoreFields[key] = { integerValue: String(value) };
+        }
+    }
+    
+    const response = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: firestoreFields })
+    });
+    return response.ok;
+}
+
+async function firestoreDelete(collection, docId) {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?key=${FIREBASE_API_KEY}`;
+    await fetch(url, { method: 'DELETE' });
+}
+
 module.exports = async (req, res) => {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,51 +49,6 @@ module.exports = async (req, res) => {
     
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
-    }
-
-    // GET request - verify code
-    if (req.method === 'GET') {
-        const code = req.query.code;
-        
-        if (!code) {
-            return res.status(400).json({ error: 'Code required' });
-        }
-        
-        try {
-            // Delete webhook temporarily
-            await fetch(`${TELEGRAM_API}/deleteWebhook`);
-            
-            // Get updates
-            const response = await fetch(`${TELEGRAM_API}/getUpdates?limit=100`);
-            const result = await response.json();
-            
-            // Restore webhook
-            const webhookUrl = `https://${req.headers.host}/api/webhook`;
-            await fetch(`${TELEGRAM_API}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
-            
-            if (!result.ok) {
-                return res.status(400).json({ error: 'Telegram API error' });
-            }
-            
-            // Find message with the code
-            const updates = result.result || [];
-            for (const update of updates.reverse()) {
-                const msg = update.message;
-                if (msg && msg.text && msg.text.toUpperCase().includes(code.toUpperCase())) {
-                    return res.status(200).json({
-                        success: true,
-                        chatId: msg.chat.id,
-                        firstName: msg.from.first_name,
-                        username: msg.from.username
-                    });
-                }
-            }
-            
-            return res.status(404).json({ error: 'Код не найден. Отправьте код боту и попробуйте снова.' });
-        } catch (error) {
-            console.error('Verify error:', error);
-            return res.status(500).json({ error: error.message });
-        }
     }
 
     // POST request - webhook from Telegram
@@ -66,17 +61,39 @@ module.exports = async (req, res) => {
             }
 
             const chatId = message.chat.id;
-            const text = message.text || '';
+            const text = (message.text || '').trim().toUpperCase();
             const firstName = message.from?.first_name || 'друг';
+            const username = message.from?.username || null;
 
             let replyText = '';
 
-            if (text === '/start') {
-                replyText = `👋 Привет, ${firstName}!\n\nЯ бот для уведомлений ProjectMan.\n\nЧтобы подключить уведомления:\n1. Откройте ProjectMan\n2. Настройки → Telegram\n3. Скопируйте код и отправьте мне\n4. Нажмите "Проверить подключение"`;
-            } else if (/^[A-Z0-9]{6}$/.test(text.trim().toUpperCase())) {
-                replyText = `✅ Код получен!\n\nТеперь вернитесь в ProjectMan и нажмите кнопку "Проверить подключение".`;
+            if (text === '/START') {
+                replyText = `👋 Привет, ${firstName}!\n\nЯ бот для уведомлений ProjectMan.\n\nЧтобы подключить уведомления:\n1. Откройте ProjectMan → Настройки → Telegram\n2. Скопируйте код и отправьте мне\n\nГотово! 🎉`;
+            } else if (/^[A-Z0-9]{6}$/.test(text)) {
+                // Check if code exists in Firestore
+                const codeDoc = await firestoreGet('telegramCodes', text);
+                
+                if (codeDoc && codeDoc.fields && codeDoc.fields.userId) {
+                    const userId = codeDoc.fields.userId.stringValue;
+                    
+                    // Update user's Telegram info
+                    const updated = await firestoreUpdate('users', userId, {
+                        telegramChatId: String(chatId),
+                        telegramUsername: username || ''
+                    });
+                    
+                    if (updated) {
+                        // Delete used code
+                        await firestoreDelete('telegramCodes', text);
+                        replyText = `✅ Telegram успешно подключен!\n\nТеперь вы будете получать уведомления о:\n📋 Новых задачах\n🔄 Возвратах на доработку\n⏰ Приближении дедлайна\n\nВернитесь в приложение — всё готово!`;
+                    } else {
+                        replyText = `❌ Ошибка подключения. Попробуйте получить новый код.`;
+                    }
+                } else {
+                    replyText = `❌ Код не найден или устарел.\n\nПолучите новый код в настройках ProjectMan.`;
+                }
             } else {
-                replyText = `📋 Отправьте мне код из настроек ProjectMan для подключения уведомлений.\n\nИли напишите /start для инструкции.`;
+                replyText = `📋 Отправьте мне 6-значный код из настроек ProjectMan.\n\nИли напишите /start для инструкции.`;
             }
 
             // Send reply
@@ -97,5 +114,5 @@ module.exports = async (req, res) => {
         }
     }
 
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(200).send('Bot is running');
 };

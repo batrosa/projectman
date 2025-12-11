@@ -4290,15 +4290,17 @@ function escapeHtmlForTelegram(text) {
         .replace(/>/g, '&gt;');
 }
 
-// Verify Telegram connection via server API
-async function verifyTelegramConnection(code) {
+// Save Telegram code to Firestore for bot verification
+async function saveTelegramCode(code) {
+    if (!state.currentUser?.uid) return;
+    
     try {
-        const response = await fetch(`/api/webhook?code=${encodeURIComponent(code)}`);
-        const result = await response.json();
-        return result;
+        await db.collection('telegramCodes').doc(code).set({
+            userId: state.currentUser.uid,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
     } catch (error) {
-        console.error('Telegram verification error:', error);
-        return { error: 'Ошибка соединения. Попробуйте ещё раз.' };
+        console.error('Error saving Telegram code:', error);
     }
 }
 
@@ -4308,19 +4310,16 @@ function initTelegramConnection() {
     const modal = document.getElementById('telegram-modal');
     const codeEl = document.getElementById('telegram-code');
     const copyBtn = document.getElementById('copy-telegram-code');
-    const verifyBtn = document.getElementById('verify-telegram-btn');
     const disconnectBtn = document.getElementById('disconnect-telegram-btn');
-    const errorEl = document.getElementById('telegram-error');
     const connectScreen = document.getElementById('telegram-connect-screen');
     const connectedScreen = document.getElementById('telegram-connected-screen');
-    const statusEl = document.getElementById('telegram-status');
     const userInfoEl = document.getElementById('telegram-user-info');
     
     let currentCode = '';
     
     // Open modal
     if (connectBtn) {
-        connectBtn.addEventListener('click', () => {
+        connectBtn.addEventListener('click', async () => {
             playClickSound();
             
             // Check if already connected
@@ -4332,10 +4331,10 @@ function initTelegramConnection() {
             } else {
                 connectScreen.style.display = 'block';
                 connectedScreen.style.display = 'none';
-                // Generate new code
+                // Generate new code and save to Firestore
                 currentCode = generateTelegramCode();
                 codeEl.textContent = currentCode;
-                errorEl.style.display = 'none';
+                await saveTelegramCode(currentCode);
             }
             
             modal.classList.add('active');
@@ -4356,50 +4355,26 @@ function initTelegramConnection() {
         });
     }
     
-    // Verify connection
-    if (verifyBtn) {
-        verifyBtn.addEventListener('click', async () => {
-            verifyBtn.disabled = true;
-            verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Проверяю...';
-            errorEl.style.display = 'none';
-            
-            const result = await verifyTelegramConnection(currentCode);
-            
-            if (result.success && result.chatId) {
-                // Save to Firestore
-                try {
-                    await db.collection('users').doc(state.currentUser.uid).update({
-                        telegramChatId: result.chatId,
-                        telegramUsername: result.username || null
-                    });
+    // Listen for Telegram connection changes
+    if (state.currentUser?.uid) {
+        db.collection('users').doc(state.currentUser.uid).onSnapshot((doc) => {
+            if (doc.exists) {
+                const data = doc.data();
+                if (data.telegramChatId && !state.currentUser.telegramChatId) {
+                    // Just connected!
+                    state.currentUser.telegramChatId = data.telegramChatId;
+                    state.currentUser.telegramUsername = data.telegramUsername;
                     
-                    // Update local state
-                    state.currentUser.telegramChatId = result.chatId;
-                    state.currentUser.telegramUsername = result.username;
-                    
-                    // Show success
-                    connectScreen.style.display = 'none';
-                    connectedScreen.style.display = 'block';
-                    userInfoEl.textContent = result.username ? `@${result.username}` : 'Telegram подключен';
+                    // Update UI
+                    if (modal?.classList.contains('active')) {
+                        connectScreen.style.display = 'none';
+                        connectedScreen.style.display = 'block';
+                        userInfoEl.textContent = data.telegramUsername ? 
+                            `@${data.telegramUsername}` : 'Telegram подключен';
+                    }
                     window.updateTelegramStatus && window.updateTelegramStatus();
-                    
-                    // Send welcome message
-                    await sendTelegramNotification(result.chatId, 
-                        '✅ <b>Telegram успешно подключен!</b>\n\nТеперь вы будете получать уведомления о новых задачах и возвратах на доработку.');
-                    
-                    playClickSound();
-                } catch (error) {
-                    console.error('Error saving Telegram data:', error);
-                    errorEl.textContent = 'Ошибка сохранения. Попробуйте ещё раз.';
-                    errorEl.style.display = 'block';
                 }
-            } else {
-                errorEl.textContent = result.error || 'Код не найден. Убедитесь, что отправили код боту.';
-                errorEl.style.display = 'block';
             }
-            
-            verifyBtn.disabled = false;
-            verifyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Проверить подключение';
         });
     }
     
