@@ -6166,8 +6166,8 @@ function openLeaderboardModal() {
     
     const podiumContainer = document.getElementById('leaderboard-podium');
     
-    // Get all users with stats, sorted by on-time completion percentage
-    const usersWithStats = state.users
+    // Get all users from organization
+    const allUsers = state.users
         .filter(u => u.organizationId === state.organization?.id)
         .map(u => {
             const completedTasks = u.completedTasksCount || 0;
@@ -6178,44 +6178,53 @@ function openLeaderboardModal() {
                 ...u,
                 completedTasks,
                 onTimeTasks,
-                onTimePercent,
-                level: getLevelFromXP(u.totalXP || 0)
+                onTimePercent
             };
-        })
-        // Only include users who have completed at least 1 task
-        .filter(u => u.completedTasks > 0)
-        // Sort by on-time percentage (descending), then by total completed tasks as tiebreaker
-        .sort((a, b) => {
-            if (b.onTimePercent !== a.onTimePercent) {
-                return b.onTimePercent - a.onTimePercent;
-            }
-            return b.completedTasks - a.completedTasks;
         });
     
-    if (usersWithStats.length === 0) {
-        podiumContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет данных о рейтинге</p><p style="font-size: 0.85rem; margin-top: 0.5rem;">Завершите хотя бы одну задачу</p></div>';
+    if (allUsers.length === 0) {
+        podiumContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет пользователей</p></div>';
         modal.classList.add('active');
         return;
     }
     
-    // Render podium (top 3 only)
-    const top3 = usersWithStats.slice(0, 3);
+    // Sort: first by on-time percentage (desc), then by completed tasks (desc), then random for 0%
+    const sortedUsers = allUsers.sort((a, b) => {
+        // Both have completed tasks - sort by percentage then by count
+        if (a.completedTasks > 0 && b.completedTasks > 0) {
+            if (b.onTimePercent !== a.onTimePercent) {
+                return b.onTimePercent - a.onTimePercent;
+            }
+            return b.completedTasks - a.completedTasks;
+        }
+        // One has completed tasks, other doesn't - completed first
+        if (a.completedTasks > 0) return -1;
+        if (b.completedTasks > 0) return 1;
+        // Both have 0 completed - random order
+        return Math.random() - 0.5;
+    });
+    
+    // Always take top 3 (or less if fewer users)
+    const top3 = sortedUsers.slice(0, 3);
     const places = ['gold', 'silver', 'bronze'];
     const medals = ['1', '2', '3'];
     
     let podiumHTML = '';
     
     // Render in order: 1st, 2nd, 3rd
-    const podiumOrder = [0, 1, 2];
-    
-    podiumOrder.forEach((orderIndex) => {
-        const user = top3[orderIndex];
-        if (!user) return;
-        
-        const place = places[orderIndex];
-        const medal = medals[orderIndex];
+    top3.forEach((user, index) => {
+        const place = places[index];
+        const medal = medals[index];
         const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
         const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
+        
+        // Show stats or "Нет задач" if no completed tasks
+        const statsText = user.completedTasks > 0 
+            ? `${user.onTimeTasks} из ${user.completedTasks} в срок`
+            : 'Нет завершённых задач';
+        const percentText = user.completedTasks > 0 
+            ? `${user.onTimePercent}%`
+            : '—';
         
         podiumHTML += `
             <div class="podium-place ${place}">
@@ -6228,9 +6237,9 @@ function openLeaderboardModal() {
                 </div>
                 <div class="podium-info">
                     <div class="podium-name">${escapeHtml(fullName)}</div>
-                    <div class="podium-level">${user.onTimeTasks} из ${user.completedTasks} в срок</div>
+                    <div class="podium-level">${statsText}</div>
                 </div>
-                <div class="podium-xp">${user.onTimePercent}%</div>
+                <div class="podium-xp">${percentText}</div>
             </div>
         `;
     });
