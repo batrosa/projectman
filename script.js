@@ -4887,7 +4887,26 @@ function checkReminders(tasks) {
 
         // 2. Check for overdue notification (status = in_work, deadline passed)
         // Send notification the day AFTER the deadline (not on the deadline day itself)
+        // Also don't send if task was just taken into work (within last hour)
         if (currentSubStatus === 'in_work' && task.assigneeEmail && !task.overdueNotificationSent) {
+            // Check if task was taken into work recently (within last hour) - don't notify yet
+            let takenToWorkTime = null;
+            if (task.takenToWorkAt) {
+                if (task.takenToWorkAt.toDate) {
+                    takenToWorkTime = task.takenToWorkAt.toDate();
+                } else {
+                    takenToWorkTime = new Date(task.takenToWorkAt);
+                }
+            }
+            
+            const ONE_HOUR_MS = 60 * 60 * 1000;
+            const timeSinceTakenToWork = takenToWorkTime ? (now - takenToWorkTime) : Infinity;
+            
+            // Skip if task was taken into work less than 1 hour ago
+            if (timeSinceTakenToWork < ONE_HOUR_MS) {
+                return; // Don't send notification yet, give grace period
+            }
+            
             // Compare dates only (ignore time), using local timezone
             const todayDate = new Date();
             todayDate.setHours(0, 0, 0, 0);
