@@ -3590,6 +3590,8 @@ async function loadUserRole(user) {
             state.currentUser.orgRole = userData.orgRole || 'employee'; // New org role
             state.currentUser.organizationId = userData.organizationId || null;
             state.currentUser.allowedProjects = userData.allowedProjects || [];
+            state.currentUser.telegramChatId = userData.telegramChatId || null;
+            state.currentUser.telegramUsername = userData.telegramUsername || null;
             
             // Set state orgRole
             state.orgRole = state.currentUser.orgRole;
