@@ -1301,7 +1301,12 @@ body.read-only #org-overlay .org-choice-btn,
 body.read-only #auth-overlay .primary-btn,
 body.read-only #auth-overlay .secondary-btn,
 body.read-only .settings-option,
-body.read-only .back-btn {
+body.read-only .back-btn,
+body.read-only #telegram-connect-btn,
+body.read-only #telegram-modal,
+body.read-only #telegram-modal .primary-btn,
+body.read-only #telegram-modal .danger-btn,
+body.read-only #telegram-modal .copy-code-btn {
     display: flex !important;
 }
 
