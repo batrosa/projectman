@@ -4290,11 +4290,19 @@ function escapeHtmlForTelegram(text) {
         .replace(/>/g, '&gt;');
 }
 
-// Verify Telegram connection - get updates and find code
+// Verify Telegram connection - temporarily disable webhook to get updates
 async function verifyTelegramConnection(code) {
     try {
+        // Step 1: Delete webhook temporarily
+        await fetch(`${TELEGRAM_API}/deleteWebhook`);
+        
+        // Step 2: Get updates
         const response = await fetch(`${TELEGRAM_API}/getUpdates?limit=100`);
         const result = await response.json();
+        
+        // Step 3: Restore webhook
+        const webhookUrl = 'https://projectman-git-main-batrosas-projects.vercel.app/api/webhook';
+        await fetch(`${TELEGRAM_API}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
         
         if (!result.ok) {
             return { error: 'Ошибка получения данных от Telegram' };
