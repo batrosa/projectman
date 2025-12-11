@@ -2273,10 +2273,23 @@ function createTaskCard(task) {
     // Create avatars for each assignee
     assignees.forEach((assignee, index) => {
         const initials = assignee.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+        
+        // Find user by name to get profile photo
+        const assigneeUser = state.users.find(u => {
+            const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+            return fullName === assignee || u.email?.split('@')[0] === assignee;
+        });
+        
         const avatar = document.createElement('div');
         avatar.className = 'avatar';
-        avatar.textContent = initials;
-        avatar.title = assignee; 
+        avatar.title = assignee;
+        
+        if (assigneeUser?.profilePhotoUrl) {
+            avatar.style.overflow = 'hidden';
+            avatar.innerHTML = `<img src="${assigneeUser.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+        } else {
+            avatar.textContent = initials;
+        }
 
         if (index > 0) {
             avatar.style.marginLeft = '-8px';
@@ -3560,7 +3573,14 @@ function setupEventListeners() {
                     const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
                     const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
 
-                    document.getElementById('selected-user-avatar').textContent = initials.toUpperCase() || 'U';
+                    const avatarEl = document.getElementById('selected-user-avatar');
+                    if (user.profilePhotoUrl) {
+                        avatarEl.innerHTML = `<img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+                        avatarEl.style.overflow = 'hidden';
+                    } else {
+                        avatarEl.textContent = initials.toUpperCase() || 'U';
+                        avatarEl.style.overflow = '';
+                    }
                     document.getElementById('selected-user-name').textContent = fullName;
                     document.getElementById('selected-user-email').textContent = user.email;
 
@@ -3908,9 +3928,14 @@ function renderUsersList() {
         const telegramIcon = user.telegramChatId ? 
             '<i class="fa-brands fa-telegram" style="color: #0088cc; font-size: 0.9rem; margin-left: 0.4rem;" title="Telegram подключен"></i>' : '';
 
+        // Avatar with profile photo support
+        const avatarHtml = user.profilePhotoUrl 
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
+
         userItem.innerHTML = `
             <div class="user-info">
-                <div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>
+                ${avatarHtml}
                 <div class="user-details">
                     <div class="user-name">${escapeHtml(fullName)}${telegramIcon} ${isCurrentUser ? '<span style="color: var(--text-secondary); font-size: 0.8rem;">(вы)</span>' : ''}</div>
                     <div class="user-email">${escapeHtml(user.email)}</div>
@@ -4110,10 +4135,15 @@ function handleAssigneeSearch(e) {
                 : (fullName[0] || 'U');
             const initialsUpper = initials.toUpperCase().substring(0, 2);
 
+            // Avatar with profile photo support
+            const avatarHtml = user.profilePhotoUrl 
+                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+                : `<div class="assignee-dropdown-avatar">${initialsUpper}</div>`;
+
             const item = document.createElement('div');
             item.className = 'assignee-dropdown-item';
             item.innerHTML = `
-                <div class="assignee-dropdown-avatar">${initialsUpper}</div>
+                ${avatarHtml}
                 <div class="assignee-dropdown-info">
                     <div class="assignee-dropdown-name">${escapeHtml(fullName)}</div>
                     <div class="assignee-dropdown-email">${escapeHtml(user.email || '')}</div>
@@ -4201,10 +4231,16 @@ function renderSelectedAssignees() {
     selectedAssignees.forEach(assignee => {
         const initials = assignee.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
         
+        // Find user to get profile photo
+        const user = state.users.find(u => u.email === assignee.email);
+        const avatarHtml = user?.profilePhotoUrl 
+            ? `<div class="assignee-chip-avatar" style="overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            : `<div class="assignee-chip-avatar">${initials}</div>`;
+        
         const chip = document.createElement('div');
         chip.className = 'assignee-chip';
         chip.innerHTML = `
-            <div class="assignee-chip-avatar">${initials}</div>
+            ${avatarHtml}
             <span>${escapeHtml(assignee.name)}</span>
             <button type="button" class="assignee-chip-remove" data-email="${escapeHtml(assignee.email)}">
                 <i class="fa-solid fa-xmark"></i>
