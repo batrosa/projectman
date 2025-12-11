@@ -2570,7 +2570,6 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                     }
                     
                     const wasOnTime = deadlineDate ? completedDate <= deadlineDate : true;
-                    console.log('XP Check:', { deadline: deadlineDate, completed: completedDate, wasOnTime, wasReturned: task.wasReturned });
                     
                     // Check if was returned for revision
                     const wasReturned = task.wasReturned || task.revisionReason ? true : false;
@@ -4338,24 +4337,18 @@ function calculateXPProgress(currentXP) {
 async function awardXP(userId, taskId, wasOnTime, wasReturned) {
     if (!userId) return;
     
-    console.log('awardXP called:', { userId, taskId, wasOnTime, wasReturned });
-    
     let xpToAward = XP_CONFIG.baseTaskXP;
-    console.log('Base XP:', xpToAward);
     
     if (wasOnTime) {
         xpToAward += XP_CONFIG.onTimeBonus;
-        console.log('Added on-time bonus:', XP_CONFIG.onTimeBonus, '→ Total:', xpToAward);
     }
     
     if (wasReturned) {
         xpToAward -= XP_CONFIG.revisionPenalty;
-        console.log('Subtracted revision penalty:', XP_CONFIG.revisionPenalty, '→ Total:', xpToAward);
     }
     
     // Minimum 1 XP
     xpToAward = Math.max(1, xpToAward);
-    console.log('Final XP to award:', xpToAward);
     
     try {
         const userRef = db.collection('users').doc(userId);
@@ -4371,16 +4364,12 @@ async function awardXP(userId, taskId, wasOnTime, wasReturned) {
             const completedTasks = (userData.completedTasksCount || 0) + 1;
             const onTimeTasks = wasOnTime ? (userData.onTimeTasksCount || 0) + 1 : (userData.onTimeTasksCount || 0);
             
-            console.log('Updating user:', { currentXP, newXP, completedTasks, onTimeTasks });
-            
             await userRef.update({
                 totalXP: newXP,
                 level: newLevel.level,
                 completedTasksCount: completedTasks,
                 onTimeTasksCount: onTimeTasks
             });
-            
-            console.log(`✅ Awarded ${xpToAward} XP to user ${userId}. New total: ${newXP}, Level: ${newLevel.level}, Completed: ${completedTasks}, OnTime: ${onTimeTasks}`);
         }
     } catch (error) {
         console.error('Error awarding XP:', error);
