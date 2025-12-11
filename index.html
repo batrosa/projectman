@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=10.2" as="style">
-    <link rel="stylesheet" href="style.css?v=10.2">
-    <link rel="stylesheet" href="mobile-additions.css?v=10.2">
+    <link rel="preload" href="style.css?v=11.0" as="style">
+    <link rel="stylesheet" href="style.css?v=11.0">
+    <link rel="stylesheet" href="mobile-additions.css?v=11.0">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -421,6 +421,7 @@
                 background: #0f172a !important;
                 display: flex !important;
                 flex-direction: column !important;
+                padding: 1.5rem !important;
             }
             .sidebar.active {
                 transform: translateX(0) !important;
@@ -435,6 +436,26 @@
                 flex: 1 !important;
                 overflow-y: auto !important;
                 -webkit-overflow-scrolling: touch !important;
+                list-style: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+            .project-item {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                padding: 1rem 1.25rem !important;
+                margin-bottom: 0.5rem !important;
+                border-radius: 12px !important;
+                color: #94a3b8 !important;
+                cursor: pointer !important;
+                background: transparent !important;
+            }
+            .project-item.active {
+                background: rgba(99, 102, 241, 0.15) !important;
+                color: #6366f1 !important;
             }
         }
     </style>
