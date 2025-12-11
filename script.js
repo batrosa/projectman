@@ -8,13 +8,6 @@ const firebaseConfig = {
     appId: "1:52414300696:web:8dd04516cfd1c9668b796d"
 };
 
-// EmailJS Config (Get these from https://dashboard.emailjs.com/)
-const emailConfig = {
-    serviceID: "service_o3iwf1c",
-    templateID: "template_3my1eym",
-    publicKey: "LaM7YOc0hZIkPFIFl" // Updated
-};
-
 // Cloudinary Config for file uploads
 const cloudinaryConfig = {
     cloudName: "dwoa1lqz1",
@@ -25,14 +18,6 @@ const cloudinaryConfig = {
 
 // Pending attachments for new/edited task
 let pendingAttachments = [];
-
-// Initialize EmailJS
-(function () {
-    // We check if emailjs is loaded to avoid errors if script fails
-    if (typeof emailjs !== 'undefined') {
-        emailjs.init(emailConfig.publicKey);
-    }
-})();
 
 // Sound Effect - DISABLED
 function playClickSound() {
@@ -2706,10 +2691,7 @@ function submitRevisionReason(e) {
         
         emails.forEach((email, index) => {
             if (email && email.trim()) {
-                const name = names[index] || 'Коллега';
-                // Send Email
-                sendRevisionEmail(email.trim(), name, task.title, reason, returnedBy);
-                // Send Telegram
+                // Send Telegram notification
                 sendTelegramRevisionNotification(email.trim(), task.title, reason, returnedBy);
             }
         });
@@ -3269,10 +3251,7 @@ function setupEventListeners() {
 
                 emails.forEach((email, index) => {
                     if (email && email.trim()) {
-                        const name = names[index] || 'Коллега';
-                        // Send Email
-                        sendEmailNotification(email.trim(), name, title, deadline);
-                        // Send Telegram
+                        // Send Telegram notification
                         sendTelegramTaskNotification(email.trim(), title, projectName, deadline);
                     }
                 });
@@ -4203,83 +4182,6 @@ function getSelectedAssignees() {
     };
 }
 
-function sendEmailNotification(email, name, taskTitle, deadline) {
-    console.log(`[EmailJS] Preparing to send email to: ${email} (Name: ${name})`);
-
-    // Check if EmailJS is configured
-    if (!emailConfig.serviceID || emailConfig.serviceID === "YOUR_SERVICE_ID") {
-        console.error("EmailJS not configured correctly");
-        return;
-    }
-
-    const templateParams = {
-        to_email: email,
-        to_name: name,
-        task_title: taskTitle,
-        task_deadline: deadline || 'Не указан',
-        project_name: document.getElementById('project-title').textContent,
-        message: 'Вам назначена новая задача. Пожалуйста, примите её в работу и выполните в срок.',
-        message_type: 'new_task'
-    };
-
-    emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams)
-        .then(function (response) {
-            console.log('SUCCESS!', response.status, response.text);
-        }, function (error) {
-            console.log('FAILED...', error);
-            alert('Задача создана, но не удалось отправить email: ' + JSON.stringify(error));
-        });
-}
-
-function sendReminderEmail(email, name, taskTitle, deadline) {
-    if (!emailConfig.serviceID) return;
-
-    const templateParams = {
-        to_email: email,
-        to_name: name,
-        task_title: taskTitle,
-        task_deadline: deadline,
-        project_name: "ProjectMan (Напоминание)",
-        message: "Внимание! Срок выполнения задачи истекает (менее 20% времени)."
-    };
-
-    emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams)
-        .then(function (response) {
-            console.log('Reminder sent!', response.status, response.text);
-        }, function (error) {
-            console.log('Reminder failed...', error);
-        });
-}
-
-// Send email when task is returned for revision
-function sendRevisionEmail(email, name, taskTitle, revisionReason, returnedBy) {
-    if (!emailConfig.serviceID || emailConfig.serviceID === "YOUR_SERVICE_ID") {
-        console.error("EmailJS not configured correctly");
-        return;
-    }
-
-    console.log(`[EmailJS] Sending revision notification to: ${email}`);
-
-    const templateParams = {
-        to_email: email,
-        to_name: name,
-        task_title: taskTitle,
-        task_deadline: '',
-        project_name: document.getElementById('project-title')?.textContent || 'ProjectMan',
-        message: 'Ваша задача была возвращена на доработку. Пожалуйста, внесите изменения и отправьте на проверку повторно.',
-        revision_reason: revisionReason,
-        returned_by: returnedBy,
-        message_type: 'revision'
-    };
-
-    emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams)
-        .then(function (response) {
-            console.log('Revision notification sent!', response.status, response.text);
-        }, function (error) {
-            console.log('Revision notification failed...', error);
-        });
-}
-
 // ========== TELEGRAM NOTIFICATIONS ==========
 const TELEGRAM_BOT_TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
@@ -4353,6 +4255,23 @@ ${escapeHtmlForTelegram(revisionReason)}
 <b>Вернул:</b> ${escapeHtmlForTelegram(returnedBy)}
 
 Пожалуйста, внесите изменения и отправьте на проверку.`;
+    
+    await sendTelegramNotification(user.telegramChatId, message);
+}
+
+// Send deadline reminder via Telegram
+async function sendTelegramReminderNotification(userEmail, taskTitle, projectName, deadline) {
+    // Find user by email
+    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
+    if (!user || !user.telegramChatId) return;
+    
+    const message = `⏰ <b>Напоминание о дедлайне!</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Срок:</b> ${deadline}
+
+Осталось менее 20% времени. Поторопитесь!`;
     
     await sendTelegramNotification(user.telegramChatId, message);
 }
@@ -4538,7 +4457,7 @@ function initTelegramConnection() {
 }
 
 function checkReminders(tasks) {
-    // Only run if we have users loaded to find emails
+    // Only run if we have users loaded
     if (!state.users || state.users.length === 0) return;
 
     tasks.forEach(task => {
@@ -4566,15 +4485,14 @@ function checkReminders(tasks) {
         const percentage = (timeLeft / totalDuration) * 100;
 
         if (percentage < 20) {
-            // Find user emails from task.assigneeEmail
+            // Send Telegram reminder
             if (task.assigneeEmail) {
                 const emails = task.assigneeEmail.split(',');
-                const names = task.assignee.split(', ');
+                const projectName = document.getElementById('project-title')?.textContent || 'Проект';
 
-                emails.forEach((email, index) => {
+                emails.forEach((email) => {
                     if (email && email.trim()) {
-                        const name = names[index] || 'Коллега';
-                        sendReminderEmail(email.trim(), name, task.title, task.deadline);
+                        sendTelegramReminderNotification(email.trim(), task.title, projectName, task.deadline);
                     }
                 });
 
