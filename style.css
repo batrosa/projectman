@@ -1684,6 +1684,93 @@ body.read-only .task-card:hover {
         font-size: 3rem;
         margin-bottom: 1rem;
     }
+    
+    /* Admin Panel on Mobile */
+    #admin-panel-modal .modal-content {
+        width: 100%;
+        max-width: 100%;
+        height: 100vh;
+        max-height: 100vh;
+        margin: 0;
+        border-radius: 0;
+        padding: 0;
+    }
+    
+    #admin-panel-modal .modal-header {
+        padding: 1rem;
+        position: sticky;
+        top: 0;
+        background: var(--bg-color);
+        z-index: 10;
+    }
+    
+    #admin-panel-modal .admin-panel-content {
+        padding: 1rem;
+        padding-bottom: 2rem;
+    }
+    
+    .admin-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 0.5rem;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .admin-tab {
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    
+    .user-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+    
+    .user-info {
+        width: 100%;
+    }
+    
+    .user-details {
+        min-width: 0;
+        flex: 1;
+    }
+    
+    .user-name {
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+    
+    .user-email {
+        font-size: 0.8rem;
+        word-break: break-all;
+    }
+    
+    .user-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .role-select {
+        flex: 1;
+        min-width: 120px;
+    }
+    
+    .users-list {
+        gap: 0.75rem;
+    }
+    
+    .delete-user-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
 }
 
 /* Admin Panel Styles */
