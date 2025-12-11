@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=8.7" as="style">
-    <link rel="stylesheet" href="style.css?v=8.7">
+    <link rel="preload" href="style.css?v=9.0" as="style">
+    <link rel="stylesheet" href="style.css?v=9.0">
     <link rel="stylesheet" href="mobile-additions.css?v=8.3">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -912,6 +912,28 @@
                     </div>
                     <i class="fa-solid fa-chevron-right" id="telegram-chevron"></i>
                 </button>
+                
+                <button id="profile-btn" class="settings-option">
+                    <div class="settings-option-icon profile">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">Личный кабинет</span>
+                        <span class="settings-option-desc">Ваш профиль и статистика</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                
+                <button id="leaderboard-btn" class="settings-option">
+                    <div class="settings-option-icon leaderboard">
+                        <i class="fa-solid fa-trophy"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">Рейтинг сотрудников</span>
+                        <span class="settings-option-desc">Топ по выполненным задачам</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -972,6 +994,102 @@
                     <button type="button" class="danger-btn" id="disconnect-telegram-btn" style="width: 100%;">
                         <i class="fa-solid fa-unlink"></i> Отключить Telegram
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Personal Profile Modal -->
+    <div id="profile-modal" class="modal">
+        <div class="modal-content profile-modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-user"></i> Личный кабинет</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="profile-content">
+                <div class="profile-header">
+                    <div class="profile-avatar-wrapper">
+                        <div class="profile-avatar" id="profile-avatar">
+                            <span id="profile-avatar-text">U</span>
+                            <img id="profile-avatar-img" src="" alt="" style="display: none;">
+                        </div>
+                        <label class="profile-avatar-upload" id="profile-avatar-upload">
+                            <i class="fa-solid fa-camera"></i>
+                            <input type="file" accept="image/*" id="profile-photo-input" style="display: none;">
+                        </label>
+                    </div>
+                    <div class="profile-info">
+                        <h3 id="profile-name">Имя Фамилия</h3>
+                        <p id="profile-email">email@example.com</p>
+                    </div>
+                </div>
+                
+                <div class="profile-level-section">
+                    <div class="profile-level-badge">
+                        <span class="level-number" id="profile-level">1</span>
+                        <span class="level-title" id="profile-level-title">Новичок</span>
+                    </div>
+                    <div class="profile-xp-bar">
+                        <div class="xp-progress" id="profile-xp-progress"></div>
+                    </div>
+                    <p class="xp-text"><span id="profile-xp">0</span> / <span id="profile-xp-next">50</span> XP</p>
+                </div>
+                
+                <div class="profile-stats">
+                    <div class="profile-stat">
+                        <div class="stat-icon active">
+                            <i class="fa-solid fa-list-check"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="profile-active-tasks">0</span>
+                            <span class="stat-label">Текущие задачи</span>
+                        </div>
+                    </div>
+                    <div class="profile-stat">
+                        <div class="stat-icon completed">
+                            <i class="fa-solid fa-check-double"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="profile-completed-tasks">0</span>
+                            <span class="stat-label">Завершено всего</span>
+                        </div>
+                    </div>
+                    <div class="profile-stat">
+                        <div class="stat-icon ontime">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="profile-ontime-tasks">0</span>
+                            <span class="stat-label">В срок</span>
+                        </div>
+                    </div>
+                    <div class="profile-stat">
+                        <div class="stat-icon percent">
+                            <i class="fa-solid fa-percent"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="profile-ontime-percent">0%</span>
+                            <span class="stat-label">% в срок</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Leaderboard Modal -->
+    <div id="leaderboard-modal" class="modal">
+        <div class="modal-content leaderboard-modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-trophy"></i> Рейтинг сотрудников</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="leaderboard-content">
+                <div class="leaderboard-podium" id="leaderboard-podium">
+                    <!-- Top 3 will be rendered here -->
+                </div>
+                <div class="leaderboard-list" id="leaderboard-list">
+                    <!-- Rest of users will be rendered here -->
                 </div>
             </div>
         </div>

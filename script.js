@@ -2476,6 +2476,8 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         updates.subStatus = 'completed'; // Keep visual state but move to done list
         updates.archivedAt = new Date().toISOString();
         updates.archivedBy = currentUserName;
+        updates.completedOnTime = false; // Will be set below
+        updates.xpAwarded = true; // Mark that XP was awarded
     } else {
         updates.status = 'in-progress';
     }
@@ -2498,6 +2500,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
             updates.revisionReason = revisionData.reason;
             updates.revisionReturnedBy = revisionData.returnedBy;
             updates.revisionReturnedAt = revisionData.returnedAt;
+            updates.wasReturned = true; // Mark that task was returned for revision (affects XP)
         }
     }
     
@@ -2523,9 +2526,47 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         updates.assigneeCompleted = false;
     }
 
-    db.collection('tasks').doc(taskId).update(updates).then(() => {
+    db.collection('tasks').doc(taskId).update(updates).then(async () => {
         playClickSound();
         console.log("Status updated to:", newSubStatus);
+        
+        // Award XP when task is moved to done (archive)
+        if (newSubStatus === 'done') {
+            try {
+                const taskDoc = await db.collection('tasks').doc(taskId).get();
+                if (taskDoc.exists) {
+                    const task = taskDoc.data();
+                    
+                    // Check if completed on time
+                    const now = new Date();
+                    const deadline = task.deadline ? new Date(task.deadline) : null;
+                    const wasOnTime = deadline ? now <= deadline : true;
+                    
+                    // Check if was returned for revision
+                    const wasReturned = task.wasReturned || task.revisionReason ? true : false;
+                    
+                    // Update completedOnTime field
+                    await db.collection('tasks').doc(taskId).update({
+                        completedOnTime: wasOnTime
+                    });
+                    
+                    // Find assignee user and award XP
+                    if (task.assigneeEmail) {
+                        const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
+                        for (const email of assigneeEmails) {
+                            const user = state.users.find(u => 
+                                u.email?.toLowerCase() === email.trim()
+                            );
+                            if (user) {
+                                await awardXP(user.id, taskId, wasOnTime, wasReturned);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error awarding XP:', error);
+            }
+        }
     }).catch(error => {
         console.error("Error updating status:", error);
         alert("Ошибка: " + error.message);
@@ -4195,6 +4236,89 @@ function getSelectedAssignees() {
     };
 }
 
+// ========== XP AND LEVEL SYSTEM ==========
+const XP_CONFIG = {
+    baseTaskXP: 10,        // Base XP for completing a task
+    onTimeBonus: 5,        // Bonus XP for completing on time
+    revisionPenalty: 3,    // XP penalty for task returned for revision
+    levels: [
+        { level: 1, xpRequired: 0, title: 'Новичок' },
+        { level: 2, xpRequired: 50, title: 'Стажёр' },
+        { level: 3, xpRequired: 150, title: 'Специалист' },
+        { level: 4, xpRequired: 300, title: 'Профессионал' },
+        { level: 5, xpRequired: 500, title: 'Эксперт' },
+        { level: 6, xpRequired: 800, title: 'Мастер' },
+        { level: 7, xpRequired: 1200, title: 'Легенда' }
+    ]
+};
+
+function getLevelFromXP(xp) {
+    let currentLevel = XP_CONFIG.levels[0];
+    for (const level of XP_CONFIG.levels) {
+        if (xp >= level.xpRequired) {
+            currentLevel = level;
+        } else {
+            break;
+        }
+    }
+    return currentLevel;
+}
+
+function getNextLevelXP(currentXP) {
+    const currentLevel = getLevelFromXP(currentXP);
+    const nextLevel = XP_CONFIG.levels.find(l => l.level === currentLevel.level + 1);
+    return nextLevel ? nextLevel.xpRequired : currentLevel.xpRequired;
+}
+
+function calculateXPProgress(currentXP) {
+    const currentLevel = getLevelFromXP(currentXP);
+    const nextLevel = XP_CONFIG.levels.find(l => l.level === currentLevel.level + 1);
+    
+    if (!nextLevel) return 100; // Max level
+    
+    const xpInCurrentLevel = currentXP - currentLevel.xpRequired;
+    const xpNeededForNext = nextLevel.xpRequired - currentLevel.xpRequired;
+    
+    return Math.floor((xpInCurrentLevel / xpNeededForNext) * 100);
+}
+
+async function awardXP(userId, taskId, wasOnTime, wasReturned) {
+    if (!userId) return;
+    
+    let xpToAward = XP_CONFIG.baseTaskXP;
+    
+    if (wasOnTime) {
+        xpToAward += XP_CONFIG.onTimeBonus;
+    }
+    
+    if (wasReturned) {
+        xpToAward -= XP_CONFIG.revisionPenalty;
+    }
+    
+    // Minimum 1 XP
+    xpToAward = Math.max(1, xpToAward);
+    
+    try {
+        const userRef = db.collection('users').doc(userId);
+        const userDoc = await userRef.get();
+        
+        if (userDoc.exists) {
+            const currentXP = userDoc.data().totalXP || 0;
+            const newXP = currentXP + xpToAward;
+            const newLevel = getLevelFromXP(newXP);
+            
+            await userRef.update({
+                totalXP: newXP,
+                level: newLevel.level
+            });
+            
+            console.log(`Awarded ${xpToAward} XP to user ${userId}. New total: ${newXP}, Level: ${newLevel.level}`);
+        }
+    } catch (error) {
+        console.error('Error awarding XP:', error);
+    }
+}
+
 // ========== TELEGRAM NOTIFICATIONS ==========
 const TELEGRAM_BOT_TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
@@ -5370,6 +5494,7 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
     initKeyboardNavigation();
     initTelegramConnection();
+    initProfileAndLeaderboard();
 });
 
 // ========== MIGRATION FUNCTION ==========
@@ -5520,5 +5645,302 @@ async function updateOrgLimit(newLimit = 100) {
         state.organization.settings.maxUsers = newLimit;
     } catch (error) {
         console.error('Error updating limit:', error);
+    }
+}
+
+// ========== PERSONAL PROFILE ==========
+async function openProfileModal() {
+    const modal = document.getElementById('profile-modal');
+    if (!modal || !state.currentUser) return;
+    
+    // Get current user data
+    const userData = state.users.find(u => u.id === state.currentUser.uid);
+    if (!userData) return;
+    
+    // Update avatar
+    const avatarText = document.getElementById('profile-avatar-text');
+    const avatarImg = document.getElementById('profile-avatar-img');
+    const initials = ((userData.firstName || '')[0] || '') + ((userData.lastName || '')[0] || '');
+    
+    if (userData.profilePhotoUrl) {
+        avatarImg.src = userData.profilePhotoUrl;
+        avatarImg.style.display = 'block';
+        avatarText.style.display = 'none';
+    } else {
+        avatarText.textContent = initials.toUpperCase() || 'U';
+        avatarText.style.display = 'block';
+        avatarImg.style.display = 'none';
+    }
+    
+    // Update name and email
+    const fullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'Без имени';
+    document.getElementById('profile-name').textContent = fullName;
+    document.getElementById('profile-email').textContent = userData.email || '';
+    
+    // Update level info
+    const totalXP = userData.totalXP || 0;
+    const levelInfo = getLevelFromXP(totalXP);
+    const nextLevelXP = getNextLevelXP(totalXP);
+    const progress = calculateXPProgress(totalXP);
+    
+    document.getElementById('profile-level').textContent = levelInfo.level;
+    document.getElementById('profile-level-title').textContent = levelInfo.title;
+    document.getElementById('profile-xp').textContent = totalXP;
+    document.getElementById('profile-xp-next').textContent = nextLevelXP;
+    document.getElementById('profile-xp-progress').style.width = `${progress}%`;
+    
+    // Calculate stats from tasks
+    const stats = await calculateUserStats(userData.email);
+    
+    document.getElementById('profile-active-tasks').textContent = stats.activeTasks;
+    document.getElementById('profile-completed-tasks').textContent = stats.completedTasks;
+    document.getElementById('profile-ontime-tasks').textContent = stats.onTimeTasks;
+    document.getElementById('profile-ontime-percent').textContent = `${stats.onTimePercent}%`;
+    
+    modal.classList.add('active');
+}
+
+async function calculateUserStats(userEmail) {
+    if (!userEmail) return { activeTasks: 0, completedTasks: 0, onTimeTasks: 0, onTimePercent: 0 };
+    
+    const email = userEmail.toLowerCase();
+    let activeTasks = 0;
+    let completedTasks = 0;
+    let onTimeTasks = 0;
+    
+    // Get all tasks from all projects
+    const projectsSnapshot = await db.collection('projects')
+        .where('organizationId', '==', state.organization?.id)
+        .get();
+    
+    for (const projectDoc of projectsSnapshot.docs) {
+        const tasksSnapshot = await db.collection('tasks')
+            .where('projectId', '==', projectDoc.id)
+            .get();
+        
+        tasksSnapshot.forEach(taskDoc => {
+            const task = taskDoc.data();
+            
+            // Check if user is assignee
+            if (task.assigneeEmail) {
+                const assigneeEmails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
+                if (assigneeEmails.includes(email)) {
+                    if (task.status === 'done') {
+                        completedTasks++;
+                        if (task.completedOnTime) {
+                            onTimeTasks++;
+                        }
+                    } else {
+                        activeTasks++;
+                    }
+                }
+            }
+        });
+    }
+    
+    const onTimePercent = completedTasks > 0 ? Math.round((onTimeTasks / completedTasks) * 100) : 0;
+    
+    return { activeTasks, completedTasks, onTimeTasks, onTimePercent };
+}
+
+async function uploadProfilePhoto(file) {
+    if (!file || !state.currentUser) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        alert('Пожалуйста, выберите изображение');
+        return;
+    }
+    
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+        alert('Размер файла не должен превышать 2MB');
+        return;
+    }
+    
+    try {
+        // Convert to base64 (simple approach without Firebase Storage)
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const base64 = e.target.result;
+            
+            // Resize image to max 200x200 for efficiency
+            const resized = await resizeImage(base64, 200, 200);
+            
+            // Save to user document
+            await db.collection('users').doc(state.currentUser.uid).update({
+                profilePhotoUrl: resized
+            });
+            
+            // Update UI
+            const avatarImg = document.getElementById('profile-avatar-img');
+            const avatarText = document.getElementById('profile-avatar-text');
+            avatarImg.src = resized;
+            avatarImg.style.display = 'block';
+            avatarText.style.display = 'none';
+            
+            playClickSound();
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('Error uploading photo:', error);
+        alert('Ошибка загрузки фото');
+    }
+}
+
+function resizeImage(base64, maxWidth, maxHeight) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > height) {
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+            } else {
+                if (height > maxHeight) {
+                    width *= maxHeight / height;
+                    height = maxHeight;
+                }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.src = base64;
+    });
+}
+
+// ========== LEADERBOARD ==========
+async function openLeaderboardModal() {
+    const modal = document.getElementById('leaderboard-modal');
+    if (!modal) return;
+    
+    const podiumContainer = document.getElementById('leaderboard-podium');
+    const listContainer = document.getElementById('leaderboard-list');
+    
+    // Get all users with XP, sorted by totalXP
+    const usersWithXP = state.users
+        .filter(u => u.organizationId === state.organization?.id)
+        .map(u => ({
+            ...u,
+            totalXP: u.totalXP || 0,
+            level: getLevelFromXP(u.totalXP || 0)
+        }))
+        .sort((a, b) => b.totalXP - a.totalXP);
+    
+    if (usersWithXP.length === 0) {
+        podiumContainer.innerHTML = '';
+        listContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет данных о рейтинге</p></div>';
+        modal.classList.add('active');
+        return;
+    }
+    
+    // Render podium (top 3)
+    const top3 = usersWithXP.slice(0, 3);
+    const places = ['gold', 'silver', 'bronze'];
+    const medals = ['1', '2', '3'];
+    
+    let podiumHTML = '';
+    
+    // Reorder for podium display: silver (1st place), gold (2nd/center), bronze (3rd)
+    const podiumOrder = [1, 0, 2]; // silver, gold, bronze order in HTML
+    
+    podiumOrder.forEach((orderIndex, i) => {
+        const user = top3[orderIndex];
+        if (!user) return;
+        
+        const place = places[orderIndex];
+        const medal = medals[orderIndex];
+        const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
+        
+        podiumHTML += `
+            <div class="podium-place ${place}">
+                <div class="podium-avatar">
+                    ${user.profilePhotoUrl 
+                        ? `<img src="${user.profilePhotoUrl}" alt="${fullName}">`
+                        : initials.toUpperCase() || 'U'
+                    }
+                    <div class="podium-medal">${medal}</div>
+                </div>
+                <div class="podium-name">${escapeHtml(fullName)}</div>
+                <div class="podium-xp">${user.totalXP} XP</div>
+                <div class="podium-level">Ур. ${user.level.level}</div>
+            </div>
+        `;
+    });
+    
+    podiumContainer.innerHTML = podiumHTML;
+    
+    // Render rest of users (4th place and below)
+    const rest = usersWithXP.slice(3);
+    
+    if (rest.length === 0) {
+        listContainer.innerHTML = '';
+    } else {
+        let listHTML = '';
+        rest.forEach((user, index) => {
+            const rank = index + 4;
+            const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
+            const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
+            
+            listHTML += `
+                <div class="leaderboard-item">
+                    <div class="leaderboard-rank">${rank}</div>
+                    <div class="leaderboard-avatar">
+                        ${user.profilePhotoUrl 
+                            ? `<img src="${user.profilePhotoUrl}" alt="${fullName}">`
+                            : initials.toUpperCase() || 'U'
+                        }
+                    </div>
+                    <div class="leaderboard-info">
+                        <div class="leaderboard-name">${escapeHtml(fullName)}</div>
+                        <div class="leaderboard-stats">Уровень ${user.level.level} • ${user.level.title}</div>
+                    </div>
+                    <div class="leaderboard-xp">${user.totalXP} XP</div>
+                </div>
+            `;
+        });
+        listContainer.innerHTML = listHTML;
+    }
+    
+    modal.classList.add('active');
+}
+
+// Initialize profile and leaderboard buttons
+function initProfileAndLeaderboard() {
+    const profileBtn = document.getElementById('profile-btn');
+    const leaderboardBtn = document.getElementById('leaderboard-btn');
+    const photoInput = document.getElementById('profile-photo-input');
+    
+    if (profileBtn) {
+        profileBtn.addEventListener('click', () => {
+            playClickSound();
+            openProfileModal();
+        });
+    }
+    
+    if (leaderboardBtn) {
+        leaderboardBtn.addEventListener('click', () => {
+            playClickSound();
+            openLeaderboardModal();
+        });
+    }
+    
+    if (photoInput) {
+        photoInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                uploadProfilePhoto(file);
+            }
+        });
     }
 }
