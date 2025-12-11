@@ -3535,6 +3535,9 @@ function setupEventListeners() {
                 elements.projectsCheckboxes.parentElement.style.display = 'none';
             } else {
                 elements.projectsCheckboxes.parentElement.style.display = 'block';
+                // Uncheck all project checkboxes when toggling off "all projects"
+                const checkboxes = elements.projectsCheckboxes.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = false);
             }
         });
     }
@@ -4704,10 +4707,12 @@ function renderProjectCheckboxes(selectedUserId) {
     }
 
     const allowedProjects = user.allowedProjects || [];
-    const hasAllAccess = allowedProjects.length === 0;
+    // Only check projects that are explicitly in the allowedProjects array
+    // If user has all access (empty array), checkboxes will be unchecked when "all projects" is toggled off
 
     state.projects.forEach(project => {
-        const isChecked = hasAllAccess || allowedProjects.includes(project.id);
+        // Only check if project is explicitly in the list (not when hasAllAccess)
+        const isChecked = allowedProjects.includes(project.id);
 
         const item = document.createElement('div');
         item.className = 'project-checkbox-item';
