@@ -4998,6 +4998,22 @@ body.read-only #leaderboard-modal {
     display: flex !important;
 }
 
+/* Ensure photo crop modal and buttons visible for all users */
+body.read-only #crop-modal,
+body.read-only #crop-modal .primary-btn,
+body.read-only #crop-modal .secondary-btn,
+body.read-only #crop-save,
+body.read-only #crop-cancel,
+body.read-only .crop-footer,
+body.read-only .crop-footer button,
+body.read-only #profile-modal .primary-btn,
+body.read-only #profile-modal .secondary-btn,
+body.read-only .profile-avatar-edit,
+body.read-only .profile-avatar-upload,
+body.read-only #profile-avatar-upload {
+    display: flex !important;
+}
+
 /* Light mode for profile */
 body.light-mode .profile-level-section {
     background: #f1f5f9;
