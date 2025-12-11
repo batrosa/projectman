@@ -92,12 +92,57 @@ function hideLoadingScreen() {
     }
 }
 
+// Auto-fix broken cache on mobile - detects if CSS failed to load properly
+function checkAndFixBrokenCache() {
+    // Check if main app container has proper layout
+    const appContainer = document.querySelector('.app-container');
+    const sidebar = document.querySelector('.sidebar');
+    
+    if (appContainer && sidebar) {
+        const appStyles = window.getComputedStyle(appContainer);
+        const sidebarStyles = window.getComputedStyle(sidebar);
+        
+        // If flexbox isn't working or sidebar isn't properly styled on mobile
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile) {
+            const sidebarTransform = sidebarStyles.transform;
+            const sidebarPosition = sidebarStyles.position;
+            
+            // If sidebar isn't properly hidden on mobile (no transform or not fixed)
+            if (sidebarPosition !== 'fixed' || 
+                (sidebarTransform === 'none' && !sidebar.classList.contains('active'))) {
+                console.warn('Detected broken CSS state, attempting recovery...');
+                
+                // Force clear cache and reload
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => caches.delete(name));
+                    }).then(() => {
+                        if ('serviceWorker' in navigator) {
+                            navigator.serviceWorker.getRegistrations().then(regs => {
+                                regs.forEach(reg => reg.unregister());
+                                // Reload after clearing
+                                setTimeout(() => window.location.reload(true), 100);
+                            });
+                        } else {
+                            window.location.reload(true);
+                        }
+                    });
+                }
+            }
+        }
+    }
+}
+
 // Start tips immediately and init PIN screen
 document.addEventListener('DOMContentLoaded', () => {
     // Capture invite code from URL immediately (before auth flow)
     captureInviteCodeFromUrl();
     
     startLoadingTips();
+    
+    // Check for broken cache after a short delay (after CSS should be applied)
+    setTimeout(checkAndFixBrokenCache, 1500);
     
     // Disable double-tap zoom on mobile
     let lastTouchEnd = 0;

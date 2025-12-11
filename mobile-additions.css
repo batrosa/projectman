@@ -1,26 +1,46 @@
 /* Mobile Optimizations for 9:16 Format */
+/* With fallbacks for older browsers */
 
 @media (max-width: 768px) {
 
     /* Top bar - sticky */
     .top-bar {
         padding: 1rem;
+        -webkit-flex-wrap: wrap;
         flex-wrap: wrap;
-        gap: 0.75rem;
+        position: -webkit-sticky;
         position: sticky;
         top: 0;
+        background: #0f172a;
         background: var(--bg-color);
+        -webkit-backdrop-filter: blur(10px);
         backdrop-filter: blur(10px);
         z-index: 100;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
         border-bottom: 1px solid var(--border);
+    }
+
+    .top-bar > * {
+        margin-bottom: 0.75rem;
     }
 
     .actions {
         width: 100%;
-        gap: 0.75rem;
         margin-top: 0.75rem;
+        display: -webkit-box;
+        display: -webkit-flex;
         display: flex;
+        -webkit-flex-wrap: wrap;
         flex-wrap: wrap;
+    }
+    
+    .actions > * {
+        margin-right: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .actions > *:last-child {
+        margin-right: 0;
     }
 
     #add-task-btn {

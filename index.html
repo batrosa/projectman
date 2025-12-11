@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=9.0" as="style">
-    <link rel="stylesheet" href="style.css?v=9.0">
-    <link rel="stylesheet" href="mobile-additions.css?v=8.3">
+    <link rel="preload" href="style.css?v=10.0" as="style">
+    <link rel="stylesheet" href="style.css?v=10.0">
+    <link rel="stylesheet" href="mobile-additions.css?v=10.0">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -400,6 +400,43 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        
+        /* Critical fallback styles for mobile layout */
+        @media (max-width: 768px) {
+            .app-container {
+                display: block !important;
+                height: 100vh !important;
+                width: 100% !important;
+                overflow: hidden !important;
+            }
+            .sidebar {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                height: 100% !important;
+                width: 85% !important;
+                max-width: 320px !important;
+                z-index: 2000 !important;
+                transform: translateX(-100%) !important;
+                background: #0f172a !important;
+                display: flex !important;
+                flex-direction: column !important;
+            }
+            .sidebar.active {
+                transform: translateX(0) !important;
+            }
+            .main-content {
+                width: 100% !important;
+                height: 100vh !important;
+                display: flex !important;
+                flex-direction: column !important;
+            }
+            .project-list {
+                flex: 1 !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+        }
     </style>
 
     <!-- Version checker - ОТКЛЮЧЕН временно для отладки -->
@@ -412,7 +449,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=7.1" defer></script>
+    <script src="script.js?v=10.0" defer></script>
 </head>
 
 <body>
