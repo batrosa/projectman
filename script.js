@@ -2085,12 +2085,8 @@ function openStatusMenu(event, task, currentSubStatus) {
                  addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work', false, true);
              } 
         }
-    } else {
-        // Task is done - managers can return to work (requires revision reason)
-        if (canManage) {
-            addOption('Вернуть в работу', '<i class="fa-solid fa-rotate-left"></i>', 'in_work', false, true);
-        }
     }
+    // Task is done (archived) - no actions available, task is final
     
     // Position menu
     const badge = event.target.closest('.status-badge');
@@ -2202,6 +2198,7 @@ function createTaskCard(task) {
     }
 
     // Permission check for cursor style
+    // Tasks in 'done' (archive) cannot be modified - they are final
     if (currentSubStatus !== 'done') {
         // Assignee can interact with assigned/in_work tasks
         if (isAssignee) {
@@ -2209,10 +2206,8 @@ function createTaskCard(task) {
         }
         // Managers (owner, admin, moderator) can interact with completed tasks
         if (canManage && currentSubStatus === 'completed') canInteract = true;
-    } else {
-        // Managers can return done tasks to work
-        if (canManage) canInteract = true;
     }
+    // Done tasks are archived and final - no interaction allowed
 
     if (canInteract) {
         badge.onclick = (e) => {
