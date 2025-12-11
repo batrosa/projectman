@@ -2537,10 +2537,20 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                 if (taskDoc.exists) {
                     const task = taskDoc.data();
                     
-                    // Check if completed on time
-                    const now = new Date();
+                    // Check if completed on time (use completedAt, not current time)
                     const deadline = task.deadline ? new Date(task.deadline) : null;
-                    const wasOnTime = deadline ? now <= deadline : true;
+                    let completedDate = new Date(); // fallback to now
+                    
+                    // Get the actual completion date
+                    if (task.completedAt) {
+                        if (task.completedAt.toDate) {
+                            completedDate = task.completedAt.toDate();
+                        } else {
+                            completedDate = new Date(task.completedAt);
+                        }
+                    }
+                    
+                    const wasOnTime = deadline ? completedDate <= deadline : true;
                     
                     // Check if was returned for revision
                     const wasReturned = task.wasReturned || task.revisionReason ? true : false;
