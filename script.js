@@ -3629,6 +3629,9 @@ async function loadUserRole(user) {
 
     // User has organization, proceed to app
     finishAuth(state.currentUser.role);
+    
+    // Update Telegram status after user data loaded
+    window.updateTelegramStatus && window.updateTelegramStatus();
 }
 
 function finishAuth(role) {
@@ -4334,17 +4337,6 @@ function initTelegramConnection() {
     
     let currentCode = '';
     
-    // Update status based on user data
-    function updateTelegramStatus() {
-        if (state.currentUser?.telegramChatId) {
-            statusEl.textContent = 'Подключен ✓';
-            statusEl.style.color = 'var(--success)';
-        } else {
-            statusEl.textContent = 'Не подключен';
-            statusEl.style.color = '';
-        }
-    }
-    
     // Open modal
     if (connectBtn) {
         connectBtn.addEventListener('click', () => {
@@ -4408,7 +4400,7 @@ function initTelegramConnection() {
                     connectScreen.style.display = 'none';
                     connectedScreen.style.display = 'block';
                     userInfoEl.textContent = result.username ? `@${result.username}` : 'Telegram подключен';
-                    updateTelegramStatus();
+                    window.updateTelegramStatus && window.updateTelegramStatus();
                     
                     // Send welcome message
                     await sendTelegramNotification(result.chatId, 
@@ -4445,7 +4437,7 @@ function initTelegramConnection() {
                 state.currentUser.telegramUsername = null;
                 
                 modal.classList.remove('active');
-                updateTelegramStatus();
+                window.updateTelegramStatus && window.updateTelegramStatus();
                 playClickSound();
             } catch (error) {
                 console.error('Error disconnecting Telegram:', error);
@@ -4454,8 +4446,19 @@ function initTelegramConnection() {
         });
     }
     
-    // Initial status update
-    setTimeout(updateTelegramStatus, 1000);
+    // Global function to update status (called after auth)
+    window.updateTelegramStatus = function() {
+        const statusEl = document.getElementById('telegram-status');
+        if (!statusEl) return;
+        
+        if (state.currentUser?.telegramChatId) {
+            statusEl.textContent = 'Подключен ✓';
+            statusEl.style.color = 'var(--success)';
+        } else {
+            statusEl.textContent = 'Не подключен';
+            statusEl.style.color = '';
+        }
+    };
 }
 
 function checkReminders(tasks) {
