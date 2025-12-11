@@ -3630,8 +3630,9 @@ async function loadUserRole(user) {
     // User has organization, proceed to app
     finishAuth(state.currentUser.role);
     
-    // Update Telegram status after user data loaded
+    // Update Telegram status and start listener after user data loaded
     window.updateTelegramStatus && window.updateTelegramStatus();
+    window.startTelegramListener && window.startTelegramListener();
 }
 
 function finishAuth(role) {
@@ -4304,7 +4305,7 @@ async function saveTelegramCode(code) {
     }
 }
 
-// Initialize Telegram connection UI
+// Initialize Telegram connection UI (called on DOMContentLoaded)
 function initTelegramConnection() {
     const connectBtn = document.getElementById('telegram-connect-btn');
     const modal = document.getElementById('telegram-modal');
@@ -4357,29 +4358,6 @@ function initTelegramConnection() {
         });
     }
     
-    // Listen for Telegram connection changes
-    if (state.currentUser?.uid) {
-        db.collection('users').doc(state.currentUser.uid).onSnapshot((doc) => {
-            if (doc.exists) {
-                const data = doc.data();
-                if (data.telegramChatId && !state.currentUser.telegramChatId) {
-                    // Just connected!
-                    state.currentUser.telegramChatId = data.telegramChatId;
-                    state.currentUser.telegramUsername = data.telegramUsername;
-                    
-                    // Update UI
-                    if (modal?.classList.contains('active')) {
-                        connectScreen.style.display = 'none';
-                        connectedScreen.style.display = 'block';
-                        userInfoEl.textContent = data.telegramUsername ? 
-                            `@${data.telegramUsername}` : 'Telegram подключен';
-                    }
-                    window.updateTelegramStatus && window.updateTelegramStatus();
-                }
-            }
-        });
-    }
-    
     // Disconnect
     if (disconnectBtn) {
         disconnectBtn.addEventListener('click', async () => {
@@ -4404,7 +4382,7 @@ function initTelegramConnection() {
         });
     }
     
-    // Global function to update status (called after auth)
+    // Global function to update status
     window.updateTelegramStatus = function() {
         const statusEl = document.getElementById('telegram-status');
         if (!statusEl) return;
@@ -4416,6 +4394,43 @@ function initTelegramConnection() {
             statusEl.textContent = 'Не подключен';
             statusEl.style.color = '';
         }
+    };
+    
+    // Global function to start listening for Telegram changes (called after auth)
+    window.startTelegramListener = function() {
+        if (!state.currentUser?.uid) return;
+        
+        db.collection('users').doc(state.currentUser.uid).onSnapshot((doc) => {
+            if (doc.exists) {
+                const data = doc.data();
+                const wasConnected = state.currentUser.telegramChatId;
+                const isConnected = data.telegramChatId;
+                
+                // Update local state
+                state.currentUser.telegramChatId = data.telegramChatId || null;
+                state.currentUser.telegramUsername = data.telegramUsername || null;
+                
+                // If just connected, update UI
+                if (isConnected && !wasConnected) {
+                    const modal = document.getElementById('telegram-modal');
+                    const connectScreen = document.getElementById('telegram-connect-screen');
+                    const connectedScreen = document.getElementById('telegram-connected-screen');
+                    const userInfoEl = document.getElementById('telegram-user-info');
+                    
+                    if (modal?.classList.contains('active')) {
+                        connectScreen.style.display = 'none';
+                        connectedScreen.style.display = 'block';
+                        if (userInfoEl) {
+                            userInfoEl.textContent = data.telegramUsername ? 
+                                `@${data.telegramUsername}` : 'Telegram подключен';
+                        }
+                    }
+                }
+                
+                // Always update status button
+                window.updateTelegramStatus && window.updateTelegramStatus();
+            }
+        });
     };
 }
 
