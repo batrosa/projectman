@@ -357,10 +357,16 @@ function openFilePreview(attachment) {
     console.log('File type:', fileType);
     console.log('File URL:', attachment.url);
 
-    // 1. OFFICE DOCUMENTS (Word, Excel) -> Google Docs Viewer
+    // 1. OFFICE DOCUMENTS (Word, Excel) -> Download directly (most reliable)
     if (['word', 'excel'].includes(fileType)) {
-        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=false`;
-        window.open(viewerUrl, '_blank');
+        // Create download link
+        const link = document.createElement('a');
+        link.href = attachment.url;
+        link.download = attachment.name || 'file';
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
         playClickSound();
         return;
     }
