@@ -4287,6 +4287,39 @@ async function sendTelegramReminderNotification(userEmail, taskTitle, projectNam
     await sendTelegramNotification(user.telegramChatId, message);
 }
 
+// Send "take task into work" reminder via Telegram
+async function sendTelegramTakeTaskReminder(userEmail, taskTitle, projectName) {
+    // Find user by email
+    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
+    if (!user || !user.telegramChatId) return;
+    
+    const message = `📋 <b>Напоминание!</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+
+Пожалуйста, возьмите задачу в работу как можно скорее!`;
+    
+    await sendTelegramNotification(user.telegramChatId, message);
+}
+
+// Send overdue notification via Telegram
+async function sendTelegramOverdueNotification(userEmail, taskTitle, projectName, deadline) {
+    // Find user by email
+    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
+    if (!user || !user.telegramChatId) return;
+    
+    const message = `⚠️ <b>Просрочка!</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Срок был:</b> ${deadline}
+
+Срок выполнения задачи истёк! Пожалуйста, завершите её как можно скорее.`;
+    
+    await sendTelegramNotification(user.telegramChatId, message);
+}
+
 // Escape HTML for Telegram
 function escapeHtmlForTelegram(text) {
     if (!text) return '';
@@ -4526,12 +4559,14 @@ function checkReminders(tasks) {
     // Only run if we have users loaded
     if (!state.users || state.users.length === 0) return;
 
+    const now = new Date();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+
     tasks.forEach(task => {
         if (task.status === 'done') return;
-        if (task.reminderSent) return;
 
-        const now = new Date();
         const deadlineDate = new Date(task.deadline);
+        const projectName = document.getElementById('project-title')?.textContent || 'Проект';
 
         // Handle createdAt
         let createdAtDate;
@@ -4543,27 +4578,78 @@ function checkReminders(tasks) {
             return;
         }
 
-        const totalDuration = deadlineDate - createdAtDate;
-        const timeLeft = deadlineDate - now;
+        // Get current subStatus
+        const currentSubStatus = task.subStatus || 'assigned';
 
-        if (totalDuration <= 0) return;
+        // 1. Check for "take task" reminder (status = assigned, 2+ hours passed)
+        if (currentSubStatus === 'assigned' && task.assigneeEmail) {
+            const timeSinceCreation = now - createdAtDate;
+            
+            // Check if 2+ hours since creation
+            if (timeSinceCreation >= TWO_HOURS_MS) {
+                // Check last reminder time
+                let lastReminderTime = null;
+                if (task.lastNotTakenReminder) {
+                    if (task.lastNotTakenReminder.toDate) {
+                        lastReminderTime = task.lastNotTakenReminder.toDate();
+                    } else {
+                        lastReminderTime = new Date(task.lastNotTakenReminder);
+                    }
+                }
+                
+                // Send if never sent or 2+ hours since last reminder
+                const shouldSend = !lastReminderTime || (now - lastReminderTime >= TWO_HOURS_MS);
+                
+                if (shouldSend) {
+                    const emails = task.assigneeEmail.split(',');
+                    emails.forEach((email) => {
+                        if (email && email.trim()) {
+                            sendTelegramTakeTaskReminder(email.trim(), task.title, projectName);
+                        }
+                    });
+                    
+                    // Update last reminder time
+                    db.collection('tasks').doc(task.id).update({ 
+                        lastNotTakenReminder: new Date().toISOString() 
+                    });
+                }
+            }
+        }
 
-        const percentage = (timeLeft / totalDuration) * 100;
-
-        if (percentage < 20) {
-            // Send Telegram reminder
-            if (task.assigneeEmail) {
+        // 2. Check for overdue notification (status = in_work, deadline passed)
+        if (currentSubStatus === 'in_work' && task.assigneeEmail && !task.overdueNotificationSent) {
+            if (now > deadlineDate) {
                 const emails = task.assigneeEmail.split(',');
-                const projectName = document.getElementById('project-title')?.textContent || 'Проект';
-
                 emails.forEach((email) => {
                     if (email && email.trim()) {
-                        sendTelegramReminderNotification(email.trim(), task.title, projectName, task.deadline);
+                        sendTelegramOverdueNotification(email.trim(), task.title, projectName, task.deadline);
                     }
                 });
-
+                
                 // Mark as sent
-                db.collection('tasks').doc(task.id).update({ reminderSent: true });
+                db.collection('tasks').doc(task.id).update({ overdueNotificationSent: true });
+            }
+        }
+
+        // 3. Original deadline reminder (less than 20% time left)
+        if (!task.reminderSent && task.assigneeEmail) {
+            const totalDuration = deadlineDate - createdAtDate;
+            const timeLeft = deadlineDate - now;
+
+            if (totalDuration > 0) {
+                const percentage = (timeLeft / totalDuration) * 100;
+
+                if (percentage < 20 && percentage > 0) {
+                    const emails = task.assigneeEmail.split(',');
+                    emails.forEach((email) => {
+                        if (email && email.trim()) {
+                            sendTelegramReminderNotification(email.trim(), task.title, projectName, task.deadline);
+                        }
+                    });
+
+                    // Mark as sent
+                    db.collection('tasks').doc(task.id).update({ reminderSent: true });
+                }
             }
         }
     });
