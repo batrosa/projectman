@@ -4714,7 +4714,6 @@ body.keyboard-nav .task-card.keyboard-focus {
     color: white;
     margin-bottom: 0.5rem;
     position: relative;
-    overflow: hidden;
 }
 
 .podium-place.gold .podium-avatar {
@@ -4739,6 +4738,7 @@ body.keyboard-nav .task-card.keyboard-focus {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 50%;
 }
 
 .podium-medal {
