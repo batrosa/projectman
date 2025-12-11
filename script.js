@@ -3516,9 +3516,8 @@ function setupEventListeners() {
                     const hasAllAccess = !user.allowedProjects || user.allowedProjects.length === 0;
                     elements.allowAllProjects.checked = hasAllAccess;
 
-                    if (!hasAllAccess) {
-                        elements.projectsCheckboxes.parentElement.style.display = 'block';
-                    }
+                    // Always hide project list by default, show only when admin unchecks
+                    elements.projectsCheckboxes.parentElement.style.display = hasAllAccess ? 'none' : 'block';
 
                     renderProjectCheckboxes(userId);
                 }
