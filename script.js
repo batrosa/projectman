@@ -6065,9 +6065,8 @@ function openLeaderboardModal() {
     
     let podiumHTML = '';
     
-    // On mobile: render in order 1, 2, 3. On desktop: silver, gold, bronze for podium look
-    const isMobile = window.innerWidth <= 768;
-    const podiumOrder = isMobile ? [0, 1, 2] : [1, 0, 2];
+    // Render in order: 1st, 2nd, 3rd
+    const podiumOrder = [0, 1, 2];
     
     podiumOrder.forEach((orderIndex) => {
         const user = top3[orderIndex];

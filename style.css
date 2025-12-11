@@ -4677,61 +4677,69 @@ body.keyboard-nav .task-card.keyboard-focus {
 
 .leaderboard-podium {
     display: flex;
-    justify-content: center;
-    align-items: flex-end;
+    flex-direction: column;
     gap: 0.75rem;
-    padding: 1rem 0;
+    padding: 0;
 }
 
 .podium-place {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    text-align: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-radius: 16px;
+    text-align: left;
 }
 
 .podium-place.gold {
-    order: 2;
+    order: 1;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 184, 0, 0.1));
+    border: 1px solid rgba(255, 215, 0, 0.3);
 }
 
 .podium-place.silver {
-    order: 1;
+    order: 2;
+    background: linear-gradient(135deg, rgba(192, 192, 192, 0.15), rgba(168, 168, 168, 0.1));
+    border: 1px solid rgba(192, 192, 192, 0.3);
 }
 
 .podium-place.bronze {
     order: 3;
+    background: linear-gradient(135deg, rgba(205, 127, 50, 0.15), rgba(184, 114, 45, 0.1));
+    border: 1px solid rgba(205, 127, 50, 0.3);
 }
 
 .podium-avatar {
-    width: 60px;
-    height: 60px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: white;
-    margin-bottom: 0.5rem;
     position: relative;
+    flex-shrink: 0;
 }
 
 .podium-place.gold .podium-avatar {
-    width: 80px;
-    height: 80px;
-    font-size: 1.5rem;
+    width: 56px;
+    height: 56px;
+    font-size: 1.2rem;
     background: linear-gradient(135deg, #ffd700, #ffb800);
-    box-shadow: 0 4px 20px rgba(255, 215, 0, 0.4);
+    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4);
 }
 
 .podium-place.silver .podium-avatar {
     background: linear-gradient(135deg, #c0c0c0, #a8a8a8);
-    box-shadow: 0 4px 15px rgba(192, 192, 192, 0.4);
+    box-shadow: 0 4px 12px rgba(192, 192, 192, 0.4);
 }
 
 .podium-place.bronze .podium-avatar {
     background: linear-gradient(135deg, #cd7f32, #b8722d);
-    box-shadow: 0 4px 15px rgba(205, 127, 50, 0.4);
+    box-shadow: 0 4px 12px rgba(205, 127, 50, 0.4);
 }
 
 .podium-avatar img {
@@ -4771,28 +4779,34 @@ body.keyboard-nav .task-card.keyboard-focus {
 }
 
 .podium-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.podium-place > .podium-name,
+.podium-place > .podium-level {
     display: none;
 }
 
-.podium-name {
-    font-size: 0.85rem;
+.podium-info .podium-name {
+    font-size: 1rem;
     font-weight: 600;
-    margin-bottom: 0.25rem;
-    max-width: 100px;
+    margin-bottom: 0.15rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.podium-xp {
-    font-size: 0.75rem;
+.podium-info .podium-level {
+    font-size: 0.8rem;
     color: var(--text-secondary);
 }
 
-.podium-level {
-    font-size: 0.7rem;
+.podium-place > .podium-xp {
+    font-size: 1.1rem;
+    font-weight: 700;
     color: var(--primary);
-    font-weight: 500;
+    white-space: nowrap;
 }
 
 .leaderboard-list {
@@ -4898,74 +4912,31 @@ body.keyboard-nav .task-card.keyboard-focus {
         padding: 1rem;
     }
     
-    .leaderboard-podium {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.75rem;
-        padding: 0;
-    }
-    
     .podium-place {
-        flex-direction: row;
-        align-items: center;
-        gap: 1rem;
-        padding: 1rem;
-        border-radius: 16px;
-        text-align: left;
+        padding: 0.875rem 1rem;
     }
     
-    .podium-place.gold {
-        order: 1;
-        background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 184, 0, 0.1));
-        border: 1px solid rgba(255, 215, 0, 0.3);
+    .podium-avatar {
+        width: 46px !important;
+        height: 46px !important;
+        font-size: 1rem !important;
     }
     
-    .podium-place.silver {
-        order: 2;
-        background: linear-gradient(135deg, rgba(192, 192, 192, 0.15), rgba(168, 168, 168, 0.1));
-        border: 1px solid rgba(192, 192, 192, 0.3);
-    }
-    
-    .podium-place.bronze {
-        order: 3;
-        background: linear-gradient(135deg, rgba(205, 127, 50, 0.15), rgba(184, 114, 45, 0.1));
-        border: 1px solid rgba(205, 127, 50, 0.3);
-    }
-    
-    .podium-place .podium-avatar {
-        margin-bottom: 0;
-        flex-shrink: 0;
-    }
-    
-    .podium-info {
-        display: block;
-        flex: 1;
-        min-width: 0;
-    }
-    
-    .podium-place > .podium-name,
-    .podium-place > .podium-level {
-        display: none;
+    .podium-place.gold .podium-avatar {
+        width: 50px !important;
+        height: 50px !important;
     }
     
     .podium-info .podium-name {
-        max-width: none;
-        font-size: 0.95rem;
-        margin-bottom: 0.15rem;
-        display: block;
+        font-size: 0.9rem;
     }
     
     .podium-info .podium-level {
         font-size: 0.75rem;
-        display: block;
-        color: var(--text-secondary);
     }
     
     .podium-place > .podium-xp {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: var(--primary);
-        white-space: nowrap;
+        font-size: 1rem;
     }
     
     .profile-stats {
@@ -4979,18 +4950,6 @@ body.keyboard-nav .task-card.keyboard-focus {
     
     .stat-value {
         font-size: 1.1rem;
-    }
-    
-    .podium-avatar {
-        width: 48px !important;
-        height: 48px !important;
-        font-size: 1rem !important;
-    }
-    
-    .podium-place.gold .podium-avatar {
-        width: 56px !important;
-        height: 56px !important;
-        font-size: 1.1rem !important;
     }
     
     .podium-medal {
