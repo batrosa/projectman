@@ -2568,18 +2568,28 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         updates.assigneeCompleted = true;
         updates.completedAt = new Date().toISOString();
         
+        const completedByName = state.currentUser ? 
+            `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : 'Исполнитель';
+        
         // Add completion proof data if provided
         if (completionData) {
             updates.completionComment = completionData.comment;
             updates.completionProof = completionData.proof;
-            updates.completedBy = state.currentUser ? 
-                `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() : 'Unknown';
+            updates.completedBy = completedByName;
         }
         
         // Clear revision data when task is completed again
         updates.revisionReason = null;
         updates.revisionReturnedBy = null;
         updates.revisionReturnedAt = null;
+        
+        // Send notification to task creator about completion
+        const task = state.tasks.find(t => t.id === taskId);
+        if (task && task.createdByEmail) {
+            const project = state.projects.find(p => p.id === task.projectId);
+            const projectName = project?.name || 'Проект';
+            sendTelegramCompletionNotification(task.createdByEmail, task.title, projectName, completedByName);
+        }
     } else {
         updates.assigneeCompleted = false;
     }
@@ -3356,7 +3366,8 @@ function setupEventListeners() {
                 assigneeCompleted: false,
                 attachments: attachments, // Add attachments array
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                createdBy: createdBy
+                createdBy: createdBy,
+                createdByEmail: state.currentUser?.email || ''
             });
 
             if (assigneeEmail) {
@@ -4546,6 +4557,23 @@ async function sendTelegramOverdueNotification(userEmail, taskTitle, projectName
 Срок выполнения задачи истёк! Пожалуйста, завершите её как можно скорее.`;
     
     await sendTelegramNotification(user.telegramChatId, message);
+}
+
+// Send task completion notification to creator/admin via Telegram
+async function sendTelegramCompletionNotification(creatorEmail, taskTitle, projectName, completedByName) {
+    // Find creator by email
+    const creator = state.users.find(u => u.email?.toLowerCase() === creatorEmail?.toLowerCase());
+    if (!creator || !creator.telegramChatId) return;
+    
+    const message = `✅ <b>Задача выполнена!</b>
+
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
+<b>Исполнитель:</b> ${escapeHtmlForTelegram(completedByName)}
+
+Пожалуйста, проверьте выполнение задачи.`;
+    
+    await sendTelegramNotification(creator.telegramChatId, message);
 }
 
 // Escape HTML for Telegram
