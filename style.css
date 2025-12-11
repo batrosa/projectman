@@ -1337,7 +1337,27 @@ body.read-only #telegram-modal .primary-btn,
 body.read-only #telegram-modal .danger-btn,
 body.read-only #telegram-modal .copy-code-btn,
 body.read-only #verify-telegram-btn,
-body.read-only #disconnect-telegram-btn {
+body.read-only #disconnect-telegram-btn,
+/* Task interaction for employees */
+body.read-only .info-task,
+body.read-only .status-badge,
+body.read-only .status-dropdown,
+body.read-only .status-option,
+/* Completion proof modal */
+body.read-only #completion-proof-modal,
+body.read-only #completion-proof-modal .primary-btn,
+body.read-only #completion-proof-modal .secondary-btn,
+body.read-only #add-completion-file-btn,
+body.read-only .remove-attachment-btn,
+/* File preview */
+body.read-only #preview-download-btn,
+body.read-only #files-list-modal .secondary-btn,
+/* PIN screen */
+body.read-only .pin-key,
+body.read-only .pin-keypad button,
+/* Task details modal */
+body.read-only #task-details-modal,
+body.read-only #task-details-modal .secondary-btn {
     display: flex !important;
 }
 
