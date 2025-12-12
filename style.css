@@ -1352,7 +1352,7 @@ body.read-only #disconnect-telegram-btn,
 /* Task interaction for employees */
 body.read-only .info-task,
 body.read-only .status-badge,
-body.read-only .status-dropdown,
+body.read-only .status-dropdown.active,
 body.read-only .status-option,
 /* Completion proof modal */
 body.read-only #completion-proof-modal,
@@ -1397,7 +1397,7 @@ body.read-only .status-badge {
     -webkit-user-select: none;
 }
 
-body.read-only .status-dropdown {
+body.read-only .status-dropdown.active {
     pointer-events: auto !important;
 }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'projectman-v56';
+const CACHE_NAME = 'projectman-v57';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
