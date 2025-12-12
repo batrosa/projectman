@@ -6165,8 +6165,9 @@ function openLeaderboardModal() {
     if (!modal) return;
     
     const podiumContainer = document.getElementById('leaderboard-podium');
+    const MIN_LEVEL_FOR_RANKING = 5;
     
-    // Get all users from organization
+    // Get all users from organization with level 5+
     const allUsers = state.users
         .filter(u => u.organizationId === state.organization?.id)
         .map(u => {
@@ -6182,10 +6183,15 @@ function openLeaderboardModal() {
                 onTimePercent,
                 level
             };
-        });
+        })
+        // Only include users with level 5 or higher
+        .filter(u => u.level.level >= MIN_LEVEL_FOR_RANKING);
+    
+    // Header note about level requirement
+    let headerHTML = `<div class="leaderboard-note"><i class="fa-solid fa-info-circle"></i> Рейтинг доступен с ${MIN_LEVEL_FOR_RANKING} уровня</div>`;
     
     if (allUsers.length === 0) {
-        podiumContainer.innerHTML = '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет пользователей</p></div>';
+        podiumContainer.innerHTML = headerHTML + '<div class="leaderboard-empty"><i class="fa-solid fa-trophy" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i><p>Пока нет сотрудников с 5+ уровнем</p></div>';
         modal.classList.add('active');
         return;
     }
@@ -6248,8 +6254,8 @@ function openLeaderboardModal() {
         `;
     });
     
-    podiumContainer.innerHTML = podiumHTML;
-    
+    podiumContainer.innerHTML = headerHTML + podiumHTML;
+
     modal.classList.add('active');
 }
 
