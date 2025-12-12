@@ -2178,29 +2178,41 @@ function openStatusMenu(event, task, currentSubStatus) {
         globalStatusOverlay.classList.add('active');
         globalStatusMenu.style.cssText = '';
     } else {
-        // PC: near badge
+        // PC: position directly below badge
         const badge = event.target.closest('.status-badge');
         const rect = badge.getBoundingClientRect();
         
-        let top = rect.bottom + 8;
+        // Reset styles first
+        globalStatusMenu.style.cssText = '';
+        
+        // Calculate position (fixed to viewport)
+        let top = rect.bottom + 4;
         let left = rect.left;
         
-        // Keep on screen
+        // Menu dimensions
         const menuWidth = 240;
-        const menuHeight = 200;
+        const menuHeight = 180;
         
-        if (left + menuWidth > window.innerWidth - 16) {
-            left = window.innerWidth - menuWidth - 16;
+        // Keep on screen horizontally
+        if (left + menuWidth > window.innerWidth - 10) {
+            left = rect.right - menuWidth;
         }
-        if (top + menuHeight > window.innerHeight - 16) {
-            top = rect.top - menuHeight - 8;
+        if (left < 10) {
+            left = 10;
         }
         
+        // Keep on screen vertically - if no space below, show above
+        if (top + menuHeight > window.innerHeight - 10) {
+            top = rect.top - menuHeight - 4;
+        }
+        
+        globalStatusMenu.style.position = 'fixed';
         globalStatusMenu.style.top = top + 'px';
         globalStatusMenu.style.left = left + 'px';
         globalStatusMenu.style.right = 'auto';
         globalStatusMenu.style.bottom = 'auto';
-        globalStatusMenu.style.width = 'auto';
+        globalStatusMenu.style.width = menuWidth + 'px';
+        globalStatusMenu.style.transform = 'none';
     }
     
     // Animate in
