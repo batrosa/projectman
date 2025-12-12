@@ -2411,24 +2411,19 @@ body.light-mode .project-checkbox-item:hover {
     border-color: rgba(46, 204, 113, 0.3);
 }
 
-/* ========== STATUS DROPDOWN - CLEAN DESIGN ========== */
-.status-dropdown-container {
-    position: relative;
-    display: inline-block;
-}
+/* ========== STATUS DROPDOWN - ANIMATED ========== */
 
-/* Overlay */
+/* Overlay with blur */
 .status-menu-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     z-index: 9998;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.2s ease;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .status-menu-overlay.active {
@@ -2436,111 +2431,248 @@ body.light-mode .project-checkbox-item:hover {
     visibility: visible;
 }
 
-/* Dropdown */
+/* Main dropdown container */
 .status-dropdown {
     position: fixed;
     z-index: 9999;
-    background: var(--card-bg, #1e293b);
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-    border-radius: 12px;
-    padding: 6px;
-    min-width: 200px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    min-width: 220px;
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 
+        0 25px 50px -12px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    
+    /* Initial state - hidden */
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-8px);
-    transition: all 0.2s ease;
+    transform: scale(0.95) translateY(-10px);
+    transform-origin: top center;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 body.light-mode .status-dropdown {
-    background: #ffffff;
-    border-color: #e2e8f0;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 
+        0 25px 50px -12px rgba(0, 0, 0, 0.25),
+        0 0 0 1px rgba(0, 0, 0, 0.05) inset;
 }
 
+/* Active state with spring animation */
 .status-dropdown.active {
     opacity: 1;
     visibility: visible;
-    transform: translateY(0);
+    transform: scale(1) translateY(0);
 }
 
-/* Option */
+/* Header */
+.status-dropdown-header {
+    padding: 8px 12px 12px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 4px;
+}
+
+.status-dropdown-header span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+body.light-mode .status-dropdown-header {
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+/* Status option button */
 .status-option {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
-    border-radius: 8px;
+    gap: 14px;
+    padding: 14px 16px;
+    margin: 4px 0;
+    border-radius: 12px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     font-weight: 500;
     color: var(--text-primary);
-    transition: background 0.15s ease;
+    background: transparent;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    
+    /* Stagger animation */
+    opacity: 0;
+    transform: translateX(-10px);
+    animation: statusOptionIn 0.3s ease forwards;
+}
+
+.status-option:nth-child(2) { animation-delay: 0.05s; }
+.status-option:nth-child(3) { animation-delay: 0.1s; }
+.status-option:nth-child(4) { animation-delay: 0.15s; }
+
+@keyframes statusOptionIn {
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Hover glow effect */
+.status-option::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--glow-color, rgba(99, 102, 241, 0.15)) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.status-option:hover::before {
+    opacity: 1;
 }
 
 .status-option:hover {
-    background: rgba(99, 102, 241, 0.1);
+    transform: translateX(4px);
 }
 
 .status-option:active {
-    background: rgba(99, 102, 241, 0.15);
+    transform: translateX(4px) scale(0.98);
 }
 
-body.light-mode .status-option:hover {
-    background: rgba(99, 102, 241, 0.08);
+/* Icon container */
+.status-option-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    position: relative;
+    z-index: 1;
+    transition: all 0.2s ease;
 }
 
-.status-option i {
-    width: 20px;
-    text-align: center;
-    font-size: 0.95rem;
+.status-option:hover .status-option-icon {
+    transform: scale(1.1);
 }
 
-/* Option colors */
-.status-option.opt-work i { color: #f59e0b; }
-.status-option.opt-complete i { color: #22c55e; }
-.status-option.opt-done i { color: #6366f1; }
-.status-option.opt-revision i { color: #f97316; }
+/* Icon variants */
+.status-option-icon.work {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.1) 100%);
+    color: #fbbf24;
+    --glow-color: rgba(251, 191, 36, 0.15);
+}
 
-/* Mobile */
+.status-option-icon.complete {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.1) 100%);
+    color: #22c55e;
+    --glow-color: rgba(34, 197, 94, 0.15);
+}
+
+.status-option-icon.done {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(79, 70, 229, 0.1) 100%);
+    color: #818cf8;
+    --glow-color: rgba(99, 102, 241, 0.15);
+}
+
+.status-option-icon.revision {
+    background: linear-gradient(135deg, rgba(251, 146, 60, 0.2) 0%, rgba(249, 115, 22, 0.1) 100%);
+    color: #fb923c;
+    --glow-color: rgba(251, 146, 60, 0.15);
+}
+
+/* Text */
+.status-option-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+    z-index: 1;
+}
+
+.status-option-label {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.status-option-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* ===== MOBILE STYLES ===== */
 @media (max-width: 768px) {
     .status-dropdown {
         position: fixed !important;
+        left: 0 !important;
+        right: 0 !important;
         bottom: 0 !important;
-        left: 8px !important;
-        right: 8px !important;
         top: auto !important;
-        width: auto !important;
-        border-radius: 16px 16px 0 0;
-        padding: 6px 6px 20px;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+        border-radius: 24px 24px 0 0;
+        padding: 12px 16px 32px;
         transform: translateY(100%);
+        transform-origin: bottom center;
     }
     
     .status-dropdown.active {
         transform: translateY(0);
     }
     
+    /* Drag handle */
     .status-dropdown::before {
         content: '';
         display: block;
-        width: 36px;
-        height: 4px;
-        background: rgba(255, 255, 255, 0.2);
-        border-radius: 2px;
-        margin: 8px auto 12px;
+        width: 40px;
+        height: 5px;
+        background: rgba(255, 255, 255, 0.25);
+        border-radius: 3px;
+        margin: 4px auto 16px;
     }
     
     body.light-mode .status-dropdown::before {
         background: rgba(0, 0, 0, 0.15);
     }
     
+    .status-dropdown-header {
+        padding: 4px 12px 16px;
+    }
+    
+    .status-dropdown-header span {
+        font-size: 0.8rem;
+    }
+    
     .status-option {
-        padding: 16px 18px;
+        padding: 18px 20px;
+        margin: 6px 0;
+        border-radius: 14px;
+    }
+    
+    .status-option-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        font-size: 1.2rem;
+    }
+    
+    .status-option-label {
         font-size: 1rem;
     }
     
-    .status-option i {
-        font-size: 1.1rem;
+    .status-option-desc {
+        font-size: 0.8rem;
     }
 }
 

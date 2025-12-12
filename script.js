@@ -2037,7 +2037,7 @@ function renderBoard() {
 }
 
 // --- NEW TASK CARD WITH STATUS BADGES ---
-// ========== GLOBAL STATUS MENU ==========
+// ========== GLOBAL STATUS MENU - ANIMATED ==========
 let globalStatusMenu = null;
 let globalStatusOverlay = null;
 
@@ -2054,9 +2054,10 @@ function createGlobalStatusMenu() {
     globalStatusMenu.className = 'status-dropdown';
     document.body.appendChild(globalStatusMenu);
     
-    // Close handlers
+    // Close on overlay click
     globalStatusOverlay.addEventListener('click', closeGlobalStatusMenu);
     
+    // Close on outside click (PC)
     document.addEventListener('click', (e) => {
         if (globalStatusMenu?.classList.contains('active') && 
             !globalStatusMenu.contains(e.target) && 
@@ -2065,6 +2066,7 @@ function createGlobalStatusMenu() {
         }
     });
     
+    // Close on Escape
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeGlobalStatusMenu();
     });
@@ -2075,7 +2077,7 @@ function closeGlobalStatusMenu() {
     globalStatusOverlay?.classList.remove('active');
     setTimeout(() => {
         if (globalStatusMenu) globalStatusMenu.innerHTML = '';
-    }, 200);
+    }, 300);
 }
 
 function openStatusMenu(event, task, currentSubStatus) {
@@ -2086,6 +2088,7 @@ function openStatusMenu(event, task, currentSubStatus) {
     globalStatusMenu.innerHTML = '';
     
     const canManage = canManageTasks();
+    const isMobile = window.innerWidth <= 768;
     
     // Check if user is assignee
     let isAssignee = false;
@@ -2102,11 +2105,26 @@ function openStatusMenu(event, task, currentSubStatus) {
         }
     }
     
-    // Add options
-    const addOption = (label, icon, cssClass, newStatus, requiresProof = false, requiresRevision = false) => {
+    // Add header
+    const header = document.createElement('div');
+    header.className = 'status-dropdown-header';
+    header.innerHTML = '<span>Выберите действие</span>';
+    globalStatusMenu.appendChild(header);
+    
+    // Option builder
+    const addOption = (label, desc, icon, iconType, newStatus, requiresProof = false, requiresRevision = false) => {
         const opt = document.createElement('div');
-        opt.className = `status-option ${cssClass}`;
-        opt.innerHTML = `<i class="${icon}"></i> ${label}`;
+        opt.className = 'status-option';
+        opt.style.setProperty('--glow-color', getGlowColor(iconType));
+        opt.innerHTML = `
+            <div class="status-option-icon ${iconType}">
+                <i class="fa-solid ${icon}"></i>
+            </div>
+            <div class="status-option-text">
+                <div class="status-option-label">${label}</div>
+                <div class="status-option-desc">${desc}</div>
+            </div>
+        `;
         
         opt.addEventListener('click', (e) => {
             e.preventDefault();
@@ -2114,57 +2132,78 @@ function openStatusMenu(event, task, currentSubStatus) {
             closeGlobalStatusMenu();
             playClickSound();
             
-            if (requiresProof) {
-                openCompletionProofModal(task.id);
-            } else if (requiresRevision) {
-                openRevisionReasonModal(task.id);
-            } else {
-                updateTaskSubStatus(task.id, newStatus);
-            }
+            setTimeout(() => {
+                if (requiresProof) {
+                    openCompletionProofModal(task.id);
+                } else if (requiresRevision) {
+                    openRevisionReasonModal(task.id);
+                } else {
+                    updateTaskSubStatus(task.id, newStatus);
+                }
+            }, 150);
         });
         
         globalStatusMenu.appendChild(opt);
     };
+    
+    function getGlowColor(type) {
+        const colors = {
+            'work': 'rgba(251, 191, 36, 0.15)',
+            'complete': 'rgba(34, 197, 94, 0.15)',
+            'done': 'rgba(99, 102, 241, 0.15)',
+            'revision': 'rgba(251, 146, 60, 0.15)'
+        };
+        return colors[type] || colors.work;
+    }
 
-    // Build menu based on status and permissions
+    // Build options based on status
     if (currentSubStatus !== 'done') {
         if (isAssignee) {
             if (currentSubStatus === 'assigned') {
-                addOption('Взять в работу', 'fa-solid fa-play', 'opt-work', 'in_work');
+                addOption('Взять в работу', 'Начать выполнение', 'fa-play', 'work', 'in_work');
             } else if (currentSubStatus === 'in_work') {
-                addOption('Завершить', 'fa-solid fa-check', 'opt-complete', 'completed', true);
+                addOption('Завершить', 'Отправить на проверку', 'fa-check', 'complete', 'completed', true);
             }
         }
         
         if (canManage && currentSubStatus === 'completed') {
-            addOption('В архив', 'fa-solid fa-check-double', 'opt-done', 'done');
-            addOption('На доработку', 'fa-solid fa-rotate-left', 'opt-revision', 'in_work', false, true);
+            addOption('Подтвердить', 'Отправить в архив', 'fa-check-double', 'done', 'done');
+            addOption('На доработку', 'Вернуть исполнителю', 'fa-rotate-left', 'revision', 'in_work', false, true);
         }
     }
     
-    // Position
-    const isMobile = window.innerWidth <= 768;
-    const badge = event.target.closest('.status-badge');
-    const rect = badge.getBoundingClientRect();
-    
+    // Position menu
     if (isMobile) {
+        // Mobile: bottom sheet
         globalStatusOverlay.classList.add('active');
-        globalStatusMenu.style.top = 'auto';
-        globalStatusMenu.style.left = '8px';
-        globalStatusMenu.style.right = '8px';
-        globalStatusMenu.style.bottom = '0';
+        globalStatusMenu.style.cssText = '';
     } else {
-        globalStatusMenu.style.top = (rect.bottom + 6) + 'px';
-        globalStatusMenu.style.left = rect.left + 'px';
-        globalStatusMenu.style.right = 'auto';
-        globalStatusMenu.style.bottom = 'auto';
+        // PC: near badge
+        const badge = event.target.closest('.status-badge');
+        const rect = badge.getBoundingClientRect();
+        
+        let top = rect.bottom + 8;
+        let left = rect.left;
         
         // Keep on screen
-        if (rect.left + 220 > window.innerWidth) {
-            globalStatusMenu.style.left = (window.innerWidth - 230) + 'px';
+        const menuWidth = 240;
+        const menuHeight = 200;
+        
+        if (left + menuWidth > window.innerWidth - 16) {
+            left = window.innerWidth - menuWidth - 16;
         }
+        if (top + menuHeight > window.innerHeight - 16) {
+            top = rect.top - menuHeight - 8;
+        }
+        
+        globalStatusMenu.style.top = top + 'px';
+        globalStatusMenu.style.left = left + 'px';
+        globalStatusMenu.style.right = 'auto';
+        globalStatusMenu.style.bottom = 'auto';
+        globalStatusMenu.style.width = 'auto';
     }
     
+    // Animate in
     requestAnimationFrame(() => {
         globalStatusMenu.classList.add('active');
     });
