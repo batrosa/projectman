@@ -2289,6 +2289,7 @@ function createTaskCard(task) {
     deleteBtn.appendChild(deleteIcon);
     deleteBtn.onclick = (e) => {
         e.stopPropagation();
+        closeGlobalStatusMenu();
         playClickSound();
         deleteTask(task.id);
     };
@@ -2312,6 +2313,7 @@ function createTaskCard(task) {
     editBtn.appendChild(editIcon);
     editBtn.onclick = (e) => {
         e.stopPropagation();
+        closeGlobalStatusMenu();
         playClickSound();
         openEditTaskModal(task);
     };
@@ -2431,6 +2433,7 @@ function createTaskCard(task) {
     infoBtn.appendChild(infoIcon);
     infoBtn.onclick = (e) => {
         e.stopPropagation();
+        closeGlobalStatusMenu();
         playClickSound();
         openTaskDetailsModal(task);
     };
