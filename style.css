@@ -2421,16 +2421,18 @@ body.light-mode .project-checkbox-item:hover {
     position: absolute;
     top: 100%;
     left: 0;
-    margin-left: 12px; /* Shifted more to the right */
+    margin-left: 12px;
     right: auto;
     margin-top: 8px;
-    background: #1e293b; /* Solid dark background */
+    background: #1e293b;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     padding: 4px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); /* Very strong shadow */
-    z-index: 9999; /* Always on top */
-    display: none;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+    z-index: 9999;
+    display: none !important;
+    visibility: hidden;
+    opacity: 0;
     min-width: 220px;
 }
 
@@ -2442,6 +2444,8 @@ body.light-mode .status-dropdown {
 
 .status-dropdown.active {
     display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
     flex-direction: column;
     gap: 2px;
 }
@@ -2449,11 +2453,12 @@ body.light-mode .status-dropdown {
 /* Global dropdown (fixed position) */
 .status-dropdown.global-dropdown {
     position: fixed;
-    display: none;
 }
 
 .status-dropdown.global-dropdown.active {
     display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 .status-option {
