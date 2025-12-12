@@ -2549,6 +2549,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         updates.completedAt = null;
         updates.completionComment = null;
         updates.completionProof = null;
+        updates.completionProofs = null;
         updates.completedBy = null;
         updates.archivedAt = null;
         updates.archivedBy = null;
@@ -2574,7 +2575,8 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         // Add completion proof data if provided
         if (completionData) {
             updates.completionComment = completionData.comment;
-            updates.completionProof = completionData.proof;
+            updates.completionProofs = completionData.proofs; // Array of files
+            updates.completionProof = null; // Clear old single-file field for backward compatibility
             updates.completedBy = completedByName;
         }
         
@@ -2671,55 +2673,61 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
 }
 
 // ========== COMPLETION PROOF MODAL ==========
-let completionProofAttachment = null;
+let completionProofAttachments = [];
+const MAX_COMPLETION_FILES = 3;
 
 function openCompletionProofModal(taskId) {
     const modal = document.getElementById('completion-proof-modal');
     document.getElementById('completion-task-id').value = taskId;
     document.getElementById('completion-comment').value = '';
-    completionProofAttachment = null;
-    renderCompletionAttachment();
+    completionProofAttachments = [];
+    renderCompletionAttachments();
     modal.classList.add('active');
 }
 
-function renderCompletionAttachment() {
+function renderCompletionAttachments() {
     const list = document.getElementById('completion-attachments-list');
     const btn = document.getElementById('add-completion-file-btn');
     
     if (!list) return;
     list.innerHTML = '';
     
-    if (completionProofAttachment) {
+    completionProofAttachments.forEach((attachment, index) => {
         const item = document.createElement('div');
-        item.className = 'attachment-item' + (completionProofAttachment.uploading ? ' uploading' : '');
+        item.className = 'attachment-item' + (attachment.uploading ? ' uploading' : '');
         
-        const iconClass = getFileIcon(completionProofAttachment.type || 'other');
+        const iconClass = getFileIcon(attachment.type || 'other');
         
         item.innerHTML = `
-            <div class="attachment-icon ${completionProofAttachment.type || 'other'}">
+            <div class="attachment-icon ${attachment.type || 'other'}">
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="attachment-info">
-                <div class="attachment-name">${completionProofAttachment.name}</div>
-                <div class="attachment-size">${completionProofAttachment.uploading ? 'Загрузка...' : formatFileSize(completionProofAttachment.size)}</div>
+                <div class="attachment-name">${attachment.name}</div>
+                <div class="attachment-size">${attachment.uploading ? 'Загрузка...' : formatFileSize(attachment.size)}</div>
             </div>
-            ${!completionProofAttachment.uploading ? `
-                <button type="button" class="attachment-remove" onclick="removeCompletionAttachment()">
+            ${!attachment.uploading ? `
+                <button type="button" class="attachment-remove" onclick="removeCompletionAttachment(${index})">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             ` : ''}
         `;
         
         list.appendChild(item);
-        btn.style.display = 'none';
-    } else {
+    });
+    
+    // Show add button if less than max files and no files are uploading
+    const isUploading = completionProofAttachments.some(a => a.uploading);
+    if (completionProofAttachments.length < MAX_COMPLETION_FILES && !isUploading) {
         btn.style.display = 'flex';
+    } else {
+        btn.style.display = 'none';
     }
 }
 
-function removeCompletionAttachment() {
-    completionProofAttachment = null;
-    renderCompletionAttachment();
+function removeCompletionAttachment(index) {
+    completionProofAttachments.splice(index, 1);
+    renderCompletionAttachments();
 }
 
 async function handleCompletionFileSelect(event) {
@@ -2728,25 +2736,32 @@ async function handleCompletionFileSelect(event) {
     
     event.target.value = '';
     
+    if (completionProofAttachments.length >= MAX_COMPLETION_FILES) {
+        alert(`Можно прикрепить максимум ${MAX_COMPLETION_FILES} файла`);
+        return;
+    }
+    
     if (file.size > cloudinaryConfig.maxFileSize) {
         alert(`Файл слишком большой. Максимум ${formatFileSize(cloudinaryConfig.maxFileSize)}`);
         return;
     }
     
     const fileType = getFileType(file.name);
-    completionProofAttachment = {
+    const tempIndex = completionProofAttachments.length;
+    
+    completionProofAttachments.push({
         name: file.name,
         size: file.size,
         type: fileType,
         uploading: true
-    };
+    });
     
-    renderCompletionAttachment();
+    renderCompletionAttachments();
     
     try {
         const result = await uploadToCloudinary(file);
         
-        completionProofAttachment = {
+        completionProofAttachments[tempIndex] = {
             name: file.name,
             url: result.secure_url,
             type: fileType,
@@ -2755,13 +2770,13 @@ async function handleCompletionFileSelect(event) {
             uploadedAt: new Date().toISOString()
         };
         
-        renderCompletionAttachment();
+        renderCompletionAttachments();
         playClickSound();
     } catch (error) {
         console.error('Upload error:', error);
         alert('Ошибка при загрузке файла: ' + error.message);
-        completionProofAttachment = null;
-        renderCompletionAttachment();
+        completionProofAttachments.splice(tempIndex, 1);
+        renderCompletionAttachments();
     }
 }
 
@@ -2776,21 +2791,30 @@ function submitCompletionProof(e) {
         return;
     }
     
-    if (!completionProofAttachment || !completionProofAttachment.url) {
-        alert('Пожалуйста, прикрепите файл-подтверждение');
+    // Check that at least one file is uploaded and all files are done uploading
+    const uploadedFiles = completionProofAttachments.filter(a => a.url && !a.uploading);
+    const isUploading = completionProofAttachments.some(a => a.uploading);
+    
+    if (isUploading) {
+        alert('Пожалуйста, дождитесь завершения загрузки файлов');
+        return;
+    }
+    
+    if (uploadedFiles.length === 0) {
+        alert('Пожалуйста, прикрепите хотя бы один файл-подтверждение');
         return;
     }
     
     const completionData = {
         comment: comment,
-        proof: completionProofAttachment
+        proofs: uploadedFiles
     };
     
     updateTaskSubStatus(taskId, 'completed', completionData);
     
     // Close modal
     document.getElementById('completion-proof-modal').classList.remove('active');
-    completionProofAttachment = null;
+    completionProofAttachments = [];
 }
 
 // ========== REVISION REASON MODAL ==========
@@ -2987,7 +3011,26 @@ function openTaskDetailsModal(task) {
     
     // Completion proof section
     let proofHTML = '';
-    if (task.completionComment || task.completionProof) {
+    // Support both old single-file format (completionProof) and new multi-file format (completionProofs)
+    const completionProofs = task.completionProofs || (task.completionProof ? [task.completionProof] : []);
+    
+    if (task.completionComment || completionProofs.length > 0) {
+        let filesHTML = '';
+        completionProofs.forEach(proof => {
+            if (proof && proof.url) {
+                filesHTML += `
+                    <div class="completion-proof-file" data-proof='${JSON.stringify(proof).replace(/'/g, "\\'")}'>
+                        <i class="fa-solid ${getFileIcon(proof.type || 'other')}"></i>
+                        <div class="completion-proof-file-info">
+                            <div class="completion-proof-file-name">${escapeHtml(proof.name)}</div>
+                            <div class="completion-proof-file-size">${formatFileSize(proof.size || 0)}</div>
+                        </div>
+                        <i class="fa-solid fa-external-link" style="color: var(--text-secondary);"></i>
+                    </div>
+                `;
+            }
+        });
+        
         proofHTML = `
             <div class="task-details-section">
                 <h3><i class="fa-solid fa-clipboard-check"></i> Подтверждение выполнения</h3>
@@ -2998,16 +3041,7 @@ function openTaskDetailsModal(task) {
                     ${task.completionComment ? `
                         <div class="completion-proof-comment">${escapeHtml(task.completionComment)}</div>
                     ` : ''}
-                    ${task.completionProof && task.completionProof.url ? `
-                        <div class="completion-proof-file" data-proof='${JSON.stringify(task.completionProof).replace(/'/g, "\\'")}'>
-                            <i class="fa-solid ${getFileIcon(task.completionProof.type || 'other')}"></i>
-                            <div class="completion-proof-file-info">
-                                <div class="completion-proof-file-name">${escapeHtml(task.completionProof.name)}</div>
-                                <div class="completion-proof-file-size">${formatFileSize(task.completionProof.size || 0)}</div>
-                            </div>
-                            <i class="fa-solid fa-external-link" style="color: var(--text-secondary);"></i>
-                        </div>
-                    ` : ''}
+                    ${filesHTML}
                 </div>
             </div>
         `;
@@ -3078,9 +3112,9 @@ function openTaskDetailsModal(task) {
         ${proofHTML}
     `;
     
-    // Add click handler for proof file
-    const proofFileEl = content.querySelector('.completion-proof-file');
-    if (proofFileEl) {
+    // Add click handler for proof files (supports multiple)
+    const proofFileEls = content.querySelectorAll('.completion-proof-file');
+    proofFileEls.forEach(proofFileEl => {
         proofFileEl.addEventListener('click', () => {
             try {
                 const proofData = JSON.parse(proofFileEl.dataset.proof);
@@ -3089,7 +3123,7 @@ function openTaskDetailsModal(task) {
                 console.error('Error parsing proof data:', e);
             }
         });
-    }
+    });
     
     modal.classList.add('active');
 }
