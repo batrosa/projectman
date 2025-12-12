@@ -2235,43 +2235,46 @@ function openStatusMenu(event, task, currentSubStatus) {
     if (isMobile) {
         // Mobile: bottom sheet
         globalStatusOverlay.classList.add('active');
-        globalStatusMenu.style.cssText = '';
+        globalStatusMenu.removeAttribute('style');
     } else {
         // PC: position directly below badge
         const badge = event.target.closest('.status-badge');
+        if (!badge) return;
+        
         const rect = badge.getBoundingClientRect();
-        
-        // Reset styles first
-        globalStatusMenu.style.cssText = '';
-        
-        // Calculate position (fixed to viewport)
-        let top = rect.bottom + 4;
-        let left = rect.left;
         
         // Menu dimensions
         const menuWidth = 240;
-        const menuHeight = 180;
+        const menuHeight = 200;
+        
+        // Calculate position (fixed to viewport) - directly below badge
+        let top = rect.bottom + 6;
+        let left = rect.left;
         
         // Keep on screen horizontally
-        if (left + menuWidth > window.innerWidth - 10) {
-            left = rect.right - menuWidth;
+        if (left + menuWidth > window.innerWidth - 16) {
+            left = window.innerWidth - menuWidth - 16;
         }
-        if (left < 10) {
-            left = 10;
+        if (left < 16) {
+            left = 16;
         }
         
         // Keep on screen vertically - if no space below, show above
-        if (top + menuHeight > window.innerHeight - 10) {
-            top = rect.top - menuHeight - 4;
+        if (top + menuHeight > window.innerHeight - 16) {
+            top = rect.top - menuHeight - 6;
         }
         
-        globalStatusMenu.style.position = 'fixed';
-        globalStatusMenu.style.top = top + 'px';
-        globalStatusMenu.style.left = left + 'px';
-        globalStatusMenu.style.right = 'auto';
-        globalStatusMenu.style.bottom = 'auto';
-        globalStatusMenu.style.width = menuWidth + 'px';
-        globalStatusMenu.style.transform = 'none';
+        // Apply inline styles with !important to override CSS
+        globalStatusMenu.setAttribute('style', `
+            position: fixed !important;
+            top: ${top}px !important;
+            left: ${left}px !important;
+            right: auto !important;
+            bottom: auto !important;
+            width: ${menuWidth}px !important;
+            transform: translateY(0) !important;
+            -webkit-transform: translateY(0) !important;
+        `);
     }
     
     // Animate in
