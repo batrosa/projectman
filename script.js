@@ -2040,6 +2040,9 @@ function renderBoard() {
 // ========== GLOBAL STATUS MENU - ANIMATED ==========
 let globalStatusMenu = null;
 let globalStatusOverlay = null;
+let statusMenuTouchStartY = 0;
+let statusMenuTouchCurrentY = 0;
+let statusMenuIsDragging = false;
 
 function createGlobalStatusMenu() {
     if (globalStatusMenu) return;
@@ -2070,11 +2073,67 @@ function createGlobalStatusMenu() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeGlobalStatusMenu();
     });
+    
+    // Swipe down to close (mobile)
+    globalStatusMenu.addEventListener('touchstart', handleStatusMenuTouchStart, { passive: true });
+    globalStatusMenu.addEventListener('touchmove', handleStatusMenuTouchMove, { passive: false });
+    globalStatusMenu.addEventListener('touchend', handleStatusMenuTouchEnd, { passive: true });
+}
+
+function handleStatusMenuTouchStart(e) {
+    if (window.innerWidth > 768) return;
+    statusMenuTouchStartY = e.touches[0].clientY;
+    statusMenuTouchCurrentY = statusMenuTouchStartY;
+    statusMenuIsDragging = true;
+    globalStatusMenu.style.transition = 'none';
+}
+
+function handleStatusMenuTouchMove(e) {
+    if (!statusMenuIsDragging || window.innerWidth > 768) return;
+    
+    statusMenuTouchCurrentY = e.touches[0].clientY;
+    const deltaY = statusMenuTouchCurrentY - statusMenuTouchStartY;
+    
+    // Only allow dragging down
+    if (deltaY > 0) {
+        e.preventDefault();
+        globalStatusMenu.style.transform = `translateY(${deltaY}px)`;
+        
+        // Fade overlay based on drag distance
+        const opacity = Math.max(0, 1 - deltaY / 200);
+        globalStatusOverlay.style.opacity = opacity;
+    }
+}
+
+function handleStatusMenuTouchEnd() {
+    if (!statusMenuIsDragging || window.innerWidth > 768) return;
+    
+    statusMenuIsDragging = false;
+    const deltaY = statusMenuTouchCurrentY - statusMenuTouchStartY;
+    
+    // Restore transition
+    globalStatusMenu.style.transition = '';
+    globalStatusOverlay.style.transition = '';
+    globalStatusOverlay.style.opacity = '';
+    
+    // If dragged more than 80px down, close the menu
+    if (deltaY > 80) {
+        closeGlobalStatusMenu();
+    } else {
+        // Snap back
+        globalStatusMenu.style.transform = '';
+    }
 }
 
 function closeGlobalStatusMenu() {
-    globalStatusMenu?.classList.remove('active');
-    globalStatusOverlay?.classList.remove('active');
+    if (globalStatusMenu) {
+        globalStatusMenu.style.transform = '';
+        globalStatusMenu.classList.remove('active');
+    }
+    if (globalStatusOverlay) {
+        globalStatusOverlay.style.opacity = '';
+        globalStatusOverlay.classList.remove('active');
+    }
     setTimeout(() => {
         if (globalStatusMenu) globalStatusMenu.innerHTML = '';
     }, 300);
