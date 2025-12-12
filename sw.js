@@ -60,12 +60,12 @@ self.addEventListener('fetch', (event) => {
       .then((networkResponse) => {
         // Got fresh response - update cache and return it
         if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
+                const responseToCache = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(event.request, responseToCache);
+                });
+            }
+            return networkResponse;
       })
       .catch(() => {
         // Network failed - try cache as fallback (offline mode)
@@ -79,7 +79,7 @@ self.addEventListener('fetch', (event) => {
           }
           return new Response('Offline', { status: 503 });
         });
-      })
+    })
   );
 });
 
