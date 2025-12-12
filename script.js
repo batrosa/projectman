@@ -2097,35 +2097,39 @@ function openStatusMenu(event, task, currentSubStatus) {
         opt.className = 'status-option';
         opt.innerHTML = `${icon} ${label}`;
         
+        let optionTriggered = false; // Prevent double triggering
+        
         const handleOptionClick = (e) => {
+            if (optionTriggered) return;
+            optionTriggered = true;
+            
             e.preventDefault();
             e.stopPropagation();
-            playClickSound();
             
-            // Hide menu immediately
+            // Hide menu FIRST before anything else
             if (globalStatusMenu) {
                 globalStatusMenu.style.display = 'none';
+                globalStatusMenu.innerHTML = '';
             }
             
-            // If completing task, require proof first
-            if (requiresProof) {
-                openCompletionProofModal(task.id);
-            } 
-            // If returning task, require revision reason
-            else if (requiresRevisionReason) {
-                openRevisionReasonModal(task.id);
-            }
-            else {
-                updateTaskSubStatus(task.id, newStatus);
-            }
+            playClickSound();
+            
+            // Small delay to ensure menu is hidden
+            setTimeout(() => {
+                if (requiresProof) {
+                    openCompletionProofModal(task.id);
+                } else if (requiresRevisionReason) {
+                    openRevisionReasonModal(task.id);
+                } else {
+                    updateTaskSubStatus(task.id, newStatus);
+                }
+            }, 10);
         };
         
-        // Support both click and touch events for mobile
+        // Use single event with pointer events for better cross-device support
+        opt.addEventListener('pointerup', handleOptionClick);
+        // Fallback for older browsers
         opt.addEventListener('click', handleOptionClick);
-        opt.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            handleOptionClick(e);
-        });
         
         globalStatusMenu.appendChild(opt);
     };
@@ -2150,7 +2154,7 @@ function openStatusMenu(event, task, currentSubStatus) {
                  addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work', false, true);
              } 
         }
-    }
+        }
     // Task is done (archived) - no actions available, task is final
     
     // Position menu
@@ -2275,16 +2279,18 @@ function createTaskCard(task) {
     // Done tasks are archived and final - no interaction allowed
 
     if (canInteract) {
+        let badgeTriggered = false;
         const handleBadgeClick = (e) => {
+            if (badgeTriggered) return;
+            badgeTriggered = true;
+            setTimeout(() => { badgeTriggered = false; }, 300); // Reset after 300ms
+            
             e.preventDefault();
             e.stopPropagation();
             openStatusMenu(e, task, currentSubStatus);
         };
-        badge.addEventListener('click', handleBadgeClick);
-        badge.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            handleBadgeClick(e);
-        });
+        badge.addEventListener('pointerup', handleBadgeClick);
+        badge.addEventListener('click', handleBadgeClick); // Fallback
     } else {
         badge.style.cursor = 'default';
         badge.style.opacity = '0.9';
@@ -2348,7 +2354,7 @@ function createTaskCard(task) {
         
         const avatar = document.createElement('div');
         avatar.className = 'avatar';
-        avatar.title = assignee;
+        avatar.title = assignee; 
         
         if (assigneeUser?.profilePhotoUrl) {
             avatar.style.overflow = 'hidden';
@@ -2624,7 +2630,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                 }
             } catch (err) {
                 console.error('Error sending completion notification:', err);
-            }
+        }
         })();
     } else {
         updates.assigneeCompleted = false;
@@ -3420,7 +3426,7 @@ function setupEventListeners() {
             // Get creator name
             const createdBy = state.currentUser ? 
                 `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : '';
-
+            
             await db.collection('tasks').add({
                 projectId: state.activeProjectId,
                 organizationId: state.organization?.id || null,
@@ -3956,12 +3962,12 @@ function setupAdminPanel() {
     if (elements.adminPanelBtn) {
         elements.adminPanelBtn.style.display = 'flex'; // Always visible
         
-        if (!canAccessAdmin()) {
+    if (!canAccessAdmin()) {
             elements.adminPanelBtn.classList.add('disabled');
             if (adminPanelDesc) adminPanelDesc.textContent = 'Доступ только для администраторов';
-            return;
-        }
-        
+        return;
+    }
+
         elements.adminPanelBtn.classList.remove('disabled');
         if (adminPanelDesc) adminPanelDesc.textContent = 'Управление пользователями';
     }
@@ -4664,7 +4670,7 @@ async function saveTelegramCode(code) {
         });
     } catch (error) {
         console.error('Error saving Telegram code:', error);
-    }
+}
 }
 
 // Initialize Telegram connection UI (called on DOMContentLoaded)
@@ -4995,22 +5001,22 @@ function checkReminders(tasks) {
 
         // 3. Original deadline reminder (less than 20% time left)
         if (!task.reminderSent && task.assigneeEmail) {
-            const totalDuration = deadlineDate - createdAtDate;
-            const timeLeft = deadlineDate - now;
+        const totalDuration = deadlineDate - createdAtDate;
+        const timeLeft = deadlineDate - now;
 
             if (totalDuration > 0) {
-                const percentage = (timeLeft / totalDuration) * 100;
+        const percentage = (timeLeft / totalDuration) * 100;
 
                 if (percentage < 20 && percentage > 0) {
-                    const emails = task.assigneeEmail.split(',');
+                const emails = task.assigneeEmail.split(',');
                     emails.forEach((email) => {
-                        if (email && email.trim()) {
+                    if (email && email.trim()) {
                             sendTelegramReminderNotification(email.trim(), task.title, projectName, task.deadline);
-                        }
-                    });
+                    }
+                });
 
-                    // Mark as sent
-                    db.collection('tasks').doc(task.id).update({ reminderSent: true });
+                // Mark as sent
+                db.collection('tasks').doc(task.id).update({ reminderSent: true });
                 }
             }
         }
