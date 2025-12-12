@@ -2237,7 +2237,7 @@ function openStatusMenu(event, task, currentSubStatus) {
         globalStatusOverlay.classList.add('active');
         globalStatusMenu.removeAttribute('style');
     } else {
-        // PC: position directly below badge
+        // PC: position directly below badge - ALWAYS below
         const badge = event.target.closest('.status-badge');
         if (!badge) return;
         
@@ -2246,9 +2246,10 @@ function openStatusMenu(event, task, currentSubStatus) {
         // Menu dimensions
         const menuWidth = 240;
         const menuHeight = 200;
+        const gap = 6;
         
-        // Calculate position (fixed to viewport) - directly below badge
-        let top = rect.bottom + 6;
+        // Always position below badge
+        let top = rect.bottom + gap;
         let left = rect.left;
         
         // Keep on screen horizontally
@@ -2259,13 +2260,17 @@ function openStatusMenu(event, task, currentSubStatus) {
             left = 16;
         }
         
-        // Keep on screen vertically - if no space below, show above
-        if (top + menuHeight > window.innerHeight - 16) {
-            top = rect.top - menuHeight - 6;
+        // Calculate available space below
+        const availableBelow = window.innerHeight - top - 16;
+        let maxHeight = null;
+        
+        // If not enough space below, limit height and add scroll
+        if (availableBelow < menuHeight) {
+            maxHeight = Math.max(120, availableBelow);
         }
         
-        // Apply inline styles with !important to override CSS
-        globalStatusMenu.setAttribute('style', `
+        // Build style string
+        let styleStr = `
             position: fixed !important;
             top: ${top}px !important;
             left: ${left}px !important;
@@ -2274,7 +2279,17 @@ function openStatusMenu(event, task, currentSubStatus) {
             width: ${menuWidth}px !important;
             transform: translateY(0) !important;
             -webkit-transform: translateY(0) !important;
-        `);
+        `;
+        
+        if (maxHeight) {
+            styleStr += `
+                max-height: ${maxHeight}px !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            `;
+        }
+        
+        globalStatusMenu.setAttribute('style', styleStr);
     }
     
     // Animate in
