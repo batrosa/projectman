@@ -2053,15 +2053,22 @@ function createGlobalStatusMenu() {
     
     // Close on click outside
     document.addEventListener('click', (e) => {
-        if (globalStatusMenu && globalStatusMenu.style.display !== 'none' && !globalStatusMenu.contains(e.target) && !e.target.closest('.status-badge')) {
-            globalStatusMenu.style.display = 'none';
+        if (globalStatusMenu && globalStatusMenu.classList.contains('active') && !globalStatusMenu.contains(e.target) && !e.target.closest('.status-badge')) {
+            closeGlobalStatusMenu();
         }
     });
     
     // Close on scroll
     window.addEventListener('scroll', () => {
-        if (globalStatusMenu) globalStatusMenu.style.display = 'none';
+        closeGlobalStatusMenu();
     }, { capture: true, passive: true });
+}
+
+function closeGlobalStatusMenu() {
+    if (globalStatusMenu) {
+        globalStatusMenu.classList.remove('active');
+        globalStatusMenu.innerHTML = '';
+    }
 }
 
 function openStatusMenu(event, task, currentSubStatus) {
@@ -2069,9 +2076,9 @@ function openStatusMenu(event, task, currentSubStatus) {
     playClickSound();
     createGlobalStatusMenu();
     
-    // Clear previous options
+    // Clear previous options and show menu
     globalStatusMenu.innerHTML = '';
-    globalStatusMenu.style.display = 'flex';
+    globalStatusMenu.classList.add('active');
     
     // Check if user can manage tasks (owner, admin, moderator)
     const canManage = canManageTasks();
@@ -2107,23 +2114,18 @@ function openStatusMenu(event, task, currentSubStatus) {
             e.stopPropagation();
             
             // Hide menu FIRST before anything else
-            if (globalStatusMenu) {
-                globalStatusMenu.style.display = 'none';
-                globalStatusMenu.innerHTML = '';
-            }
+            closeGlobalStatusMenu();
             
             playClickSound();
             
-            // Small delay to ensure menu is hidden
-            setTimeout(() => {
-                if (requiresProof) {
-                    openCompletionProofModal(task.id);
-                } else if (requiresRevisionReason) {
-                    openRevisionReasonModal(task.id);
-                } else {
-                    updateTaskSubStatus(task.id, newStatus);
-                }
-            }, 10);
+            // Execute action
+            if (requiresProof) {
+                openCompletionProofModal(task.id);
+            } else if (requiresRevisionReason) {
+                openRevisionReasonModal(task.id);
+            } else {
+                updateTaskSubStatus(task.id, newStatus);
+            }
         };
         
         // Use single event with pointer events for better cross-device support

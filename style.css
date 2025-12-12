@@ -2441,9 +2441,19 @@ body.light-mode .status-dropdown {
 }
 
 .status-dropdown.active {
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     gap: 2px;
+}
+
+/* Global dropdown (fixed position) */
+.status-dropdown.global-dropdown {
+    position: fixed;
+    display: none;
+}
+
+.status-dropdown.global-dropdown.active {
+    display: flex !important;
 }
 
 .status-option {
