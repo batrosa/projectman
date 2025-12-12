@@ -1387,6 +1387,21 @@ body.read-only .task-card:hover {
     box-shadow: none;
 }
 
+/* Enable clicks on status badge for employees */
+body.read-only .status-badge {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+body.read-only .status-dropdown {
+    pointer-events: auto !important;
+}
+
+body.read-only .status-option {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
 /* Help Modal Styles */
 .help-modal-content {
     max-width: 700px;
