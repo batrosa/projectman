@@ -2104,16 +2104,11 @@ function openStatusMenu(event, task, currentSubStatus) {
         opt.className = 'status-option';
         opt.innerHTML = `${icon} ${label}`;
         
-        let optionTriggered = false; // Prevent double triggering
-        
-        const handleOptionClick = (e) => {
-            if (optionTriggered) return;
-            optionTriggered = true;
-            
+        opt.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             
-            // Hide menu FIRST before anything else
+            // Hide menu FIRST
             closeGlobalStatusMenu();
             
             playClickSound();
@@ -2126,12 +2121,7 @@ function openStatusMenu(event, task, currentSubStatus) {
             } else {
                 updateTaskSubStatus(task.id, newStatus);
             }
-        };
-        
-        // Use single event with pointer events for better cross-device support
-        opt.addEventListener('pointerup', handleOptionClick);
-        // Fallback for older browsers
-        opt.addEventListener('click', handleOptionClick);
+        });
         
         globalStatusMenu.appendChild(opt);
     };
@@ -2281,18 +2271,11 @@ function createTaskCard(task) {
     // Done tasks are archived and final - no interaction allowed
 
     if (canInteract) {
-        let badgeTriggered = false;
-        const handleBadgeClick = (e) => {
-            if (badgeTriggered) return;
-            badgeTriggered = true;
-            setTimeout(() => { badgeTriggered = false; }, 300); // Reset after 300ms
-            
+        badge.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             openStatusMenu(e, task, currentSubStatus);
-        };
-        badge.addEventListener('pointerup', handleBadgeClick);
-        badge.addEventListener('click', handleBadgeClick); // Fallback
+        });
     } else {
         badge.style.cursor = 'default';
         badge.style.opacity = '0.9';
