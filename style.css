@@ -2411,76 +2411,253 @@ body.light-mode .project-checkbox-item:hover {
     border-color: rgba(46, 204, 113, 0.3);
 }
 
-/* Status Dropdown */
+/* ========== STATUS DROPDOWN - MODERN DESIGN ========== */
 .status-dropdown-container {
     position: relative;
     display: inline-block;
 }
 
-.status-dropdown {
-    position: absolute;
-    top: 100%;
+/* Overlay for mobile */
+.status-menu-overlay {
+    position: fixed;
+    top: 0;
     left: 0;
-    margin-left: 12px;
-    right: auto;
-    margin-top: 8px;
-    background: #1e293b;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 4px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
-    z-index: 9999;
-    display: none !important;
-    visibility: hidden;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 9998;
     opacity: 0;
-    min-width: 220px;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.status-menu-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Main dropdown */
+.status-dropdown {
+    position: fixed;
+    z-index: 9999;
+    min-width: 240px;
+    background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 
+        0 20px 60px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(99, 102, 241, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    
+    /* Hidden by default */
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(0.9) translateY(-10px);
+    transform-origin: top left;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body.light-mode .status-dropdown {
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(145deg, #ffffff 0%, #f1f5f9 100%);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    box-shadow: 
+        0 20px 60px rgba(0, 0, 0, 0.15),
+        0 0 40px rgba(99, 102, 241, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .status-dropdown.active {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1) translateY(0);
+}
+
+/* Dropdown header */
+.status-dropdown-header {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 6px;
+}
+
+.status-dropdown-header span {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+body.light-mode .status-dropdown-header {
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+/* Status option */
+.status-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    margin: 4px 0;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.status-option::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+}
+
+.status-option:hover::before {
+    transform: translateX(100%);
+}
+
+.status-option:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: rgba(99, 102, 241, 0.2);
+    transform: translateX(4px);
+}
+
+.status-option:active {
+    transform: translateX(4px) scale(0.98);
+}
+
+body.light-mode .status-option:hover {
+    background: rgba(99, 102, 241, 0.08);
+}
+
+/* Status option icon */
+.status-option-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.status-option:hover .status-option-icon {
+    transform: scale(1.1);
+}
+
+/* Icon colors by type */
+.status-option-icon.in-work {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.1) 100%);
+    color: #f59e0b;
+}
+
+.status-option-icon.completed {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.1) 100%);
+    color: #22c55e;
+}
+
+.status-option-icon.done {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(99, 102, 241, 0.1) 100%);
+    color: #6366f1;
+}
+
+.status-option-icon.revision {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(249, 115, 22, 0.1) 100%);
+    color: #f97316;
+}
+
+/* Status option text */
+.status-option-text {
+    display: flex;
     flex-direction: column;
     gap: 2px;
 }
 
-/* Global dropdown (fixed position) */
-.status-dropdown.global-dropdown {
-    position: fixed;
-}
-
-.status-dropdown.global-dropdown.active {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-.status-option {
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-secondary);
-    transition: all 0.2s;
+.status-option-label {
+    font-weight: 600;
     font-size: 0.9rem;
+    line-height: 1.2;
 }
 
-.status-option:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-primary);
+.status-option-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.8;
 }
 
-.status-option i {
-    width: 20px;
-    text-align: center;
+/* Mobile styles */
+@media (max-width: 768px) {
+    .status-dropdown {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 24px 24px 0 0;
+        padding: 8px 8px 24px;
+        transform: translateY(100%);
+        transform-origin: bottom center;
+    }
+    
+    .status-dropdown.active {
+        transform: translateY(0);
+    }
+    
+    .status-dropdown-header {
+        text-align: center;
+        padding: 16px 14px 12px;
+    }
+    
+    .status-dropdown-header::before {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 2px;
+        margin: 0 auto 12px;
+    }
+    
+    body.light-mode .status-dropdown-header::before {
+        background: rgba(0, 0, 0, 0.15);
+    }
+    
+    .status-option {
+        padding: 16px 20px;
+        margin: 6px 4px;
+    }
+    
+    .status-option-icon {
+        width: 44px;
+        height: 44px;
+        font-size: 1.1rem;
+    }
+    
+    .status-option-label {
+        font-size: 1rem;
+    }
+    
+    .status-option-desc {
+        font-size: 0.8rem;
+    }
 }
 
 /* Override old task actions position - no longer used */

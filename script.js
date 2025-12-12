@@ -2037,38 +2037,55 @@ function renderBoard() {
 }
 
 // --- NEW TASK CARD WITH STATUS BADGES ---
-// Global Status Menu
+// ========== GLOBAL STATUS MENU - MODERN DESIGN ==========
 let globalStatusMenu = null;
+let globalStatusOverlay = null;
 
 function createGlobalStatusMenu() {
     if (globalStatusMenu) return;
     
+    // Create overlay for mobile
+    globalStatusOverlay = document.createElement('div');
+    globalStatusOverlay.className = 'status-menu-overlay';
+    document.body.appendChild(globalStatusOverlay);
+    
+    // Create menu
     globalStatusMenu = document.createElement('div');
-    globalStatusMenu.className = 'status-dropdown global-dropdown';
-    globalStatusMenu.style.position = 'fixed';
-    globalStatusMenu.style.zIndex = '10000';
-    globalStatusMenu.style.marginTop = '0';
-    globalStatusMenu.style.minWidth = '220px';
+    globalStatusMenu.className = 'status-dropdown';
     document.body.appendChild(globalStatusMenu);
     
-    // Close on click outside
+    // Close on overlay click
+    globalStatusOverlay.addEventListener('click', closeGlobalStatusMenu);
+    
+    // Close on click outside (for desktop)
     document.addEventListener('click', (e) => {
-        if (globalStatusMenu && globalStatusMenu.classList.contains('active') && !globalStatusMenu.contains(e.target) && !e.target.closest('.status-badge')) {
+        if (globalStatusMenu && 
+            globalStatusMenu.classList.contains('active') && 
+            !globalStatusMenu.contains(e.target) && 
+            !e.target.closest('.status-badge')) {
             closeGlobalStatusMenu();
         }
     });
     
-    // Close on scroll
-    window.addEventListener('scroll', () => {
-        closeGlobalStatusMenu();
-    }, { capture: true, passive: true });
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeGlobalStatusMenu();
+        }
+    });
 }
 
 function closeGlobalStatusMenu() {
     if (globalStatusMenu) {
         globalStatusMenu.classList.remove('active');
-        globalStatusMenu.innerHTML = '';
     }
+    if (globalStatusOverlay) {
+        globalStatusOverlay.classList.remove('active');
+    }
+    // Clear content after animation
+    setTimeout(() => {
+        if (globalStatusMenu) globalStatusMenu.innerHTML = '';
+    }, 250);
 }
 
 function openStatusMenu(event, task, currentSubStatus) {
@@ -2076,9 +2093,8 @@ function openStatusMenu(event, task, currentSubStatus) {
     playClickSound();
     createGlobalStatusMenu();
     
-    // Clear previous options and show menu
+    // Clear and prepare menu
     globalStatusMenu.innerHTML = '';
-    globalStatusMenu.classList.add('active');
     
     // Check if user can manage tasks (owner, admin, moderator)
     const canManage = canManageTasks();
@@ -2091,7 +2107,7 @@ function openStatusMenu(event, task, currentSubStatus) {
             isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
         }
         if (!isAssignee && !task.assigneeEmail && task.assignee) {
-             const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
+            const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
             const assigneeNames = task.assignee.split(',').map(n => n.trim());
             if (currentUserFullName && assigneeNames.includes(currentUserFullName)) {
                 isAssignee = true;
@@ -2099,28 +2115,43 @@ function openStatusMenu(event, task, currentSubStatus) {
         }
     }
     
-    const addOption = (label, icon, newStatus, requiresProof = false, requiresRevisionReason = false) => {
+    // Add header
+    const header = document.createElement('div');
+    header.className = 'status-dropdown-header';
+    header.innerHTML = '<span>Изменить статус</span>';
+    globalStatusMenu.appendChild(header);
+    
+    // Option builder function
+    const addOption = (label, description, iconClass, iconType, newStatus, requiresProof = false, requiresRevisionReason = false) => {
         const opt = document.createElement('div');
         opt.className = 'status-option';
-        opt.innerHTML = `${icon} ${label}`;
+        opt.innerHTML = `
+            <div class="status-option-icon ${iconType}">
+                <i class="${iconClass}"></i>
+            </div>
+            <div class="status-option-text">
+                <div class="status-option-label">${label}</div>
+                <div class="status-option-desc">${description}</div>
+            </div>
+        `;
         
         opt.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             
-            // Hide menu FIRST
             closeGlobalStatusMenu();
-            
             playClickSound();
             
-            // Execute action
-            if (requiresProof) {
-                openCompletionProofModal(task.id);
-            } else if (requiresRevisionReason) {
-                openRevisionReasonModal(task.id);
-            } else {
-                updateTaskSubStatus(task.id, newStatus);
-            }
+            // Execute action after menu closes
+            setTimeout(() => {
+                if (requiresProof) {
+                    openCompletionProofModal(task.id);
+                } else if (requiresRevisionReason) {
+                    openRevisionReasonModal(task.id);
+                } else {
+                    updateTaskSubStatus(task.id, newStatus);
+                }
+            }, 100);
         });
         
         globalStatusMenu.appendChild(opt);
@@ -2131,36 +2162,83 @@ function openStatusMenu(event, task, currentSubStatus) {
         // Assignee options
         if (isAssignee) {
             if (currentSubStatus === 'assigned') {
-                addOption('Принять в работу', '<i class="fa-solid fa-person-digging"></i>', 'in_work');
+                addOption(
+                    'Принять в работу', 
+                    'Начать выполнение задачи',
+                    'fa-solid fa-play', 
+                    'in-work', 
+                    'in_work'
+                );
             } else if (currentSubStatus === 'in_work') {
-                // Require proof when completing task
-                addOption('Задача завершена', '<i class="fa-solid fa-check"></i>', 'completed', true);
+                addOption(
+                    'Завершить задачу', 
+                    'Отметить как выполненную',
+                    'fa-solid fa-check', 
+                    'completed', 
+                    'completed', 
+                    true
+                );
             }
         }
         
         // Manager options (owner, admin, moderator)
         if (canManage) {
-             if (currentSubStatus === 'completed') {
-                 addOption('Подтвердить (В архив)', '<i class="fa-solid fa-check-double"></i>', 'done');
-                 // Require revision reason when returning task
-                 addOption('Вернуть на доработку', '<i class="fa-solid fa-rotate-left"></i>', 'in_work', false, true);
-             } 
+            if (currentSubStatus === 'completed') {
+                addOption(
+                    'Подтвердить', 
+                    'Отправить в архив',
+                    'fa-solid fa-check-double', 
+                    'done', 
+                    'done'
+                );
+                addOption(
+                    'На доработку', 
+                    'Вернуть исполнителю',
+                    'fa-solid fa-rotate-left', 
+                    'revision', 
+                    'in_work', 
+                    false, 
+                    true
+                );
+            }
         }
-        }
-    // Task is done (archived) - no actions available, task is final
+    }
     
     // Position menu
-    const badge = event.target.closest('.status-badge');
-    const rect = badge.getBoundingClientRect();
+    const isMobile = window.innerWidth <= 768;
     
-    globalStatusMenu.style.top = (rect.bottom + 6) + 'px';
-    globalStatusMenu.style.left = rect.left + 'px';
-    
-    // Ensure it doesn't go off screen right
-    const menuWidth = 220;
-    if (rect.left + menuWidth > window.innerWidth) {
-        globalStatusMenu.style.left = (window.innerWidth - menuWidth - 10) + 'px';
+    if (isMobile) {
+        // Mobile: bottom sheet style
+        globalStatusOverlay.classList.add('active');
+    } else {
+        // Desktop: position near badge
+        const badge = event.target.closest('.status-badge');
+        const rect = badge.getBoundingClientRect();
+        
+        globalStatusMenu.style.top = (rect.bottom + 8) + 'px';
+        globalStatusMenu.style.left = rect.left + 'px';
+        globalStatusMenu.style.bottom = 'auto';
+        globalStatusMenu.style.right = 'auto';
+        globalStatusMenu.style.width = 'auto';
+        
+        // Ensure it doesn't go off screen right
+        const menuWidth = 260;
+        if (rect.left + menuWidth > window.innerWidth) {
+            globalStatusMenu.style.left = (window.innerWidth - menuWidth - 16) + 'px';
+        }
+        
+        // Ensure it doesn't go off screen bottom
+        const menuHeight = 200;
+        if (rect.bottom + menuHeight > window.innerHeight) {
+            globalStatusMenu.style.top = (rect.top - menuHeight - 8) + 'px';
+            globalStatusMenu.style.transformOrigin = 'bottom left';
+        }
     }
+    
+    // Show menu with slight delay for animation
+    requestAnimationFrame(() => {
+        globalStatusMenu.classList.add('active');
+    });
 }
 
 function createTaskCard(task) {
