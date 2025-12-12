@@ -2096,10 +2096,16 @@ function openStatusMenu(event, task, currentSubStatus) {
         const opt = document.createElement('div');
         opt.className = 'status-option';
         opt.innerHTML = `${icon} ${label}`;
-        opt.onclick = (e) => {
+        
+        const handleOptionClick = (e) => {
+            e.preventDefault();
             e.stopPropagation();
             playClickSound();
-            globalStatusMenu.style.display = 'none';
+            
+            // Hide menu immediately
+            if (globalStatusMenu) {
+                globalStatusMenu.style.display = 'none';
+            }
             
             // If completing task, require proof first
             if (requiresProof) {
@@ -2113,6 +2119,14 @@ function openStatusMenu(event, task, currentSubStatus) {
                 updateTaskSubStatus(task.id, newStatus);
             }
         };
+        
+        // Support both click and touch events for mobile
+        opt.addEventListener('click', handleOptionClick);
+        opt.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handleOptionClick(e);
+        });
+        
         globalStatusMenu.appendChild(opt);
     };
 
@@ -2261,9 +2275,16 @@ function createTaskCard(task) {
     // Done tasks are archived and final - no interaction allowed
 
     if (canInteract) {
-        badge.onclick = (e) => {
+        const handleBadgeClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             openStatusMenu(e, task, currentSubStatus);
         };
+        badge.addEventListener('click', handleBadgeClick);
+        badge.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handleBadgeClick(e);
+        });
     } else {
         badge.style.cursor = 'default';
         badge.style.opacity = '0.9';

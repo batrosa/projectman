@@ -1391,6 +1391,10 @@ body.read-only .task-card:hover {
 body.read-only .status-badge {
     pointer-events: auto !important;
     cursor: pointer !important;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 body.read-only .status-dropdown {
@@ -1400,6 +1404,22 @@ body.read-only .status-dropdown {
 body.read-only .status-option {
     pointer-events: auto !important;
     cursor: pointer !important;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Ensure status elements work on all devices */
+.status-badge {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.status-option {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    min-height: 44px; /* Apple recommended touch target size */
 }
 
 /* Help Modal Styles */
