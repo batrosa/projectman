@@ -1353,6 +1353,9 @@ function enterApp() {
     applyRoleRestrictions();
     setupRealtimeListeners();
     subscribeToMyTasks();
+
+    // Start presence tracking (used for admin "who is online" / last seen)
+    startPresenceHeartbeat();
 }
 
 // Apply role-based UI restrictions
@@ -1534,6 +1537,11 @@ const elements = {
     projectsCheckboxes: document.getElementById('projects-checkboxes'),
     saveAccessBtn: document.getElementById('save-access-btn'),
     userAccessInfo: document.getElementById('user-access-info'),
+
+    // Admin Panel - Logins / Online
+    loginUsersList: document.getElementById('login-users-list'),
+    onlineUsersCount: document.getElementById('online-users-count'),
+    totalUsersCount: document.getElementById('total-users-count'),
     
     // My Tasks
     myTasksBtn: document.getElementById('my-tasks-btn'),
@@ -1792,6 +1800,7 @@ function setupRealtimeListeners() {
         renderProjects();
         renderUsersList(); // Update admin panel - users list
         updateAccessUserSelect(); // Update admin panel - access dropdown
+        renderLoginHistoryTab(); // Update admin panel - logins/online
     }, error => {
         console.error("Error listening to users:", error);
     });
@@ -3366,6 +3375,63 @@ function getTaskWasCompletedOnTime(task) {
     return completedDate <= deadlineEnd;
 }
 
+function formatDateTimeRu(dateValue) {
+    const d = parseDateValue(dateValue);
+    if (!d) return null;
+    try {
+        return d.toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch (e) {
+        return d.toISOString();
+    }
+}
+
+// ========== USER PRESENCE / LAST SEEN ==========
+let presenceIntervalId = null;
+const PRESENCE_HEARTBEAT_MS = 30 * 1000;
+const ONLINE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
+
+async function updateMyPresence() {
+    if (!db || !state.currentUser?.uid) return;
+    // Avoid unnecessary writes when tab is not visible
+    if (document.visibilityState && document.visibilityState !== 'visible') return;
+    try {
+        await db.collection('users').doc(state.currentUser.uid).set({
+            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastSeenClientAt: new Date().toISOString()
+        }, { merge: true });
+    } catch (e) {
+        console.warn('updateMyPresence failed:', e?.message || e);
+    }
+}
+
+function startPresenceHeartbeat() {
+    if (presenceIntervalId) return;
+    // Do an immediate update, then keep alive
+    updateMyPresence();
+    presenceIntervalId = setInterval(updateMyPresence, PRESENCE_HEARTBEAT_MS);
+
+    // Also update when tab becomes visible again
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            updateMyPresence();
+        }
+    });
+    window.addEventListener('focus', updateMyPresence);
+}
+
+function stopPresenceHeartbeat() {
+    if (presenceIntervalId) {
+        clearInterval(presenceIntervalId);
+        presenceIntervalId = null;
+    }
+}
+
 // Drag and Drop - DISABLED
 let draggedTaskId = null;
 
@@ -4023,6 +4089,17 @@ async function loadUserRole(user) {
                 }
             }
         }
+
+        // Track last login (and first presence ping) for admin "history of logins"
+        try {
+            await db.collection('users').doc(user.uid).set({
+                lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
+                lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+                lastSeenClientAt: new Date().toISOString()
+            }, { merge: true });
+        } catch (e) {
+            console.warn('Failed to update lastLoginAt/lastSeenAt:', e?.message || e);
+        }
     } catch (e) {
         console.error("Error fetching user profile (using default role):", e);
         // Even on error, we proceed with default 'reader' role to unblock UI
@@ -4102,6 +4179,7 @@ async function logout() {
     try {
         // Unsubscribe from my tasks listener
         unsubscribeFromMyTasks();
+        stopPresenceHeartbeat();
         
         await auth.signOut();
         
@@ -4175,6 +4253,7 @@ function setupAdminPanel() {
     if (state.users.length > 0) {
         renderUsersList();
         updateAccessUserSelect();
+        renderLoginHistoryTab();
     }
 }
 
@@ -4330,6 +4409,85 @@ function renderUsersList() {
         }
 
         elements.usersList.appendChild(userItem);
+    });
+}
+
+function getUserDisplayName(user) {
+    let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!fullName && user.displayName) fullName = user.displayName;
+    if (!fullName) fullName = user.email ? user.email.split('@')[0] : 'Без имени';
+    return fullName;
+}
+
+function isUserOnline(user) {
+    const lastSeen = parseDateValue(user?.lastSeenAt) || parseDateValue(user?.lastSeenClientAt);
+    if (!lastSeen) return false;
+    return (Date.now() - lastSeen.getTime()) <= ONLINE_WINDOW_MS;
+}
+
+function renderLoginHistoryTab() {
+    if (!elements.loginUsersList || !elements.onlineUsersCount || !elements.totalUsersCount) return;
+
+    const users = Array.isArray(state.users) ? state.users : [];
+    elements.totalUsersCount.textContent = String(users.length);
+
+    const onlineCount = users.filter(isUserOnline).length;
+    elements.onlineUsersCount.textContent = String(onlineCount);
+
+    // Sort: online first, then lastSeen desc, then name
+    const sorted = [...users].sort((a, b) => {
+        const aOnline = isUserOnline(a) ? 1 : 0;
+        const bOnline = isUserOnline(b) ? 1 : 0;
+        if (aOnline !== bOnline) return bOnline - aOnline;
+
+        const aSeen = (parseDateValue(a?.lastSeenAt) || parseDateValue(a?.lastSeenClientAt))?.getTime() || 0;
+        const bSeen = (parseDateValue(b?.lastSeenAt) || parseDateValue(b?.lastSeenClientAt))?.getTime() || 0;
+        if (aSeen !== bSeen) return bSeen - aSeen;
+
+        return getUserDisplayName(a).localeCompare(getUserDisplayName(b));
+    });
+
+    elements.loginUsersList.innerHTML = '';
+
+    sorted.forEach(user => {
+        const item = document.createElement('div');
+        item.className = 'user-item';
+
+        const fullName = getUserDisplayName(user);
+        const nameParts = fullName.split(' ').filter(Boolean);
+        const initials = nameParts.length >= 2
+            ? (nameParts[0][0] || '') + (nameParts[1][0] || '')
+            : (fullName[0] || 'U');
+
+        const avatarHtml = user.profilePhotoUrl
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
+
+        const online = isUserOnline(user);
+        const lastSeenText = formatDateTimeRu(user.lastSeenAt || user.lastSeenClientAt) || 'нет данных';
+        const lastLoginText = formatDateTimeRu(user.lastLoginAt) || 'нет данных';
+
+        const statusDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:6px;vertical-align:middle;background:${online ? 'var(--success)' : 'rgba(148,163,184,0.6)'};"></span>`;
+        const statusText = online
+            ? `${statusDot}<span style="color: var(--success); font-weight: 700;">Онлайн</span>`
+            : `${statusDot}<span style="color: var(--text-secondary);">Оффлайн</span>`;
+
+        item.innerHTML = `
+            <div class="user-info">
+                ${avatarHtml}
+                <div class="user-details">
+                    <div class="user-name">${escapeHtml(fullName)}</div>
+                    <div class="user-email">${escapeHtml(user.email || '')}</div>
+                    <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">
+                        ${statusText}
+                        <span style="margin-left: 10px;">Активность: <strong>${escapeHtml(lastSeenText)}</strong></span>
+                        <span style="margin-left: 10px;">Вход: <strong>${escapeHtml(lastLoginText)}</strong></span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        elements.loginUsersList.appendChild(item);
     });
 }
 

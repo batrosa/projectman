@@ -1576,6 +1576,9 @@
                     <button class="admin-tab" data-tab="access">
                         <i class="fa-solid fa-key"></i> Доступ к проектам
                     </button>
+                    <button class="admin-tab" data-tab="logins">
+                        <i class="fa-solid fa-clock-rotate-left"></i> История входов
+                    </button>
                 </div>
 
                 <!-- Users Tab -->
@@ -1642,6 +1645,31 @@
                             style="width: 100%; justify-content: center; margin-top: 1.5rem;">
                             <i class="fa-solid fa-save"></i> Сохранить настройки доступа
                         </button>
+                    </div>
+                </div>
+
+                <!-- Logins / Online Tab -->
+                <div id="admin-logins-tab" class="admin-tab-content">
+                    <div style="margin-bottom: 1.25rem;">
+                        <h3 style="margin-bottom: 0.5rem;">Онлайн и история входов</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;">
+                            Онлайн считается, если пользователь был активен в приложении в последние 2 минуты.
+                        </p>
+                    </div>
+
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem;">
+                            <div style="color: var(--text-secondary); font-size: 0.8rem;">Онлайн</div>
+                            <div id="online-users-count" style="font-size: 1.25rem; font-weight: 700;">0</div>
+                        </div>
+                        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem;">
+                            <div style="color: var(--text-secondary); font-size: 0.8rem;">Всего пользователей</div>
+                            <div id="total-users-count" style="font-size: 1.25rem; font-weight: 700;">0</div>
+                        </div>
+                    </div>
+
+                    <div id="login-users-list" class="users-list">
+                        <!-- Online/last seen list -->
                     </div>
                 </div>
             </div>
