@@ -92,6 +92,16 @@ function hideLoadingScreen() {
     }
 }
 
+// Fix mobile viewport height issues (Android address bar / 100vh bugs)
+function setViewportHeightVar() {
+    try {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+    } catch (e) {
+        // no-op
+    }
+}
+
 // Auto-fix broken cache on mobile - detects if CSS failed to load properly
 function checkAndFixBrokenCache() {
     // Check if main app container has proper layout
@@ -136,6 +146,11 @@ function checkAndFixBrokenCache() {
 
 // Start tips immediately and init PIN screen
 document.addEventListener('DOMContentLoaded', () => {
+    // Set viewport height CSS variable early (prevents broken layout on some Android devices)
+    setViewportHeightVar();
+    window.addEventListener('resize', setViewportHeightVar);
+    window.addEventListener('orientationchange', setViewportHeightVar);
+
     // Capture invite code from URL immediately (before auth flow)
     captureInviteCodeFromUrl();
     
