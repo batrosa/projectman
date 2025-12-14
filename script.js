@@ -2509,20 +2509,52 @@ function createTaskCard(task) {
     const diffTime = targetDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+    // IMPORTANT: Don't mark a task as overdue just because admin checked late.
+    // If task is "completed" (waiting for confirmation) we use completedAt vs deadline.
     let daysLeftText = '';
-    if (diffDays < 0) {
-        daysLeftText = 'ПРОСРОЧЕНО';
-    } else if (diffDays === 0) {
-        daysLeftText = 'Сегодня';
+    let completionOnTime = null;
+
+    if (currentSubStatus === 'completed') {
+        completionOnTime = getTaskWasCompletedOnTime(task);
+        if (completionOnTime === true) {
+            daysLeftText = 'В СРОК';
+        } else if (completionOnTime === false) {
+            daysLeftText = 'С ПРОСРОЧ.';
+        } else {
+            daysLeftText = 'НА ПРОВЕРКЕ';
+        }
+    } else if (currentSubStatus === 'done') {
+        // Archived task: no "days left" badge needed
+        daysLeftText = '';
     } else {
-        daysLeftText = `${diffDays} дн.`;
+        // In progress: show days left / overdue relative to current date
+        if (diffDays < 0) {
+            daysLeftText = 'ПРОСРОЧЕНО';
+        } else if (diffDays === 0) {
+            daysLeftText = 'Сегодня';
+        } else {
+            daysLeftText = `${diffDays} дн.`;
+        }
     }
 
     const daysLeftSpan = document.createElement('span');
     daysLeftSpan.className = 'days-left';
     daysLeftSpan.textContent = daysLeftText;
 
-    if (diffDays < 0) {
+    if (currentSubStatus === 'done') {
+        daysLeftSpan.style.display = 'none';
+    } else if (currentSubStatus === 'completed') {
+        if (completionOnTime === true) {
+            daysLeftSpan.style.color = 'var(--success)';
+            daysLeftSpan.style.fontWeight = '700';
+        } else if (completionOnTime === false) {
+            daysLeftSpan.style.color = 'var(--danger)';
+            daysLeftSpan.style.fontWeight = '700';
+        } else {
+            daysLeftSpan.style.color = 'var(--text-secondary)';
+            daysLeftSpan.style.fontWeight = '700';
+        }
+    } else if (diffDays < 0) {
         daysLeftSpan.style.color = 'var(--danger)';
         daysLeftSpan.style.fontWeight = '700';
     }
@@ -2531,10 +2563,16 @@ function createTaskCard(task) {
 
     const timeLeft = deadlineDate - now;
     if (task.status !== 'done') {
-        if (timeLeft < 0) {
-            deadlineDiv.classList.add('deadline-red');
+        if (currentSubStatus === 'completed') {
+            // Color reflects actual completion vs deadline (not admin confirmation time)
+            if (completionOnTime === true) deadlineDiv.classList.add('deadline-green');
+            else if (completionOnTime === false) deadlineDiv.classList.add('deadline-red');
         } else {
-            deadlineDiv.classList.add('deadline-green');
+            if (timeLeft < 0) {
+                deadlineDiv.classList.add('deadline-red');
+            } else {
+                deadlineDiv.classList.add('deadline-green');
+            }
         }
     }
 
@@ -3289,6 +3327,55 @@ function escapeHtml(text) {
 function formatDate(dateString) {
     const options = { month: 'short', day: 'numeric' };
     return new Date(dateString).toLocaleDateString('ru-RU', options);
+}
+
+// Parse various date formats (ISO string, Date, Firestore Timestamp) into a Date object
+function parseDateValue(dateValue) {
+    if (!dateValue) return null;
+    try {
+        // Firestore Timestamp (has toDate)
+        if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+            const d = dateValue.toDate();
+            return d && !isNaN(d.getTime()) ? d : null;
+        }
+        // Firestore Timestamp-like object with seconds
+        if (typeof dateValue === 'object' && dateValue.seconds !== undefined) {
+            const d = new Date(dateValue.seconds * 1000);
+            return !isNaN(d.getTime()) ? d : null;
+        }
+        // Number (ms)
+        if (typeof dateValue === 'number') {
+            const d = new Date(dateValue);
+            return !isNaN(d.getTime()) ? d : null;
+        }
+        // ISO string
+        if (typeof dateValue === 'string') {
+            const d = new Date(dateValue);
+            return !isNaN(d.getTime()) ? d : null;
+        }
+        // Date
+        if (dateValue instanceof Date) {
+            return !isNaN(dateValue.getTime()) ? dateValue : null;
+        }
+    } catch (e) {
+        console.error('parseDateValue error:', e, dateValue);
+    }
+    return null;
+}
+
+function getDeadlineEndOfDay(deadlineValue) {
+    if (!deadlineValue) return null;
+    const d = new Date(deadlineValue);
+    if (isNaN(d.getTime())) return null;
+    d.setHours(23, 59, 59, 999);
+    return d;
+}
+
+function getTaskWasCompletedOnTime(task) {
+    const deadlineEnd = getDeadlineEndOfDay(task?.deadline);
+    const completedDate = parseDateValue(task?.completedAt);
+    if (!deadlineEnd || !completedDate) return null; // unknown
+    return completedDate <= deadlineEnd;
 }
 
 // Drag and Drop - DISABLED
@@ -5408,17 +5495,31 @@ function renderMyTasks(tasks) {
                 day: 'numeric',
                 month: 'short'
             });
-            
-            if (daysLeft < 0) {
+
+            // If task is completed (waiting for admin confirmation), deadline label should reflect completedAt,
+            // not "admin checked late".
+            let suffix = '';
+            if (currentSubStatus === 'completed') {
+                const wasOnTime = getTaskWasCompletedOnTime(task);
+                if (wasOnTime === true) {
+                    suffix = ' (в срок)';
+                } else if (wasOnTime === false) {
+                    suffix = ' (с просрочкой)';
+                    deadlineClass = 'overdue';
+                } else {
+                    suffix = ' (на проверке)';
+                }
+            } else if (daysLeft < 0) {
                 deadlineClass = 'overdue';
+                suffix = ' (просрочено)';
             } else if (daysLeft <= 2) {
                 deadlineClass = 'soon';
+                suffix = (daysLeft === 0 ? ' (сегодня)' : daysLeft === 1 ? ' (завтра)' : '');
             }
             
             deadlineHtml = `
                 <span class="my-task-deadline ${deadlineClass}">
-                    <i class="fa-regular fa-calendar"></i> ${formattedDate}
-                    ${daysLeft < 0 ? ' (просрочено)' : daysLeft === 0 ? ' (сегодня)' : daysLeft === 1 ? ' (завтра)' : ''}
+                    <i class="fa-regular fa-calendar"></i> ${formattedDate}${suffix}
                 </span>
             `;
         }
