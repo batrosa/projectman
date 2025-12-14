@@ -2509,65 +2509,38 @@ function createTaskCard(task) {
     const diffTime = targetDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // IMPORTANT: Don't mark a task as overdue just because admin checked late.
-    // If task is "completed" (waiting for confirmation) we use completedAt vs deadline.
-    let daysLeftText = '';
+    // Badges: can show "На проверке" + ("В срок" OR "Просрочено") together
+    const tagsWrap = document.createElement('div');
+    tagsWrap.className = 'deadline-tags';
+    const addTag = (text, variantClass) => {
+        const tag = document.createElement('span');
+        tag.className = `deadline-tag ${variantClass || ''}`.trim();
+        tag.textContent = text;
+        tagsWrap.appendChild(tag);
+    };
+
     let completionOnTime = null;
-
     if (currentSubStatus === 'completed') {
+        addTag('На проверке', 'tag-review');
         completionOnTime = getTaskWasCompletedOnTime(task);
-        if (completionOnTime === true) {
-            daysLeftText = 'В СРОК';
-        } else if (completionOnTime === false) {
-            daysLeftText = 'С ПРОСРОЧ.';
-        } else {
-            daysLeftText = 'НА ПРОВЕРКЕ';
-        }
-    } else if (currentSubStatus === 'done') {
-        // Archived task: no "days left" badge needed
-        daysLeftText = '';
-    } else {
-        // In progress: show days left / overdue relative to current date
-        if (diffDays < 0) {
-            daysLeftText = 'ПРОСРОЧЕНО';
-        } else if (diffDays === 0) {
-            daysLeftText = 'Сегодня';
-        } else {
-            daysLeftText = `${diffDays} дн.`;
-        }
+        if (completionOnTime === true) addTag('В срок', 'tag-ontime');
+        else if (completionOnTime === false) addTag('Просрочено', 'tag-overdue');
+    } else if (currentSubStatus !== 'done') {
+        if (diffDays < 0) addTag('Просрочено', 'tag-overdue');
+        else if (diffDays === 0) addTag('Сегодня', 'tag-today');
+        else addTag(`${diffDays} дн.`, 'tag-days');
     }
 
-    const daysLeftSpan = document.createElement('span');
-    daysLeftSpan.className = 'days-left';
-    daysLeftSpan.textContent = daysLeftText;
-
-    if (currentSubStatus === 'done') {
-        daysLeftSpan.style.display = 'none';
-    } else if (currentSubStatus === 'completed') {
-        if (completionOnTime === true) {
-            daysLeftSpan.style.color = 'var(--success)';
-            daysLeftSpan.style.fontWeight = '700';
-        } else if (completionOnTime === false) {
-            daysLeftSpan.style.color = 'var(--danger)';
-            daysLeftSpan.style.fontWeight = '700';
-        } else {
-            daysLeftSpan.style.color = 'var(--text-secondary)';
-            daysLeftSpan.style.fontWeight = '700';
-        }
-    } else if (diffDays < 0) {
-        daysLeftSpan.style.color = 'var(--danger)';
-        daysLeftSpan.style.fontWeight = '700';
+    if (tagsWrap.childNodes.length > 0) {
+        deadlineDiv.appendChild(tagsWrap);
     }
-
-    deadlineDiv.appendChild(daysLeftSpan);
 
     const timeLeft = deadlineDate - now;
     if (task.status !== 'done') {
-        if (currentSubStatus === 'completed') {
-            // Color reflects actual completion vs deadline (not admin confirmation time)
-            if (completionOnTime === true) deadlineDiv.classList.add('deadline-green');
-            else if (completionOnTime === false) deadlineDiv.classList.add('deadline-red');
-        } else {
+        // For active tasks we keep the legacy coloring (deadline-red/green).
+        // For "completed / on review" we DO NOT color by "now" (admin may check late) —
+        // the tags already communicate "В срок/Просрочено".
+        if (currentSubStatus !== 'completed') {
             if (timeLeft < 0) {
                 deadlineDiv.classList.add('deadline-red');
             } else {
@@ -5496,31 +5469,29 @@ function renderMyTasks(tasks) {
                 month: 'short'
             });
 
-            // If task is completed (waiting for admin confirmation), deadline label should reflect completedAt,
-            // not "admin checked late".
-            let suffix = '';
+            // Badges (same semantics as task card): "На проверке" + ("В срок" OR "Просрочено")
+            let tags = [];
             if (currentSubStatus === 'completed') {
+                tags.push(`<span class="deadline-tag tag-review">На проверке</span>`);
                 const wasOnTime = getTaskWasCompletedOnTime(task);
-                if (wasOnTime === true) {
-                    suffix = ' (в срок)';
-                } else if (wasOnTime === false) {
-                    suffix = ' (с просрочкой)';
+                if (wasOnTime === true) tags.push(`<span class="deadline-tag tag-ontime">В срок</span>`);
+                else if (wasOnTime === false) tags.push(`<span class="deadline-tag tag-overdue">Просрочено</span>`);
+            } else {
+                if (daysLeft < 0) {
                     deadlineClass = 'overdue';
-                } else {
-                    suffix = ' (на проверке)';
+                    tags.push(`<span class="deadline-tag tag-overdue">Просрочено</span>`);
+                } else if (daysLeft === 0) {
+                    tags.push(`<span class="deadline-tag tag-today">Сегодня</span>`);
+                } else if (daysLeft > 0) {
+                    tags.push(`<span class="deadline-tag tag-days">${daysLeft} дн.</span>`);
                 }
-            } else if (daysLeft < 0) {
-                deadlineClass = 'overdue';
-                suffix = ' (просрочено)';
-            } else if (daysLeft <= 2) {
-                deadlineClass = 'soon';
-                suffix = (daysLeft === 0 ? ' (сегодня)' : daysLeft === 1 ? ' (завтра)' : '');
             }
             
             deadlineHtml = `
                 <span class="my-task-deadline ${deadlineClass}">
-                    <i class="fa-regular fa-calendar"></i> ${formattedDate}${suffix}
+                    <i class="fa-regular fa-calendar"></i> ${formattedDate}
                 </span>
+                ${tags.length ? `<span class="deadline-tags-inline">${tags.join('')}</span>` : ''}
             `;
         }
         

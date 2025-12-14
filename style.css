@@ -811,6 +811,58 @@ body.light-mode select option {
     font-weight: normal;
 }
 
+/* Deadline status tags (can be combined: "На проверке" + "В срок/Просрочено") */
+.deadline-tags {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 6px;
+}
+
+.deadline-tags-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.deadline-tag {
+    font-size: 0.72rem;
+    line-height: 1.1;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    color: var(--text-secondary);
+    background: rgba(148, 163, 184, 0.08);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.deadline-tag.tag-review {
+    color: var(--primary);
+    border-color: rgba(99, 102, 241, 0.25);
+    background: rgba(99, 102, 241, 0.10);
+}
+
+.deadline-tag.tag-ontime {
+    color: var(--success);
+    border-color: rgba(16, 185, 129, 0.25);
+    background: rgba(16, 185, 129, 0.10);
+}
+
+.deadline-tag.tag-overdue {
+    color: var(--danger);
+    border-color: rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.10);
+}
+
+.deadline-tag.tag-today {
+    color: var(--warning);
+    border-color: rgba(245, 158, 11, 0.25);
+    background: rgba(245, 158, 11, 0.10);
+}
+
 /* Task form body - scrollable on mobile, normal on desktop */
 .task-form-body {
     padding: 0; /* Desktop doesn't need extra padding */
