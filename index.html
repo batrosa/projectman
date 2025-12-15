@@ -828,10 +828,33 @@
             </header>
 
             <div class="board-container" id="board-container">
-                <!-- Kanban Columns -->
-                <!-- Kanban Columns -->
+                <div class="board-tabs" id="board-tabs">
+                    <button class="board-tab active" type="button" data-view="assigned">
+                        <span class="board-tab-label">Назначенные</span>
+                        <span class="board-tab-count" id="tab-count-assigned">0</span>
+                    </button>
+                    <button class="board-tab" type="button" data-view="in-progress">
+                        <span class="board-tab-label">В процессе</span>
+                        <span class="board-tab-count" id="tab-count-in-progress">0</span>
+                    </button>
+                    <button class="board-tab" type="button" data-view="done">
+                        <span class="board-tab-label">Готово</span>
+                        <span class="board-tab-count" id="tab-count-done">0</span>
+                    </button>
+                </div>
 
-                <div class="column" data-status="in-progress">
+                <div class="column active" id="column-assigned" data-view="assigned">
+                    <div class="column-header">
+                        <span class="status-indicator todo"></span>
+                        <h2>Назначенные</h2>
+                        <span class="count" id="count-assigned">0</span>
+                    </div>
+                    <div class="task-list" id="list-assigned">
+                        <!-- Tasks -->
+                    </div>
+                </div>
+
+                <div class="column" id="column-in-progress" data-view="in-progress">
                     <div class="column-header">
                         <span class="status-indicator in-progress"></span>
                         <h2>В процессе</h2>
@@ -842,7 +865,7 @@
                     </div>
                 </div>
 
-                <div class="column" data-status="done">
+                <div class="column" id="column-done" data-view="done">
                     <div class="column-header">
                         <span class="status-indicator done"></span>
                         <h2>Готово</h2>

@@ -1472,6 +1472,7 @@ let state = {
     tasks: [],
     users: [], // All users (for admin panel)
     activeProjectId: null,
+    boardView: 'assigned', // 'assigned' | 'in-progress' | 'done' (single-column board)
     role: 'guest', // Legacy role, now use orgRole
     orgRole: 'employee', // owner / admin / moderator / employee
     initialLoadDone: false, // To prevent selecting first project on every update
@@ -1490,12 +1491,20 @@ const elements = {
     deleteProjectBtn: document.getElementById('delete-project-btn'),
 
     // Columns
+    listAssigned: document.getElementById('list-assigned'),
     listInProgress: document.getElementById('list-in-progress'),
     listDone: document.getElementById('list-done'),
 
     // Counts
+    countAssigned: document.getElementById('count-assigned'),
     countInProgress: document.getElementById('count-in-progress'),
     countDone: document.getElementById('count-done'),
+
+    // Board Tabs (single-column view)
+    boardTabs: document.getElementById('board-tabs'),
+    tabCountAssigned: document.getElementById('tab-count-assigned'),
+    tabCountInProgress: document.getElementById('tab-count-in-progress'),
+    tabCountDone: document.getElementById('tab-count-done'),
 
     // Modals
     projectModal: document.getElementById('project-modal'),
@@ -1814,6 +1823,7 @@ function generateId() {
 
 function selectProject(id) {
     state.activeProjectId = id;
+    state.boardView = 'assigned'; // Always open "Assigned" first
     renderProjects(); // To update active class
     subscribeToProjectTasks(id); // Fetch tasks for this project only
 
@@ -1832,6 +1842,7 @@ function subscribeToProjectTasks(projectId) {
     }
 
     // Show loading state in board (optional, but good for UX)
+    if (elements.listAssigned) elements.listAssigned.innerHTML = '<div class="spinner" style="margin: 2rem auto;"></div>';
     elements.listInProgress.innerHTML = '<div class="spinner" style="margin: 2rem auto;"></div>';
     elements.listDone.innerHTML = '';
 
@@ -1848,7 +1859,10 @@ function subscribeToProjectTasks(projectId) {
             renderBoard();
         }, error => {
             console.error("Error fetching tasks:", error);
-            elements.listInProgress.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Ошибка загрузки задач</p>';
+            const errHtml = '<p style="color: var(--text-secondary); text-align: center;">Ошибка загрузки задач</p>';
+            if (elements.listAssigned) elements.listAssigned.innerHTML = errHtml;
+            elements.listInProgress.innerHTML = errHtml;
+            elements.listDone.innerHTML = '';
         });
 }
 
@@ -2038,6 +2052,7 @@ function renderBoard() {
     };
 
     // Clear lists
+    if (elements.listAssigned) elements.listAssigned.innerHTML = '';
     elements.listInProgress.innerHTML = '';
     elements.listDone.innerHTML = '';
 
@@ -2051,15 +2066,52 @@ function renderBoard() {
         return 0;
     });
 
+    const getTaskSubStatusForBoard = (task) => {
+        // Migration logic for old tasks without subStatus
+        let currentSubStatus = task.subStatus || 'assigned';
+        if (!task.subStatus) {
+            if (task.assigneeCompleted) currentSubStatus = 'completed';
+            else currentSubStatus = 'assigned';
+        }
+        // Archived tasks are "done"
+        if (task.status === 'done') currentSubStatus = 'done';
+        return currentSubStatus;
+    };
+
+    const assignedTasks = projectTasks.filter(t => t.status === 'in-progress' && getTaskSubStatusForBoard(t) === 'assigned');
+    const inProgressTasks = projectTasks.filter(t => t.status === 'in-progress' && getTaskSubStatusForBoard(t) !== 'assigned');
+    const doneTasks = projectTasks.filter(t => t.status === 'done');
+
     // Update counts
-    elements.countInProgress.textContent = projectTasks.filter(t => t.status === 'in-progress').length;
-    elements.countDone.textContent = projectTasks.filter(t => t.status === 'done').length;
+    if (elements.countAssigned) elements.countAssigned.textContent = String(assignedTasks.length);
+    elements.countInProgress.textContent = String(inProgressTasks.length);
+    elements.countDone.textContent = String(doneTasks.length);
+
+    // Update tab counts (if present)
+    if (elements.tabCountAssigned) elements.tabCountAssigned.textContent = String(assignedTasks.length);
+    if (elements.tabCountInProgress) elements.tabCountInProgress.textContent = String(inProgressTasks.length);
+    if (elements.tabCountDone) elements.tabCountDone.textContent = String(doneTasks.length);
 
     projectTasks.forEach(task => {
         const card = createTaskCard(task);
-        if (task.status === 'in-progress') elements.listInProgress.appendChild(card);
-        else if (task.status === 'done') elements.listDone.appendChild(card);
+        const sub = getTaskSubStatusForBoard(task);
+
+        if (task.status === 'done') {
+            elements.listDone.appendChild(card);
+            return;
+        }
+
+        // status === in-progress
+        if (sub === 'assigned') {
+            if (elements.listAssigned) elements.listAssigned.appendChild(card);
+            else elements.listInProgress.appendChild(card); // Fallback
+        } else {
+            elements.listInProgress.appendChild(card);
+        }
     });
+
+    // Keep the correct visible column (single-column view)
+    setBoardView(state.boardView || 'assigned');
 }
 
 // --- NEW TASK CARD WITH STATUS BADGES ---
@@ -3483,6 +3535,29 @@ function closeSidebarOnMobile() {
     }
 }
 
+function setBoardView(view) {
+    const allowed = new Set(['assigned', 'in-progress', 'done']);
+    const next = allowed.has(view) ? view : 'assigned';
+    state.boardView = next;
+
+    // Tabs active state
+    document.querySelectorAll('.board-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === next);
+    });
+
+    // Columns visibility
+    document.querySelectorAll('.board-container .column').forEach(col => {
+        col.classList.toggle('active', col.dataset.view === next);
+    });
+
+    // Keyboard navigation column sync (if enabled)
+    if (keyboardNav?.mode === 'tasks') {
+        keyboardNav.taskColumn = next;
+        keyboardNav.focusIndex = -1;
+        clearKeyboardFocus();
+    }
+}
+
 function updateThemeUI(isLight) {
     // Update theme icon in settings
     const themeIcon = document.querySelector('.settings-option-icon.theme i');
@@ -3970,6 +4045,18 @@ function setupEventListeners() {
             }
         });
     });
+
+    // Board tabs (single-column view for projects)
+    if (elements.boardTabs) {
+        elements.boardTabs.addEventListener('click', (e) => {
+            const btn = e.target.closest('.board-tab');
+            if (!btn) return;
+            const view = btn.dataset.view;
+            if (!view) return;
+            playClickSound();
+            setBoardView(view);
+        });
+    }
 
     // Access user select
     if (elements.accessUserSelect) {
@@ -5935,7 +6022,7 @@ function getFilteredProjects() {
 const keyboardNav = {
     active: false,
     mode: 'projects', // 'projects' or 'tasks'
-    taskColumn: 'in-progress', // 'in-progress' or 'done'
+    taskColumn: 'assigned', // 'assigned' | 'in-progress' | 'done'
     focusIndex: -1,
     hintTimeout: null,
     inactivityTimeout: null
@@ -6029,32 +6116,40 @@ function handleKeyboardNavigation(e) {
                 break;
             case 'ArrowLeft':
                 if (keyboardNav.mode === 'tasks') {
-                    // If in "done" column, switch to "in-progress"
+                    // Cycle columns left: done -> in-progress -> assigned -> projects
                     if (keyboardNav.taskColumn === 'done') {
                         keyboardNav.taskColumn = 'in-progress';
-                        keyboardNav.focusIndex = -1;
-                        clearKeyboardFocus();
-                        navigateDown();
+                        setBoardView('in-progress');
+                    } else if (keyboardNav.taskColumn === 'in-progress') {
+                        keyboardNav.taskColumn = 'assigned';
+                        setBoardView('assigned');
                     } else {
-                        // Switch to projects mode
+                        // From assigned -> projects mode
                         keyboardNav.mode = 'projects';
-                        keyboardNav.focusIndex = -1;
-                        clearKeyboardFocus();
-                        navigateDown();
                     }
+                    keyboardNav.focusIndex = -1;
+                    clearKeyboardFocus();
+                    navigateDown();
                 }
                 break;
             case 'ArrowRight':
                 if (keyboardNav.mode === 'projects' && state.activeProjectId) {
-                    // Switch to tasks mode (in-progress column)
+                    // Switch to tasks mode (assigned column)
                     keyboardNav.mode = 'tasks';
-                    keyboardNav.taskColumn = 'in-progress';
+                    keyboardNav.taskColumn = 'assigned';
+                    setBoardView('assigned');
                     keyboardNav.focusIndex = -1;
                     clearKeyboardFocus();
                     navigateDown();
-                } else if (keyboardNav.mode === 'tasks' && keyboardNav.taskColumn === 'in-progress') {
-                    // Switch to "done" column
-                    keyboardNav.taskColumn = 'done';
+                } else if (keyboardNav.mode === 'tasks') {
+                    // Cycle columns right: assigned -> in-progress -> done
+                    if (keyboardNav.taskColumn === 'assigned') {
+                        keyboardNav.taskColumn = 'in-progress';
+                        setBoardView('in-progress');
+                    } else if (keyboardNav.taskColumn === 'in-progress') {
+                        keyboardNav.taskColumn = 'done';
+                        setBoardView('done');
+                    }
                     keyboardNav.focusIndex = -1;
                     clearKeyboardFocus();
                     navigateDown();
@@ -6164,7 +6259,10 @@ function getNavigableItems() {
         return Array.from(document.querySelectorAll('.project-item'));
     } else {
         // Get task cards from the current column
-        const columnId = keyboardNav.taskColumn === 'done' ? 'list-done' : 'list-in-progress';
+        const columnId =
+            keyboardNav.taskColumn === 'assigned' ? 'list-assigned'
+            : keyboardNav.taskColumn === 'done' ? 'list-done'
+            : 'list-in-progress';
         return Array.from(document.querySelectorAll(`#${columnId} .task-card`));
     }
 }
