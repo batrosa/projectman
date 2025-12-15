@@ -1510,7 +1510,7 @@ const elements = {
     boardSelector: document.getElementById('board-selector'),
     boardSelectorBtn: document.getElementById('board-selector-btn'),
     boardSelectorText: document.getElementById('board-selector-text'),
-    boardSelectorMenu: document.getElementById('board-selector-menu'),
+    boardViewModal: document.getElementById('board-view-modal'),
 
     // Modals
     projectModal: document.getElementById('project-modal'),
@@ -3574,24 +3574,7 @@ function setBoardView(view) {
     }
 }
 
-function openBoardSelectorMenu() {
-    if (!elements.boardSelectorMenu) return;
-    elements.boardSelectorMenu.style.display = 'block';
-    elements.boardSelectorBtn?.classList.add('open');
-}
-
-function closeBoardSelectorMenu() {
-    if (!elements.boardSelectorMenu) return;
-    elements.boardSelectorMenu.style.display = 'none';
-    elements.boardSelectorBtn?.classList.remove('open');
-}
-
-function toggleBoardSelectorMenu() {
-    if (!elements.boardSelectorMenu) return;
-    const isOpen = elements.boardSelectorMenu.style.display !== 'none';
-    if (isOpen) closeBoardSelectorMenu();
-    else openBoardSelectorMenu();
-}
+// Board selector now opens modal on mobile
 
 function updateThemeUI(isLight) {
     // Update theme icon in settings
@@ -4093,31 +4076,22 @@ function setupEventListeners() {
         });
     }
 
-    // Board selector (mobile single button)
-    if (elements.boardSelectorBtn && elements.boardSelectorMenu) {
+    // Board selector (mobile centered tab -> opens modal)
+    if (elements.boardSelectorBtn && elements.boardViewModal) {
         elements.boardSelectorBtn.addEventListener('click', (e) => {
             e.preventDefault();
             playClickSound();
-            toggleBoardSelectorMenu();
+            elements.boardViewModal.classList.add('active');
         });
 
-        elements.boardSelectorMenu.addEventListener('click', (e) => {
-            const option = e.target.closest('.board-selector-option');
+        elements.boardViewModal.addEventListener('click', (e) => {
+            const option = e.target.closest('[data-board-view-option]');
             if (!option) return;
             const view = option.dataset.view;
             if (!view) return;
             playClickSound();
             setBoardView(view);
-            closeBoardSelectorMenu();
-        });
-
-        // Close selector on outside click
-        document.addEventListener('click', (e) => {
-            if (!elements.boardSelectorMenu || elements.boardSelectorMenu.style.display === 'none') return;
-            const wrap = elements.boardSelector;
-            if (wrap && !wrap.contains(e.target)) {
-                closeBoardSelectorMenu();
-            }
+            elements.boardViewModal.classList.remove('active');
         });
     }
 

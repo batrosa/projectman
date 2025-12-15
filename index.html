@@ -830,14 +830,10 @@
             <div class="board-container" id="board-container">
                 <div class="board-selector" id="board-selector">
                     <button class="board-selector-btn" type="button" id="board-selector-btn">
+                        <i class="fa-solid fa-layer-group"></i>
                         <span class="board-selector-label" id="board-selector-text">Назначенные</span>
                         <i class="fa-solid fa-chevron-down"></i>
                     </button>
-                    <div class="board-selector-menu" id="board-selector-menu" style="display: none;">
-                        <button class="board-selector-option" type="button" data-view="assigned">Назначенные</button>
-                        <button class="board-selector-option" type="button" data-view="in-progress">В процессе</button>
-                        <button class="board-selector-option" type="button" data-view="done">Готово</button>
-                    </div>
                 </div>
 
                 <div class="board-tabs" id="board-tabs">
@@ -885,6 +881,29 @@
                     </div>
                     <div class="task-list" id="list-done">
                         <!-- Tasks -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Board View Modal (mobile category picker) -->
+            <div id="board-view-modal" class="modal">
+                <div class="modal-content" style="max-width: 420px;">
+                    <div class="modal-header">
+                        <h2><i class="fa-solid fa-layer-group"></i> Категория</h2>
+                        <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div style="padding: 1rem 1.25rem 1.25rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <button type="button" class="primary-btn" data-view="assigned" data-board-view-option style="width: 100%; justify-content: center;">
+                                Назначенные
+                            </button>
+                            <button type="button" class="primary-btn" data-view="in-progress" data-board-view-option style="width: 100%; justify-content: center;">
+                                В процессе
+                            </button>
+                            <button type="button" class="primary-btn" data-view="done" data-board-view-option style="width: 100%; justify-content: center;">
+                                Готово
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
