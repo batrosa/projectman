@@ -828,10 +828,10 @@
             </header>
 
             <div class="board-container" id="board-container">
-                <div class="category-picker" id="category-picker">
-                    <button class="category-btn" type="button" id="category-btn">
+                <div id="category-picker" style="display:none;justify-content:center;padding:8px 0 12px;">
+                    <button type="button" id="category-btn" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border:none;border-radius:50px;background:#6366f1;color:#fff;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);">
                         <span id="category-btn-text">Назначенные</span>
-                        <i class="fa-solid fa-caret-down"></i>
+                        <i class="fa-solid fa-caret-down" style="font-size:12px;opacity:0.8;"></i>
                     </button>
                 </div>
 
@@ -881,24 +881,6 @@
                     <div class="task-list" id="list-done">
                         <!-- Tasks -->
                     </div>
-                </div>
-            </div>
-
-            <!-- Category Picker Modal (mobile) -->
-            <div class="category-modal-overlay" id="category-modal">
-                <div class="category-modal">
-                    <button class="category-option" data-view="assigned">
-                        <i class="fa-solid fa-inbox"></i>
-                        <span>Назначенные</span>
-                    </button>
-                    <button class="category-option" data-view="in-progress">
-                        <i class="fa-solid fa-spinner"></i>
-                        <span>В процессе</span>
-                    </button>
-                    <button class="category-option" data-view="done">
-                        <i class="fa-solid fa-check"></i>
-                        <span>Готово</span>
-                    </button>
                 </div>
             </div>
 
@@ -1756,6 +1738,24 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Category Picker Modal (mobile) -->
+    <div id="category-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px);">
+        <div style="background:var(--card-bg,#1e293b);border-radius:20px;padding:8px;min-width:200px;box-shadow:0 25px 60px rgba(0,0,0,0.5);">
+            <button type="button" data-view="assigned" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+                <i class="fa-solid fa-inbox" style="color:#6366f1;width:20px;"></i>
+                <span>Назначенные</span>
+            </button>
+            <button type="button" data-view="in-progress" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+                <i class="fa-solid fa-spinner" style="color:#6366f1;width:20px;"></i>
+                <span>В процессе</span>
+            </button>
+            <button type="button" data-view="done" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+                <i class="fa-solid fa-check" style="color:#6366f1;width:20px;"></i>
+                <span>Готово</span>
+            </button>
         </div>
     </div>
 

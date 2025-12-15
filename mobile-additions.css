@@ -125,10 +125,8 @@
         display: none !important;
     }
 
-    .category-picker {
+    #category-picker {
         display: flex !important;
-        justify-content: center;
-        padding: 0.5rem 0 0.75rem;
     }
 
     /* Project items with deadline on mobile */

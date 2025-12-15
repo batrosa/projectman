@@ -4081,24 +4081,24 @@ function setupEventListeners() {
         elements.categoryBtn.addEventListener('click', (e) => {
             e.preventDefault();
             playClickSound();
-            elements.categoryModal.classList.add('active');
+            elements.categoryModal.style.display = 'flex';
         });
 
         // Close on overlay click
         elements.categoryModal.addEventListener('click', (e) => {
             if (e.target === elements.categoryModal) {
                 playClickSound();
-                elements.categoryModal.classList.remove('active');
+                elements.categoryModal.style.display = 'none';
             }
         });
 
         // Handle option selection
-        elements.categoryModal.querySelectorAll('.category-option').forEach(btn => {
+        elements.categoryModal.querySelectorAll('button[data-view]').forEach(btn => {
             btn.addEventListener('click', () => {
                 playClickSound();
                 const view = btn.dataset.view;
                 setBoardView(view);
-                elements.categoryModal.classList.remove('active');
+                elements.categoryModal.style.display = 'none';
             });
         });
     }
