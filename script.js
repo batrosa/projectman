@@ -1802,6 +1802,7 @@ function setupRealtimeListeners() {
         renderUsersList(); // Update admin panel - users list
         updateAccessUserSelect(); // Update admin panel - access dropdown
         renderLoginHistoryTab(); // Update admin panel - logins/online
+        renderAdminUsersStatsPanel(); // Update admin panel - users stats
     }, error => {
         console.error("Error listening to users:", error);
     });
@@ -3959,6 +3960,14 @@ function setupEventListeners() {
             // Update active content
             document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
             document.getElementById(`admin-${tabName}-tab`).classList.add('active');
+
+            // Ensure tab-specific content is fresh
+            if (tabName === 'logins') {
+                renderLoginHistoryTab();
+            }
+            if (tabName === 'stats') {
+                renderAdminUsersStatsPanel();
+            }
         });
     });
 
@@ -4255,6 +4264,8 @@ function setupAdminPanel() {
         renderUsersList();
         updateAccessUserSelect();
         renderLoginHistoryTab();
+        renderAdminUsersStatsPanel();
+        renderAdminUsersStatsPanel();
     }
 }
 
@@ -4490,9 +4501,6 @@ function renderLoginHistoryTab() {
 
         elements.loginUsersList.appendChild(item);
     });
-
-    // Also render users stats panel (below login history)
-    renderAdminUsersStatsPanel();
 }
 
 function renderAdminUsersStatsPanel() {

@@ -1597,6 +1597,9 @@
                     <button class="admin-tab" data-tab="logins">
                         <i class="fa-solid fa-clock-rotate-left"></i> История входов
                     </button>
+                    <button class="admin-tab" data-tab="stats">
+                        <i class="fa-solid fa-chart-column"></i> Данные о пользователях
+                    </button>
                 </div>
 
                 <!-- Users Tab -->
@@ -1689,15 +1692,19 @@
                     <div id="login-users-list" class="users-list">
                         <!-- Online/last seen list -->
                     </div>
+                </div>
 
-                    <div style="margin-top: 1.5rem;">
+                <!-- Users Stats Tab -->
+                <div id="admin-stats-tab" class="admin-tab-content">
+                    <div style="margin-bottom: 1.25rem;">
                         <h3 style="margin-bottom: 0.5rem;">Данные о пользователях</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 1rem 0;">
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;">
                             Уровень, выполненные задачи, % в срок и % без доработок.
                         </p>
-                        <div id="admin-users-stats-list" class="users-list">
-                            <!-- Users stats will be rendered here -->
-                        </div>
+                    </div>
+
+                    <div id="admin-users-stats-list" class="users-list">
+                        <!-- Users stats will be rendered here -->
                     </div>
                 </div>
             </div>
