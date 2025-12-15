@@ -126,14 +126,18 @@
     }
 
     .board-selector {
-        display: block !important;
+        display: flex !important;
+        justify-content: center;
         position: sticky;
         top: 0;
         z-index: 20;
-        display: flex !important;
-        justify-content: center;
-        padding-top: 0.25rem;
-        padding-bottom: 0.25rem;
+        padding: 0.5rem 0 0.75rem;
+        background: transparent;
+    }
+    
+    .board-selector-btn {
+        min-width: 200px;
+        padding: 0.85rem 1.25rem;
     }
 
     /* Project items with deadline on mobile */
