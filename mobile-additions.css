@@ -3,6 +3,20 @@
 
 @media (max-width: 768px) {
 
+    /* ========== LIGHT MODE MOBILE OVERRIDES ========== */
+    body.light-mode .sidebar {
+        background: rgba(255, 255, 255, 0.95) !important;
+        border-right: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    
+    body.light-mode .sidebar-overlay {
+        background: rgba(0, 0, 0, 0.3);
+    }
+    
+    body.light-mode .top-bar {
+        background: #f8fafc;
+    }
+
     /* Top bar - sticky */
     .top-bar {
         padding: 1rem;
