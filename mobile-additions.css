@@ -120,6 +120,15 @@
         display: flex !important;
     }
 
+    /* Mobile board: use single selector instead of tabs */
+    .board-tabs {
+        display: none !important;
+    }
+
+    .board-selector {
+        display: block !important;
+    }
+
     /* Project items with deadline on mobile */
     .project-item {
         padding: 0.875rem 1rem !important;

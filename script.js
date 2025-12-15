@@ -1506,6 +1506,12 @@ const elements = {
     tabCountInProgress: document.getElementById('tab-count-in-progress'),
     tabCountDone: document.getElementById('tab-count-done'),
 
+    // Board selector (mobile)
+    boardSelector: document.getElementById('board-selector'),
+    boardSelectorBtn: document.getElementById('board-selector-btn'),
+    boardSelectorText: document.getElementById('board-selector-text'),
+    boardSelectorMenu: document.getElementById('board-selector-menu'),
+
     // Modals
     projectModal: document.getElementById('project-modal'),
     taskModal: document.getElementById('task-modal'),
@@ -3540,6 +3546,16 @@ function setBoardView(view) {
     const next = allowed.has(view) ? view : 'assigned';
     state.boardView = next;
 
+    // Update selector label (mobile)
+    if (elements.boardSelectorText) {
+        const labelMap = {
+            'assigned': 'Назначенные',
+            'in-progress': 'В процессе',
+            'done': 'Готово'
+        };
+        elements.boardSelectorText.textContent = labelMap[next] || 'Назначенные';
+    }
+
     // Tabs active state
     document.querySelectorAll('.board-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === next);
@@ -3556,6 +3572,25 @@ function setBoardView(view) {
         keyboardNav.focusIndex = -1;
         clearKeyboardFocus();
     }
+}
+
+function openBoardSelectorMenu() {
+    if (!elements.boardSelectorMenu) return;
+    elements.boardSelectorMenu.style.display = 'block';
+    elements.boardSelectorBtn?.classList.add('open');
+}
+
+function closeBoardSelectorMenu() {
+    if (!elements.boardSelectorMenu) return;
+    elements.boardSelectorMenu.style.display = 'none';
+    elements.boardSelectorBtn?.classList.remove('open');
+}
+
+function toggleBoardSelectorMenu() {
+    if (!elements.boardSelectorMenu) return;
+    const isOpen = elements.boardSelectorMenu.style.display !== 'none';
+    if (isOpen) closeBoardSelectorMenu();
+    else openBoardSelectorMenu();
 }
 
 function updateThemeUI(isLight) {
@@ -4055,6 +4090,34 @@ function setupEventListeners() {
             if (!view) return;
             playClickSound();
             setBoardView(view);
+        });
+    }
+
+    // Board selector (mobile single button)
+    if (elements.boardSelectorBtn && elements.boardSelectorMenu) {
+        elements.boardSelectorBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            playClickSound();
+            toggleBoardSelectorMenu();
+        });
+
+        elements.boardSelectorMenu.addEventListener('click', (e) => {
+            const option = e.target.closest('.board-selector-option');
+            if (!option) return;
+            const view = option.dataset.view;
+            if (!view) return;
+            playClickSound();
+            setBoardView(view);
+            closeBoardSelectorMenu();
+        });
+
+        // Close selector on outside click
+        document.addEventListener('click', (e) => {
+            if (!elements.boardSelectorMenu || elements.boardSelectorMenu.style.display === 'none') return;
+            const wrap = elements.boardSelector;
+            if (wrap && !wrap.contains(e.target)) {
+                closeBoardSelectorMenu();
+            }
         });
     }
 

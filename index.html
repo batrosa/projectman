@@ -828,6 +828,18 @@
             </header>
 
             <div class="board-container" id="board-container">
+                <div class="board-selector" id="board-selector">
+                    <button class="board-selector-btn" type="button" id="board-selector-btn">
+                        <span class="board-selector-label" id="board-selector-text">Назначенные</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="board-selector-menu" id="board-selector-menu" style="display: none;">
+                        <button class="board-selector-option" type="button" data-view="assigned">Назначенные</button>
+                        <button class="board-selector-option" type="button" data-view="in-progress">В процессе</button>
+                        <button class="board-selector-option" type="button" data-view="done">Готово</button>
+                    </div>
+                </div>
+
                 <div class="board-tabs" id="board-tabs">
                     <button class="board-tab active" type="button" data-view="assigned">
                         <span class="board-tab-label">Назначенные</span>

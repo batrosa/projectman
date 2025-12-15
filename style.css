@@ -376,8 +376,8 @@ body.light-mode .project-info h1 {
     gap: 0.5rem;
     padding: 0.4rem;
     border-radius: 14px;
-    border: var(--glass-border);
-    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border);
+    background: var(--sidebar-bg);
     backdrop-filter: blur(8px);
     position: sticky;
     top: 0;
@@ -420,8 +420,8 @@ body.light-mode .project-info h1 {
 }
 
 .board-tab-count {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid var(--border);
     padding: 2px 10px;
     border-radius: 999px;
     font-size: 0.8rem;
@@ -432,6 +432,65 @@ body.light-mode .project-info h1 {
 .board-tab.active .board-tab-count {
     color: var(--text);
     border-color: rgba(99, 102, 241, 0.25);
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.board-selector {
+    display: none;
+    position: relative;
+}
+
+.board-selector-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--sidebar-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.board-selector-btn i {
+    color: var(--text-secondary);
+    transition: transform 0.15s ease;
+}
+
+.board-selector-btn.open i {
+    transform: rotate(180deg);
+}
+
+.board-selector-label {
+    font-weight: 800;
+}
+
+.board-selector-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+}
+
+.board-selector-option {
+    width: 100%;
+    text-align: left;
+    padding: 0.9rem 1rem;
+    background: transparent;
+    color: var(--text-primary);
+    border: none;
+    cursor: pointer;
+}
+
+.board-selector-option:hover {
     background: rgba(99, 102, 241, 0.12);
 }
 
