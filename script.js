@@ -1507,10 +1507,10 @@ const elements = {
     tabCountDone: document.getElementById('tab-count-done'),
 
     // Board selector (mobile)
-    boardSelector: document.getElementById('board-selector'),
-    boardSelectorBtn: document.getElementById('board-selector-btn'),
-    boardSelectorText: document.getElementById('board-selector-text'),
-    boardViewModal: document.getElementById('board-view-modal'),
+    categoryPicker: document.getElementById('category-picker'),
+    categoryBtn: document.getElementById('category-btn'),
+    categoryBtnText: document.getElementById('category-btn-text'),
+    categoryModal: document.getElementById('category-modal'),
 
     // Modals
     projectModal: document.getElementById('project-modal'),
@@ -3546,14 +3546,14 @@ function setBoardView(view) {
     const next = allowed.has(view) ? view : 'assigned';
     state.boardView = next;
 
-    // Update selector label (mobile)
-    if (elements.boardSelectorText) {
+    // Update category button label (mobile)
+    if (elements.categoryBtnText) {
         const labelMap = {
             'assigned': 'Назначенные',
             'in-progress': 'В процессе',
             'done': 'Готово'
         };
-        elements.boardSelectorText.textContent = labelMap[next] || 'Назначенные';
+        elements.categoryBtnText.textContent = labelMap[next] || 'Назначенные';
     }
 
     // Tabs active state
@@ -4076,22 +4076,30 @@ function setupEventListeners() {
         });
     }
 
-    // Board selector (mobile centered tab -> opens modal)
-    if (elements.boardSelectorBtn && elements.boardViewModal) {
-        elements.boardSelectorBtn.addEventListener('click', (e) => {
+    // Category picker (mobile -> opens compact modal)
+    if (elements.categoryBtn && elements.categoryModal) {
+        elements.categoryBtn.addEventListener('click', (e) => {
             e.preventDefault();
             playClickSound();
-            elements.boardViewModal.classList.add('active');
+            elements.categoryModal.classList.add('active');
         });
 
-        elements.boardViewModal.addEventListener('click', (e) => {
-            const option = e.target.closest('[data-board-view-option]');
-            if (!option) return;
-            const view = option.dataset.view;
-            if (!view) return;
-            playClickSound();
-            setBoardView(view);
-            elements.boardViewModal.classList.remove('active');
+        // Close on overlay click
+        elements.categoryModal.addEventListener('click', (e) => {
+            if (e.target === elements.categoryModal) {
+                playClickSound();
+                elements.categoryModal.classList.remove('active');
+            }
+        });
+
+        // Handle option selection
+        elements.categoryModal.querySelectorAll('.category-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                playClickSound();
+                const view = btn.dataset.view;
+                setBoardView(view);
+                elements.categoryModal.classList.remove('active');
+            });
         });
     }
 
