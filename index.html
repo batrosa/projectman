@@ -1130,6 +1130,24 @@
                             <span class="stat-label">% в срок</span>
                         </div>
                     </div>
+                    <div class="profile-stat">
+                        <div class="stat-icon completed">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="profile-no-revision-tasks">0</span>
+                            <span class="stat-label">Без доработок</span>
+                        </div>
+                    </div>
+                    <div class="profile-stat">
+                        <div class="stat-icon percent">
+                            <i class="fa-solid fa-percent"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="profile-no-revision-percent">0%</span>
+                            <span class="stat-label">% без доработок</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1670,6 +1688,16 @@
 
                     <div id="login-users-list" class="users-list">
                         <!-- Online/last seen list -->
+                    </div>
+
+                    <div style="margin-top: 1.5rem;">
+                        <h3 style="margin-bottom: 0.5rem;">Данные о пользователях</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 1rem 0;">
+                            Уровень, выполненные задачи, % в срок и % без доработок.
+                        </p>
+                        <div id="admin-users-stats-list" class="users-list">
+                            <!-- Users stats will be rendered here -->
+                        </div>
                     </div>
                 </div>
             </div>

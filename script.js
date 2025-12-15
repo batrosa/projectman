@@ -1542,6 +1542,7 @@ const elements = {
     loginUsersList: document.getElementById('login-users-list'),
     onlineUsersCount: document.getElementById('online-users-count'),
     totalUsersCount: document.getElementById('total-users-count'),
+    adminUsersStatsList: document.getElementById('admin-users-stats-list'),
     
     // My Tasks
     myTasksBtn: document.getElementById('my-tasks-btn'),
@@ -4489,6 +4490,91 @@ function renderLoginHistoryTab() {
 
         elements.loginUsersList.appendChild(item);
     });
+
+    // Also render users stats panel (below login history)
+    renderAdminUsersStatsPanel();
+}
+
+function renderAdminUsersStatsPanel() {
+    if (!elements.adminUsersStatsList) return;
+
+    const users = (Array.isArray(state.users) ? state.users : [])
+        .filter(u => u.organizationId === state.organization?.id);
+
+    // Sort by level desc, then completed tasks desc, then name
+    const sorted = [...users].sort((a, b) => {
+        const aLevel = getLevelFromXP(a.totalXP || 0).level;
+        const bLevel = getLevelFromXP(b.totalXP || 0).level;
+        if (bLevel !== aLevel) return bLevel - aLevel;
+
+        const aCompleted = a.completedTasksCount || 0;
+        const bCompleted = b.completedTasksCount || 0;
+        if (bCompleted !== aCompleted) return bCompleted - aCompleted;
+
+        return getUserDisplayName(a).localeCompare(getUserDisplayName(b));
+    });
+
+    elements.adminUsersStatsList.innerHTML = '';
+
+    if (sorted.length === 0) {
+        elements.adminUsersStatsList.innerHTML = `
+            <div class="user-item" style="justify-content: center; color: var(--text-secondary);">
+                Нет пользователей
+            </div>
+        `;
+        return;
+    }
+
+    sorted.forEach(user => {
+        const item = document.createElement('div');
+        item.className = 'user-item';
+
+        const fullName = getUserDisplayName(user);
+        const nameParts = fullName.split(' ').filter(Boolean);
+        const initials = nameParts.length >= 2
+            ? (nameParts[0][0] || '') + (nameParts[1][0] || '')
+            : (fullName[0] || 'U');
+
+        const avatarHtml = user.profilePhotoUrl
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
+
+        const completed = user.completedTasksCount || 0;
+        const onTime = user.onTimeTasksCount || 0;
+        const noRevision = user.noRevisionTasksCount || 0;
+        const onTimePercent = completed > 0 ? Math.round((onTime / completed) * 100) : 0;
+        const noRevisionPercent = completed > 0 ? Math.round((noRevision / completed) * 100) : 0;
+
+        const levelInfo = getLevelFromXP(user.totalXP || 0);
+
+        item.innerHTML = `
+            <div class="user-info">
+                ${avatarHtml}
+                <div class="user-details">
+                    <div class="user-name">
+                        ${escapeHtml(fullName)}
+                        <span style="color: var(--text-secondary); font-size: 0.85rem; margin-left: 8px;">
+                            Ур. ${levelInfo.level} • ${escapeHtml(levelInfo.title)}
+                        </span>
+                    </div>
+                    <div class="user-email">${escapeHtml(user.email || '')}</div>
+                </div>
+            </div>
+            <div class="user-actions" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
+                <span class="role-badge employee" style="border-color: rgba(148,163,184,0.25); background: rgba(148,163,184,0.08); color: var(--text);">
+                    <i class="fa-solid fa-check-double"></i> ${completed}
+                </span>
+                <span class="role-badge employee" style="border-color: rgba(34,197,94,0.25); background: rgba(34,197,94,0.10); color: var(--text);">
+                    <i class="fa-solid fa-clock"></i> ${onTimePercent}%
+                </span>
+                <span class="role-badge employee" style="border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.10); color: var(--text);">
+                    <i class="fa-solid fa-rotate-left"></i> ${noRevisionPercent}%
+                </span>
+            </div>
+        `;
+
+        elements.adminUsersStatsList.appendChild(item);
+    });
 }
 
 // Remove user from organization (not delete account)
@@ -4849,12 +4935,14 @@ async function awardXP(userId, taskId, wasOnTime, wasReturned) {
             // Increment task counters (persists even if task is deleted)
             const completedTasks = (userData.completedTasksCount || 0) + 1;
             const onTimeTasks = wasOnTime ? (userData.onTimeTasksCount || 0) + 1 : (userData.onTimeTasksCount || 0);
+            const noRevisionTasks = !wasReturned ? (userData.noRevisionTasksCount || 0) + 1 : (userData.noRevisionTasksCount || 0);
             
             await userRef.update({
                 totalXP: newXP,
                 level: newLevel.level,
                 completedTasksCount: completedTasks,
-                onTimeTasksCount: onTimeTasks
+                onTimeTasksCount: onTimeTasks,
+                noRevisionTasksCount: noRevisionTasks
             });
         }
     } catch (error) {
@@ -6303,10 +6391,15 @@ function openProfileModal() {
     const completedTasks = userData.completedTasksCount || 0;
     const onTimeTasks = userData.onTimeTasksCount || 0;
     const onTimePercent = completedTasks > 0 ? Math.round((onTimeTasks / completedTasks) * 100) : 0;
+
+    const noRevisionTasks = userData.noRevisionTasksCount || 0;
+    const noRevisionPercent = completedTasks > 0 ? Math.round((noRevisionTasks / completedTasks) * 100) : 0;
     
     document.getElementById('profile-completed-tasks').textContent = completedTasks;
     document.getElementById('profile-ontime-tasks').textContent = onTimeTasks;
     document.getElementById('profile-ontime-percent').textContent = `${onTimePercent}%`;
+    document.getElementById('profile-no-revision-tasks').textContent = noRevisionTasks;
+    document.getElementById('profile-no-revision-percent').textContent = `${noRevisionPercent}%`;
     
     // Show loading state for active tasks only
     document.getElementById('profile-active-tasks').textContent = '...';
@@ -6595,6 +6688,7 @@ function openLeaderboardModal() {
     
     const podiumContainer = document.getElementById('leaderboard-podium');
     const MIN_LEVEL_FOR_RANKING = 3;
+    const RANKING_WEIGHTS = { onTime: 0.5, noRevision: 0.5 };
     
     // Get all users from organization with level 3+
     const allUsers = state.users
@@ -6602,14 +6696,22 @@ function openLeaderboardModal() {
         .map(u => {
             const completedTasks = u.completedTasksCount || 0;
             const onTimeTasks = u.onTimeTasksCount || 0;
+            const noRevisionTasks = u.noRevisionTasksCount || 0;
             // Calculate on-time percentage (0 if no completed tasks)
             const onTimePercent = completedTasks > 0 ? Math.round((onTimeTasks / completedTasks) * 100) : 0;
+            const noRevisionPercent = completedTasks > 0 ? Math.round((noRevisionTasks / completedTasks) * 100) : 0;
+            const ratingScore = completedTasks > 0
+                ? Math.round(onTimePercent * RANKING_WEIGHTS.onTime + noRevisionPercent * RANKING_WEIGHTS.noRevision)
+                : 0;
             const level = getLevelFromXP(u.totalXP || 0);
             return {
                 ...u,
                 completedTasks,
                 onTimeTasks,
+                noRevisionTasks,
                 onTimePercent,
+                noRevisionPercent,
+                ratingScore,
                 level
             };
         })
@@ -6625,14 +6727,15 @@ function openLeaderboardModal() {
         return;
     }
     
-    // Sort: first by on-time percentage (desc), then by completed tasks (desc), then random for 0%
+    // Sort: by rating score (desc), then by completed tasks (desc), then by no-revision %, then by on-time %
     const sortedUsers = allUsers.sort((a, b) => {
         // Both have completed tasks - sort by percentage then by count
         if (a.completedTasks > 0 && b.completedTasks > 0) {
-            if (b.onTimePercent !== a.onTimePercent) {
-                return b.onTimePercent - a.onTimePercent;
-            }
-            return b.completedTasks - a.completedTasks;
+            if (b.ratingScore !== a.ratingScore) return b.ratingScore - a.ratingScore;
+            if (b.completedTasks !== a.completedTasks) return b.completedTasks - a.completedTasks;
+            if (b.noRevisionPercent !== a.noRevisionPercent) return b.noRevisionPercent - a.noRevisionPercent;
+            if (b.onTimePercent !== a.onTimePercent) return b.onTimePercent - a.onTimePercent;
+            return 0;
         }
         // One has completed tasks, other doesn't - completed first
         if (a.completedTasks > 0) return -1;
@@ -6657,10 +6760,10 @@ function openLeaderboardModal() {
         
         // Show stats or "Нет задач" if no completed tasks
         const statsText = user.completedTasks > 0 
-            ? `${user.onTimeTasks} из ${user.completedTasks} в срок`
+            ? `В срок: ${user.onTimeTasks} из ${user.completedTasks} (${user.onTimePercent}%) • Без доработок: ${user.noRevisionTasks} из ${user.completedTasks} (${user.noRevisionPercent}%)`
             : 'Нет завершённых задач';
         const percentText = user.completedTasks > 0 
-            ? `${user.onTimePercent}%`
+            ? `${user.ratingScore}%`
             : '—';
         const levelText = `Ур. ${user.level.level} • ${user.level.title}`;
         
