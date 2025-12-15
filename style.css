@@ -1986,6 +1986,15 @@ body.read-only .status-option {
         flex: 1;
         min-width: 120px;
     }
+
+    /* On mobile, avoid custom select icons in admin users list.
+       Some browsers render the SVG caret like repeated "checkmarks". */
+    #admin-panel-modal .role-select {
+        -webkit-appearance: menulist;
+        appearance: menulist;
+        background-image: none !important;
+        padding-right: 0.75rem;
+    }
     
     .users-list {
         gap: 0.75rem;
