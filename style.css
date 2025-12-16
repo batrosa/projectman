@@ -6036,6 +6036,22 @@ body.light-mode .ev-badge.reminder {
 
     .ev-create-modal-content .ev-header {
         flex-shrink: 0;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        padding: 1rem 1.25rem;
+    }
+
+    .ev-create-modal-content .ev-header h2 {
+        color: white !important;
+        font-size: 1rem;
+    }
+
+    .ev-create-modal-content .ev-header h2 i {
+        color: white !important;
+    }
+
+    .ev-create-modal-content .ev-header .close-modal {
+        color: rgba(255, 255, 255, 0.8);
+        background: rgba(255, 255, 255, 0.15);
     }
 
     .ev-create-body {
