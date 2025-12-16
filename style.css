@@ -5497,6 +5497,18 @@ body.light-mode .ev-create-modal-content {
     gap: 1.25rem;
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.ev-create-body .ev-field {
+    width: 100%;
+    min-width: 0;
+}
+
+.ev-create-body input,
+.ev-create-body textarea {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .ev-form-row {
@@ -5507,6 +5519,17 @@ body.light-mode .ev-create-modal-content {
 .ev-form-row-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ev-form-row-2 .ev-field {
+    min-width: 0;
+}
+
+.ev-form-row-2 input {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .ev-field {
