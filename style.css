@@ -5996,7 +5996,7 @@ body.light-mode .ev-badge.reminder {
     }
 
     .ev-form-row-2 {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         gap: 0.75rem;
     }
 
