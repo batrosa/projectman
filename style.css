@@ -6060,16 +6060,33 @@ body.light-mode .ev-badge.reminder {
     }
 
     .ev-create-body {
-        padding: 1.25rem;
+        padding: 1rem;
         gap: 1rem;
         flex: 1;
         min-height: 0;
         overflow-y: auto;
+        overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
     }
 
+    .ev-create-body .ev-field {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .ev-create-body input,
+    .ev-create-body textarea {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        padding: 0.75rem !important;
+        font-size: 0.9rem !important;
+    }
+
     .ev-create-footer {
-        padding: 1rem 1.25rem;
+        padding: 1rem;
         flex-shrink: 0;
         flex-direction: row;
         gap: 0.75rem;
@@ -6082,8 +6099,15 @@ body.light-mode .ev-badge.reminder {
     }
 
     .ev-form-row-2 {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr !important;
         gap: 1rem;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .ev-form-row-2 .ev-field {
+        width: 100% !important;
+        max-width: 100% !important;
     }
 
     .ev-users {
