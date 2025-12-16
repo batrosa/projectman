@@ -1353,6 +1353,7 @@ function enterApp() {
     applyRoleRestrictions();
     setupRealtimeListeners();
     subscribeToMyTasks();
+    startEventsReminderLoop();
 
     // Start presence tracking (used for admin "who is online" / last seen)
     startPresenceHeartbeat();
@@ -1471,6 +1472,7 @@ let state = {
     projects: [],
     tasks: [],
     users: [], // All users (for admin panel)
+    events: [], // Organization events (for Events modal)
     activeProjectId: null,
     boardView: 'assigned', // 'assigned' | 'in-progress' | 'done' (single-column board)
     role: 'guest', // Legacy role, now use orgRole
@@ -1516,6 +1518,22 @@ const elements = {
     projectModal: document.getElementById('project-modal'),
     taskModal: document.getElementById('task-modal'),
     helpModal: document.getElementById('help-modal'),
+
+    // Events
+    eventsBtn: document.getElementById('events-btn'),
+    eventsModal: document.getElementById('events-modal'),
+    eventsList: document.getElementById('events-list'),
+    createEventToggle: document.getElementById('create-event-toggle'),
+    createEventPanel: document.getElementById('create-event-panel'),
+    eventTitleInput: document.getElementById('event-title'),
+    eventDateInput: document.getElementById('event-date'),
+    eventTimeInput: document.getElementById('event-time'),
+    eventParticipantSearch: document.getElementById('event-participant-search'),
+    eventParticipantsList: document.getElementById('event-participants-list'),
+    eventDescriptionInput: document.getElementById('event-description'),
+    eventReminder2h: document.getElementById('event-reminder-2h'),
+    cancelCreateEventBtn: document.getElementById('cancel-create-event'),
+    submitCreateEventBtn: document.getElementById('submit-create-event'),
 
     // Forms
     projectForm: document.getElementById('project-form'),
@@ -1736,11 +1754,13 @@ function showUpdateNotification() {
 // Persistence - NOW FIREBASE
 let projectsListenerUnsubscribe = null;
 let usersListenerUnsubscribe = null;
+let eventsListenerUnsubscribe = null;
 
 function setupRealtimeListeners() {
     // Unsubscribe from previous listeners
     if (projectsListenerUnsubscribe) projectsListenerUnsubscribe();
     if (usersListenerUnsubscribe) usersListenerUnsubscribe();
+    if (eventsListenerUnsubscribe) eventsListenerUnsubscribe();
     
     const orgId = state.organization?.id;
     
@@ -1820,6 +1840,33 @@ function setupRealtimeListeners() {
         renderAdminUsersStatsPanel(); // Update admin panel - users stats
     }, error => {
         console.error("Error listening to users:", error);
+    });
+
+    // Listen for Events (filtered by organization)
+    // We listen to ALL events and filter client-side to avoid index requirements
+    eventsListenerUnsubscribe = db.collection('events').orderBy('startsAt').onSnapshot(snapshot => {
+        const events = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (orgId) {
+                if (data.organizationId === orgId) {
+                    events.push({ id: doc.id, ...data });
+                }
+            } else {
+                events.push({ id: doc.id, ...data });
+            }
+        });
+        state.events = events;
+
+        // If modal is open - refresh UI
+        if (elements.eventsModal && elements.eventsModal.classList.contains('active')) {
+            renderEventsModal();
+        }
+
+        // Check 2h reminders (best-effort, same style as task reminders)
+        checkEventReminders(events);
+    }, error => {
+        console.error("Error listening to events:", error);
     });
 }
 
@@ -5607,6 +5654,76 @@ function checkReminders(tasks) {
     });
 }
 
+// ========================================
+// EVENTS: REMINDERS (2 HOURS BEFORE)
+// ========================================
+let eventsReminderIntervalId = null;
+
+function startEventsReminderLoop() {
+    // Start once per session (after auth) to avoid duplicates
+    if (eventsReminderIntervalId) return;
+    eventsReminderIntervalId = setInterval(() => {
+        try {
+            checkEventReminders(state.events || []);
+        } catch (e) {
+            console.warn('Event reminder loop error:', e?.message || e);
+        }
+    }, 60 * 1000); // every 1 minute
+}
+
+function checkEventReminders(events) {
+    // Best-effort (same approach as task reminders): requires app to be open somewhere
+    if (!db) return;
+    if (!state.users || state.users.length === 0) return;
+    if (!state.currentUser?.uid) return;
+
+    const now = new Date();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
+    (Array.isArray(events) ? events : []).forEach((evt) => {
+        try {
+            if (!evt) return;
+            if (!evt.reminder2h) return;
+            if (evt.reminder2hSent) return;
+            if (!evt.startsAt) return;
+
+            const startsAt = new Date(evt.startsAt);
+            if (isNaN(startsAt.getTime())) return;
+
+            const diff = startsAt.getTime() - now.getTime();
+            if (diff <= 0) return; // already started/past
+            if (diff > TWO_HOURS_MS) return; // too early
+
+            // Claim sending once via transaction to reduce duplicates
+            (async () => {
+                const ref = db.collection('events').doc(evt.id);
+                let claimed = false;
+                try {
+                    claimed = await db.runTransaction(async (tx) => {
+                        const snap = await tx.get(ref);
+                        if (!snap.exists) return false;
+                        const data = snap.data() || {};
+                        if (data.reminder2hSent) return false;
+                        tx.update(ref, {
+                            reminder2hSent: true,
+                            reminder2hSentAt: new Date().toISOString()
+                        });
+                        return true;
+                    });
+                } catch (e) {
+                    console.warn('Failed to claim event reminder:', e?.message || e);
+                    return;
+                }
+
+                if (!claimed) return;
+                await notifyEventParticipants(evt, true);
+            })();
+        } catch (e) {
+            console.warn('checkEventReminders item error:', e?.message || e);
+        }
+    });
+}
+
 async function deleteUser(userId, userName) {
     // Check permission - only owner or admin can delete users
     if (!canAccessAdmin()) return;
@@ -6344,6 +6461,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initKeyboardNavigation();
     initTelegramConnection();
     initProfileAndLeaderboard();
+    initEventsModule();
 });
 
 // ========== MIGRATION FUNCTION ==========
@@ -6830,6 +6948,341 @@ function cropImageToCircle() {
         
         resolve(canvas.toDataURL('image/jpeg', 0.9));
     });
+}
+
+// ========== EVENTS ==========
+let eventsUIState = {
+    selectedParticipantIds: new Set(),
+    participantSearch: ''
+};
+
+function openEventsModal() {
+    if (!elements.eventsModal) return;
+    elements.eventsModal.classList.add('active');
+    renderEventsModal();
+}
+
+function renderEventsModal() {
+    if (!elements.eventsList) return;
+
+    // If user isn't ready yet
+    if (!state.currentUser?.uid) {
+        elements.eventsList.innerHTML = `
+            <div class="event-item" style="align-items: center; text-align: center; color: var(--text-secondary);">
+                Загрузка...
+            </div>
+        `;
+        return;
+    }
+
+    renderEventsList();
+}
+
+function getMyEvents() {
+    const uid = state.currentUser?.uid;
+    if (!uid) return [];
+    const all = Array.isArray(state.events) ? state.events : [];
+    return all.filter(e => Array.isArray(e.participantIds) && e.participantIds.includes(uid));
+}
+
+function formatEventDateTime(startsAt) {
+    const d = new Date(startsAt);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function renderEventsList() {
+    if (!elements.eventsList) return;
+
+    const events = getMyEvents().sort((a, b) => {
+        const ta = new Date(a.startsAt || 0).getTime() || 0;
+        const tb = new Date(b.startsAt || 0).getTime() || 0;
+        return ta - tb;
+    });
+
+    if (events.length === 0) {
+        elements.eventsList.innerHTML = `
+            <div class="event-item" style="align-items: center; text-align: center; color: var(--text-secondary);">
+                <div style="font-size: 2rem; opacity: 0.35; margin-bottom: 0.25rem;"><i class="fa-regular fa-calendar"></i></div>
+                Пока нет событий, где вы участник
+            </div>
+        `;
+        return;
+    }
+
+    elements.eventsList.innerHTML = '';
+
+    events.forEach(evt => {
+        const item = document.createElement('div');
+        item.className = 'event-item';
+
+        const participants = (Array.isArray(evt.participantIds) ? evt.participantIds : [])
+            .map(id => state.users.find(u => u.id === id))
+            .filter(Boolean);
+
+        const participantsText = participants.length
+            ? participants.map(u => escapeHtml(getUserDisplayName(u))).slice(0, 4).join(', ') + (participants.length > 4 ? ` и ещё ${participants.length - 4}` : '')
+            : '—';
+
+        const dtText = formatEventDateTime(evt.startsAt);
+        const desc = (evt.description || '').trim();
+        const reminderBadge = evt.reminder2h ? `<span class="event-badge"><i class="fa-regular fa-bell"></i> Напоминание 2ч</span>` : '';
+        const creator = state.users.find(u => u.id === evt.createdById);
+        const creatorText = creator ? escapeHtml(getUserDisplayName(creator)) : (evt.createdByEmail ? escapeHtml(evt.createdByEmail) : '—');
+
+        item.innerHTML = `
+            <div class="event-item-top">
+                <div class="event-item-title">${escapeHtml(evt.title || 'Без названия')}</div>
+                <div class="event-item-datetime"><i class="fa-regular fa-clock"></i> ${dtText}</div>
+            </div>
+            <div class="event-item-meta"><i class="fa-solid fa-users"></i> ${participantsText}</div>
+            <div class="event-item-meta"><i class="fa-solid fa-user-pen"></i> Создатель: ${creatorText}</div>
+            ${desc ? `<div class="event-item-desc">${escapeHtml(desc)}</div>` : ''}
+            <div class="event-item-badges">
+                ${reminderBadge}
+            </div>
+        `;
+
+        elements.eventsList.appendChild(item);
+    });
+}
+
+function toggleCreateEventPanel(forceOpen = null) {
+    if (!elements.createEventPanel) return;
+    const shouldOpen = forceOpen === null ? elements.createEventPanel.style.display === 'none' : forceOpen;
+    elements.createEventPanel.style.display = shouldOpen ? 'flex' : 'none';
+    if (shouldOpen) {
+        resetCreateEventForm();
+    }
+}
+
+function resetCreateEventForm() {
+    if (!state.currentUser?.uid) return;
+    eventsUIState.selectedParticipantIds = new Set([state.currentUser.uid]); // creator always included
+    eventsUIState.participantSearch = '';
+
+    if (elements.eventTitleInput) elements.eventTitleInput.value = '';
+    if (elements.eventDescriptionInput) elements.eventDescriptionInput.value = '';
+    if (elements.eventParticipantSearch) elements.eventParticipantSearch.value = '';
+    if (elements.eventReminder2h) elements.eventReminder2h.checked = false;
+
+    // Pre-fill date/time with ближайшее округление (optional)
+    const now = new Date();
+    const rounded = new Date(now.getTime() + 30 * 60 * 1000);
+    rounded.setMinutes(rounded.getMinutes() - (rounded.getMinutes() % 5), 0, 0);
+    const yyyy = rounded.getFullYear();
+    const mm = String(rounded.getMonth() + 1).padStart(2, '0');
+    const dd = String(rounded.getDate()).padStart(2, '0');
+    const hh = String(rounded.getHours()).padStart(2, '0');
+    const mi = String(rounded.getMinutes()).padStart(2, '0');
+    if (elements.eventDateInput) elements.eventDateInput.value = `${yyyy}-${mm}-${dd}`;
+    if (elements.eventTimeInput) elements.eventTimeInput.value = `${hh}:${mi}`;
+
+    renderEventParticipantsPicker();
+}
+
+function renderEventParticipantsPicker() {
+    if (!elements.eventParticipantsList) return;
+    const q = (eventsUIState.participantSearch || '').trim().toLowerCase();
+
+    const users = Array.isArray(state.users) ? state.users : [];
+    const filtered = users.filter(u => {
+        const name = getUserDisplayName(u).toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        return !q || name.includes(q) || email.includes(q);
+    });
+
+    elements.eventParticipantsList.innerHTML = '';
+
+    if (filtered.length === 0) {
+        elements.eventParticipantsList.innerHTML = `<div style="padding: 0.75rem; color: var(--text-secondary); text-align: center;">Нет совпадений</div>`;
+        return;
+    }
+
+    filtered.forEach(u => {
+        const row = document.createElement('div');
+        row.className = 'events-participant-item';
+
+        const isCreator = u.id === state.currentUser?.uid;
+        const checked = eventsUIState.selectedParticipantIds.has(u.id) || isCreator;
+
+        row.innerHTML = `
+            <input type="checkbox" ${checked ? 'checked' : ''} ${isCreator ? 'disabled' : ''} data-user-id="${u.id}" style="width: 18px; height: 18px; margin: 0;">
+            <div class="events-participant-main">
+                <div class="events-participant-name">${escapeHtml(getUserDisplayName(u))}${u.telegramChatId ? ' <i class="fa-brands fa-telegram" style="color:#0088cc;" title="Telegram подключен"></i>' : ''}</div>
+                <div class="events-participant-email">${escapeHtml(u.email || '')}</div>
+            </div>
+        `;
+
+        const cb = row.querySelector('input[type="checkbox"]');
+        if (cb) {
+            cb.addEventListener('change', () => {
+                const userId = cb.dataset.userId;
+                if (!userId) return;
+                if (cb.checked) eventsUIState.selectedParticipantIds.add(userId);
+                else eventsUIState.selectedParticipantIds.delete(userId);
+            });
+        }
+
+        elements.eventParticipantsList.appendChild(row);
+    });
+}
+
+function escapeTelegramHtml(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+async function notifyEventParticipants(evt, isReminder = false) {
+    const participantIds = Array.isArray(evt.participantIds) ? evt.participantIds : [];
+    if (participantIds.length === 0) return;
+
+    const participants = participantIds
+        .map(id => state.users.find(u => u.id === id))
+        .filter(Boolean);
+
+    const participantsText = participants.length
+        ? participants.map(u => escapeTelegramHtml(getUserDisplayName(u))).join(', ')
+        : '—';
+
+    const creator = state.users.find(u => u.id === evt.createdById);
+    const creatorText = creator ? escapeTelegramHtml(getUserDisplayName(creator)) : (evt.createdByEmail ? escapeTelegramHtml(evt.createdByEmail) : '—');
+
+    const dtText = formatEventDateTime(evt.startsAt);
+    const title = escapeTelegramHtml(evt.title || 'Без названия');
+    const desc = (evt.description || '').trim();
+    const descLine = desc ? `\n<b>Описание:</b> ${escapeTelegramHtml(desc)}` : '';
+
+    const header = isReminder
+        ? `⏰ <b>Напоминание о событии</b>\nЧерез 2 часа: <b>${title}</b>`
+        : `📅 <b>Новое событие</b>\n<b>${title}</b>`;
+
+    const message = `${header}\n\n<b>Когда:</b> ${escapeTelegramHtml(dtText)}\n<b>Участники:</b> ${participantsText}\n<b>Создатель:</b> ${creatorText}${descLine}\n\nОткройте ProjectMan для подробностей.`;
+
+    await Promise.all(participants.map(async (u) => {
+        if (!u.telegramChatId) return;
+        await sendTelegramNotification(u.telegramChatId, message);
+    }));
+}
+
+async function submitCreateEvent() {
+    if (!db || !state.currentUser?.uid) return;
+
+    const title = (elements.eventTitleInput?.value || '').trim();
+    const description = (elements.eventDescriptionInput?.value || '').trim();
+    const date = (elements.eventDateInput?.value || '').trim();
+    const time = (elements.eventTimeInput?.value || '').trim();
+    const reminder2h = !!elements.eventReminder2h?.checked;
+
+    // Validation
+    if (!title) {
+        alert('Введите название события');
+        return;
+    }
+    if (!date) {
+        alert('Выберите дату');
+        return;
+    }
+    if (!time) {
+        alert('Выберите время');
+        return;
+    }
+
+    const startsAtLocal = new Date(`${date}T${time}`);
+    if (isNaN(startsAtLocal.getTime())) {
+        alert('Некорректные дата/время');
+        return;
+    }
+
+    // Participants: always include creator
+    const participantIds = Array.from(eventsUIState.selectedParticipantIds || []);
+    if (!participantIds.includes(state.currentUser.uid)) participantIds.push(state.currentUser.uid);
+
+    const createdById = state.currentUser.uid;
+    const createdByEmail = state.currentUser.email || '';
+
+    try {
+        const docRef = await db.collection('events').add({
+            organizationId: state.organization?.id || null,
+            title,
+            description,
+            startsAt: startsAtLocal.toISOString(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdById,
+            createdByEmail,
+            participantIds,
+            reminder2h,
+            reminder2hSent: false,
+            reminder2hSentAt: null
+        });
+
+        // Notify participants + creator (creator is included in participantIds)
+        const evt = {
+            id: docRef.id,
+            organizationId: state.organization?.id || null,
+            title,
+            description,
+            startsAt: startsAtLocal.toISOString(),
+            createdById,
+            createdByEmail,
+            participantIds,
+            reminder2h,
+            reminder2hSent: false
+        };
+        await notifyEventParticipants(evt, false);
+
+        toggleCreateEventPanel(false);
+        renderEventsModal();
+        alert('Событие создано!');
+    } catch (e) {
+        console.error('Error creating event:', e);
+        alert('Ошибка при создании события');
+    }
+}
+
+function initEventsModule() {
+    if (elements.eventsBtn && elements.eventsModal) {
+        elements.eventsBtn.addEventListener('click', () => {
+            playClickSound();
+            openEventsModal();
+        });
+    }
+
+    if (elements.createEventToggle) {
+        elements.createEventToggle.addEventListener('click', () => {
+            playClickSound();
+            toggleCreateEventPanel();
+        });
+    }
+
+    if (elements.cancelCreateEventBtn) {
+        elements.cancelCreateEventBtn.addEventListener('click', () => {
+            playClickSound();
+            toggleCreateEventPanel(false);
+        });
+    }
+
+    if (elements.submitCreateEventBtn) {
+        elements.submitCreateEventBtn.addEventListener('click', async () => {
+            playClickSound();
+            await submitCreateEvent();
+        });
+    }
+
+    if (elements.eventParticipantSearch) {
+        elements.eventParticipantSearch.addEventListener('input', (e) => {
+            eventsUIState.participantSearch = (e.target.value || '').toLowerCase();
+            renderEventParticipantsPicker();
+        });
+    }
 }
 
 // ========== LEADERBOARD ==========

@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=20.0" as="style">
-    <link rel="stylesheet" href="style.css?v=20.0">
-    <link rel="stylesheet" href="mobile-additions.css?v=11.0">
+    <link rel="preload" href="style.css?v=21.0" as="style">
+    <link rel="stylesheet" href="style.css?v=21.0">
+    <link rel="stylesheet" href="mobile-additions.css?v=12.0">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -476,7 +476,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=21.0" defer></script>
+    <script src="script.js?v=22.0" defer></script>
 </head>
 
 <body>
@@ -1028,6 +1028,17 @@
                     </div>
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
+
+                <button id="events-btn" class="settings-option">
+                    <div class="settings-option-icon" style="background: rgba(59, 130, 246, 0.12); color: #3b82f6;">
+                        <i class="fa-solid fa-calendar-days"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">События</span>
+                        <span class="settings-option-desc">Встречи и напоминания</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -1199,6 +1210,74 @@
             <div class="leaderboard-content">
                 <div class="leaderboard-podium" id="leaderboard-podium">
                     <!-- Top 3 will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Events Modal -->
+    <div id="events-modal" class="modal">
+        <div class="modal-content events-modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-calendar-days"></i> События</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="events-content">
+                <div class="events-toolbar">
+                    <button id="create-event-toggle" class="primary-btn">
+                        <i class="fa-solid fa-plus"></i> Создать событие
+                    </button>
+                    <div id="events-hint" style="color: var(--text-secondary); font-size: 0.85rem;">
+                        События видны только участникам
+                    </div>
+                </div>
+
+                <div id="create-event-panel" class="events-create-panel" style="display: none;">
+                    <div class="events-form-grid">
+                        <div class="form-group" style="margin: 0;">
+                            <label for="event-title">Название</label>
+                            <input id="event-title" type="text" placeholder="Например: созвон по проекту" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label for="event-date">Дата</label>
+                            <input id="event-date" type="date">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label for="event-time">Время</label>
+                            <input id="event-time" type="time">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label for="event-participant-search">Участники</label>
+                            <input id="event-participant-search" type="text" placeholder="Поиск по имени или email..." autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div id="event-participants-list" class="events-participants-list">
+                        <!-- Participants checkboxes rendered by JS -->
+                    </div>
+
+                    <div class="form-group" style="margin: 0;">
+                        <label for="event-description">Описание</label>
+                        <textarea id="event-description" rows="3" placeholder="Детали события..."></textarea>
+                    </div>
+
+                    <label class="checkbox-label" style="margin-top: 0.75rem;">
+                        <input type="checkbox" id="event-reminder-2h">
+                        Напомнить за 2 часа
+                    </label>
+
+                    <div class="events-actions">
+                        <button id="cancel-create-event" type="button" class="secondary-btn">
+                            Отмена
+                        </button>
+                        <button id="submit-create-event" type="button" class="primary-btn">
+                            <i class="fa-solid fa-check"></i> Создать
+                        </button>
+                    </div>
+                </div>
+
+                <div id="events-list" class="events-list">
+                    <!-- Events rendered by JS -->
                 </div>
             </div>
         </div>
