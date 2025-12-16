@@ -5581,20 +5581,60 @@ body.light-mode .ev-create-modal-content .ev-header .close-modal {
     gap: 1rem;
 }
 
-.ev-form-row-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    width: 100%;
-    box-sizing: border-box;
+/* New datetime row design */
+.ev-datetime-row {
+    display: flex;
+    gap: 0.75rem;
 }
 
-.ev-form-row-2 .ev-field {
+.ev-datetime-field {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    border: 2px solid rgba(99, 102, 241, 0.25);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.ev-datetime-field:hover,
+.ev-datetime-field:focus-within {
+    border-color: #6366f1;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+}
+
+.ev-datetime-field i {
+    color: #6366f1;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.ev-datetime-field input {
+    flex: 1;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-primary);
     min-width: 0;
+    outline: none;
 }
 
-.ev-form-row-2 input {
-    width: 100%;
-    box-sizing: border-box;
+.ev-datetime-field input::-webkit-calendar-picker-indicator {
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+body.light-mode .ev-datetime-field {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+    border-color: rgba(99, 102, 241, 0.2);
+}
+
+body.light-mode .ev-datetime-field input {
+    color: #1e293b;
 }
 
 .ev-field {
@@ -6127,8 +6167,6 @@ body.light-mode .ev-badge.reminder {
     }
 
     .ev-create-body input[type="text"],
-    .ev-create-body input[type="date"],
-    .ev-create-body input[type="time"],
     .ev-create-body textarea {
         width: 100% !important;
         max-width: 100% !important;
@@ -6136,11 +6174,6 @@ body.light-mode .ev-badge.reminder {
         box-sizing: border-box !important;
         padding: 0.75rem !important;
         font-size: 16px !important;
-    }
-
-    .ev-create-body input[type="date"],
-    .ev-create-body input[type="time"] {
-        text-align: center;
     }
 
     .ev-create-body .ev-user-row input[type="checkbox"] {
@@ -6199,25 +6232,22 @@ body.light-mode .ev-badge.reminder {
         padding: 0.85rem 1rem;
     }
 
-    .ev-form-row-2 {
-        display: flex !important;
+    .ev-datetime-row {
         flex-direction: column !important;
-        gap: 0.75rem !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+        gap: 0.6rem !important;
     }
 
-    .ev-form-row-2 .ev-field {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+    .ev-datetime-field {
+        padding: 0.7rem 0.85rem !important;
+        gap: 0.5rem !important;
     }
 
-    .ev-form-row-2 .ev-field input {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+    .ev-datetime-field i {
+        font-size: 0.9rem;
+    }
+
+    .ev-datetime-field input {
+        font-size: 0.9rem !important;
     }
 
     .ev-users {
