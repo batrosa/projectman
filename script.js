@@ -1495,17 +1495,20 @@ const elements = {
     // Columns
     listAssigned: document.getElementById('list-assigned'),
     listInProgress: document.getElementById('list-in-progress'),
+    listReview: document.getElementById('list-review'),
     listDone: document.getElementById('list-done'),
 
     // Counts
     countAssigned: document.getElementById('count-assigned'),
     countInProgress: document.getElementById('count-in-progress'),
+    countReview: document.getElementById('count-review'),
     countDone: document.getElementById('count-done'),
 
     // Board Tabs (single-column view)
     boardTabs: document.getElementById('board-tabs'),
     tabCountAssigned: document.getElementById('tab-count-assigned'),
     tabCountInProgress: document.getElementById('tab-count-in-progress'),
+    tabCountReview: document.getElementById('tab-count-review'),
     tabCountDone: document.getElementById('tab-count-done'),
 
     // Board selector (mobile)
@@ -1896,6 +1899,7 @@ function subscribeToProjectTasks(projectId) {
     // Show loading state in board (optional, but good for UX)
     if (elements.listAssigned) elements.listAssigned.innerHTML = '<div class="spinner" style="margin: 2rem auto;"></div>';
     elements.listInProgress.innerHTML = '<div class="spinner" style="margin: 2rem auto;"></div>';
+    if (elements.listReview) elements.listReview.innerHTML = '';
     elements.listDone.innerHTML = '';
 
     // Subscribe to new project tasks
@@ -1914,6 +1918,7 @@ function subscribeToProjectTasks(projectId) {
             const errHtml = '<p style="color: var(--text-secondary); text-align: center;">Ошибка загрузки задач</p>';
             if (elements.listAssigned) elements.listAssigned.innerHTML = errHtml;
             elements.listInProgress.innerHTML = errHtml;
+            if (elements.listReview) elements.listReview.innerHTML = '';
             elements.listDone.innerHTML = '';
         });
 }
@@ -2106,6 +2111,7 @@ function renderBoard() {
     // Clear lists
     if (elements.listAssigned) elements.listAssigned.innerHTML = '';
     elements.listInProgress.innerHTML = '';
+    if (elements.listReview) elements.listReview.innerHTML = '';
     elements.listDone.innerHTML = '';
 
     const projectTasks = state.tasks.filter(t => t.projectId === activeProject.id);
@@ -2131,17 +2137,20 @@ function renderBoard() {
     };
 
     const assignedTasks = projectTasks.filter(t => t.status === 'in-progress' && getTaskSubStatusForBoard(t) === 'assigned');
-    const inProgressTasks = projectTasks.filter(t => t.status === 'in-progress' && getTaskSubStatusForBoard(t) !== 'assigned');
+    const inProgressTasks = projectTasks.filter(t => t.status === 'in-progress' && getTaskSubStatusForBoard(t) === 'in_work');
+    const reviewTasks = projectTasks.filter(t => t.status === 'in-progress' && getTaskSubStatusForBoard(t) === 'completed');
     const doneTasks = projectTasks.filter(t => t.status === 'done');
 
     // Update counts
     if (elements.countAssigned) elements.countAssigned.textContent = String(assignedTasks.length);
-    elements.countInProgress.textContent = String(inProgressTasks.length);
-    elements.countDone.textContent = String(doneTasks.length);
+    if (elements.countInProgress) elements.countInProgress.textContent = String(inProgressTasks.length);
+    if (elements.countReview) elements.countReview.textContent = String(reviewTasks.length);
+    if (elements.countDone) elements.countDone.textContent = String(doneTasks.length);
 
     // Update tab counts (if present)
     if (elements.tabCountAssigned) elements.tabCountAssigned.textContent = String(assignedTasks.length);
     if (elements.tabCountInProgress) elements.tabCountInProgress.textContent = String(inProgressTasks.length);
+    if (elements.tabCountReview) elements.tabCountReview.textContent = String(reviewTasks.length);
     if (elements.tabCountDone) elements.tabCountDone.textContent = String(doneTasks.length);
 
     projectTasks.forEach(task => {
@@ -2157,7 +2166,11 @@ function renderBoard() {
         if (sub === 'assigned') {
             if (elements.listAssigned) elements.listAssigned.appendChild(card);
             else elements.listInProgress.appendChild(card); // Fallback
+        } else if (sub === 'completed') {
+            if (elements.listReview) elements.listReview.appendChild(card);
+            else elements.listInProgress.appendChild(card); // Fallback
         } else {
+            // in_work
             elements.listInProgress.appendChild(card);
         }
     });
@@ -3588,7 +3601,7 @@ function closeSidebarOnMobile() {
 }
 
 function setBoardView(view) {
-    const allowed = new Set(['assigned', 'in-progress', 'done']);
+    const allowed = new Set(['assigned', 'in-progress', 'review', 'done']);
     const next = allowed.has(view) ? view : 'assigned';
     state.boardView = next;
 
@@ -3597,6 +3610,7 @@ function setBoardView(view) {
         const labelMap = {
             'assigned': 'Назначенные',
             'in-progress': 'В процессе',
+            'review': 'На проверке',
             'done': 'Готово'
         };
         elements.categoryBtnText.textContent = labelMap[next] || 'Назначенные';
@@ -6350,10 +6364,13 @@ function getNavigableItems() {
         return Array.from(document.querySelectorAll('.project-item'));
     } else {
         // Get task cards from the current column
-        const columnId =
-            keyboardNav.taskColumn === 'assigned' ? 'list-assigned'
-            : keyboardNav.taskColumn === 'done' ? 'list-done'
-            : 'list-in-progress';
+        const columnMap = {
+            'assigned': 'list-assigned',
+            'in-progress': 'list-in-progress',
+            'review': 'list-review',
+            'done': 'list-done'
+        };
+        const columnId = columnMap[keyboardNav.taskColumn] || 'list-in-progress';
         return Array.from(document.querySelectorAll(`#${columnId} .task-card`));
     }
 }

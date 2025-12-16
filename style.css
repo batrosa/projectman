@@ -503,6 +503,10 @@ body.light-mode .project-info h1 {
     background: var(--warning);
 }
 
+.status-indicator.review {
+    background: #f59e0b;
+}
+
 .status-indicator.done {
     background: var(--success);
 }

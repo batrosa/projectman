@@ -16,8 +16,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=39.0" as="style">
-    <link rel="stylesheet" href="style.css?v=39.0">
+    <link rel="preload" href="style.css?v=40.0" as="style">
+    <link rel="stylesheet" href="style.css?v=40.0">
     <link rel="stylesheet" href="mobile-additions.css?v=13.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -850,6 +850,10 @@
                         <span class="board-tab-label">В процессе</span>
                         <span class="board-tab-count" id="tab-count-in-progress">0</span>
                     </button>
+                    <button class="board-tab" type="button" data-view="review">
+                        <span class="board-tab-label">На проверке</span>
+                        <span class="board-tab-count" id="tab-count-review">0</span>
+                    </button>
                     <button class="board-tab" type="button" data-view="done">
                         <span class="board-tab-label">Готово</span>
                         <span class="board-tab-count" id="tab-count-done">0</span>
@@ -874,6 +878,17 @@
                         <span class="count" id="count-in-progress">0</span>
                     </div>
                     <div class="task-list" id="list-in-progress">
+                        <!-- Tasks -->
+                    </div>
+                </div>
+
+                <div class="column" id="column-review" data-view="review">
+                    <div class="column-header">
+                        <span class="status-indicator review"></span>
+                        <h2>На проверке</h2>
+                        <span class="count" id="count-review">0</span>
+                    </div>
+                    <div class="task-list" id="list-review">
                         <!-- Tasks -->
                     </div>
                 </div>
@@ -1835,6 +1850,10 @@
             <button type="button" data-view="in-progress" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
                 <i class="fa-solid fa-spinner" style="color:#6366f1;width:20px;"></i>
                 <span>В процессе</span>
+            </button>
+            <button type="button" data-view="review" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+                <i class="fa-solid fa-magnifying-glass" style="color:#f59e0b;width:20px;"></i>
+                <span>На проверке</span>
             </button>
             <button type="button" data-view="done" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
                 <i class="fa-solid fa-check" style="color:#6366f1;width:20px;"></i>
