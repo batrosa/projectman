@@ -6124,23 +6124,64 @@ body.light-mode .ev-badge.reminder {
         box-sizing: border-box !important;
     }
 
-    .ev-create-body input,
+    .ev-create-body input[type="text"],
+    .ev-create-body input[type="date"],
+    .ev-create-body input[type="time"],
     .ev-create-body textarea {
         width: 100% !important;
-        max-width: calc(100vw - 2rem) !important;
+        max-width: 100% !important;
         min-width: 0 !important;
         box-sizing: border-box !important;
         padding: 0.75rem !important;
         font-size: 16px !important;
-        -webkit-appearance: none !important;
     }
 
     .ev-create-body input[type="date"],
     .ev-create-body input[type="time"] {
-        width: 100% !important;
-        max-width: 100% !important;
-        padding: 0.75rem !important;
         text-align: center;
+    }
+
+    .ev-create-body .ev-user-row input[type="checkbox"] {
+        width: 22px !important;
+        height: 22px !important;
+        min-width: 22px !important;
+        flex-shrink: 0;
+        accent-color: #6366f1;
+        cursor: pointer;
+    }
+
+    .ev-create-body .ev-user-row {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.75rem !important;
+        padding: 0.65rem 0.75rem !important;
+    }
+
+    .ev-create-body .ev-user-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .ev-create-body .ev-user-name {
+        font-size: 0.9rem !important;
+        font-weight: 600 !important;
+        color: var(--text-primary) !important;
+    }
+
+    .ev-create-body .ev-user-email {
+        font-size: 0.75rem !important;
+        color: var(--text-secondary) !important;
+    }
+
+    body.light-mode .ev-create-body .ev-user-name {
+        color: #1e293b !important;
+    }
+
+    body.light-mode .ev-create-body .ev-user-email {
+        color: #64748b !important;
     }
 
     .ev-create-footer {
