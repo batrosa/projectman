@@ -425,9 +425,9 @@ body.light-mode .project-info h1 {
 }
 
 .board-tab[data-view="assigned"] .board-tab-count {
-    color: #a5b4fc;
+    color: #1e293b;
     border-color: rgba(99, 102, 241, 0.4);
-    background: rgba(99, 102, 241, 0.2);
+    background: rgba(99, 102, 241, 0.25);
 }
 
 /* In Progress tab - orange */
@@ -447,9 +447,9 @@ body.light-mode .project-info h1 {
 }
 
 .board-tab[data-view="in-progress"] .board-tab-count {
-    color: #fdba74;
+    color: #1e293b;
     border-color: rgba(249, 115, 22, 0.4);
-    background: rgba(249, 115, 22, 0.2);
+    background: rgba(249, 115, 22, 0.25);
 }
 
 /* Review tab - yellow */
@@ -469,9 +469,9 @@ body.light-mode .project-info h1 {
 }
 
 .board-tab[data-view="review"] .board-tab-count {
-    color: #fde047;
+    color: #1e293b;
     border-color: rgba(234, 179, 8, 0.4);
-    background: rgba(234, 179, 8, 0.2);
+    background: rgba(234, 179, 8, 0.25);
 }
 
 /* Done tab - green */
@@ -491,9 +491,9 @@ body.light-mode .project-info h1 {
 }
 
 .board-tab[data-view="done"] .board-tab-count {
-    color: #86efac;
+    color: #1e293b;
     border-color: rgba(34, 197, 94, 0.4);
-    background: rgba(34, 197, 94, 0.2);
+    background: rgba(34, 197, 94, 0.25);
 }
 
 .board-tab-label {
