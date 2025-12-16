@@ -5753,6 +5753,13 @@ body.light-mode .ev-card {
     line-height: 1.35;
 }
 
+.ev-card-head-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
 .ev-card-datetime {
     display: flex;
     align-items: center;
@@ -5765,6 +5772,40 @@ body.light-mode .ev-card {
     border-radius: 10px;
     white-space: nowrap;
     flex-shrink: 0;
+}
+
+.ev-card-actions {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.ev-action-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    font-size: 0.8rem;
+}
+
+body.light-mode .ev-action-btn {
+    background: #f1f5f9;
+}
+
+.ev-action-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    color: #6366f1;
+}
+
+.ev-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
 }
 
 .ev-card-meta {
@@ -6036,7 +6077,12 @@ body.light-mode .ev-badge.reminder {
 
     .ev-card-head {
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.6rem;
+    }
+
+    .ev-card-head-right {
+        align-self: stretch;
+        justify-content: space-between;
     }
 
     .ev-card-title {
@@ -6044,10 +6090,15 @@ body.light-mode .ev-badge.reminder {
     }
 
     .ev-card-datetime {
-        align-self: flex-start;
         font-size: 0.75rem;
         padding: 0.3rem 0.7rem;
         border-radius: 8px;
+    }
+
+    .ev-action-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.75rem;
     }
 
     .ev-card-meta {

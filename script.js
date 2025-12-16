@@ -7059,12 +7059,25 @@ function renderEventsList() {
 
         const badges = [];
         if (evt.reminder2h) badges.push(`<span class="ev-badge reminder"><i class="fa-regular fa-bell"></i> 2ч</span>`);
-        if (isMyEvent) badges.push(`<span class="ev-badge creator"><i class="fa-solid fa-user"></i> Вы создатель</span>`);
+
+        const actionsHtml = isMyEvent ? `
+            <div class="ev-card-actions">
+                <button type="button" class="ev-action-btn ev-edit-btn" data-event-id="${evt.id}" title="Редактировать">
+                    <i class="fa-solid fa-pen"></i>
+                </button>
+                <button type="button" class="ev-action-btn ev-delete-btn" data-event-id="${evt.id}" title="Удалить">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+        ` : '';
 
         card.innerHTML = `
             <div class="ev-card-head">
                 <div class="ev-card-title">${escapeHtml(evt.title || 'Без названия')}</div>
-                <div class="ev-card-datetime"><i class="fa-regular fa-clock"></i> ${formatEventDT(evt.startsAt)}</div>
+                <div class="ev-card-head-right">
+                    <div class="ev-card-datetime"><i class="fa-regular fa-clock"></i> ${formatEventDT(evt.startsAt)}</div>
+                    ${actionsHtml}
+                </div>
             </div>
             <div class="ev-card-meta">
                 <span><i class="fa-solid fa-users"></i> ${participantsText}</span>
@@ -7073,6 +7086,26 @@ function renderEventsList() {
             ${evt.description ? `<div class="ev-card-desc">${escapeHtml(evt.description)}</div>` : ''}
             ${badges.length ? `<div class="ev-card-badges">${badges.join('')}</div>` : ''}
         `;
+
+        // Add event listeners for edit/delete buttons
+        const editBtn = card.querySelector('.ev-edit-btn');
+        const deleteBtn = card.querySelector('.ev-delete-btn');
+        
+        if (editBtn) {
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                playClickSound();
+                openEditEventModal(evt);
+            });
+        }
+        
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                playClickSound();
+                deleteEvent(evt.id);
+            });
+        }
 
         elements.evList.appendChild(card);
     });
@@ -7127,6 +7160,14 @@ async function submitEvent() {
     const participantIds = Array.from(eventsUIState.selectedUserIds);
     if (!participantIds.includes(state.currentUser.uid)) participantIds.push(state.currentUser.uid);
 
+    // Show loading
+    const submitBtn = elements.evSubmit;
+    const originalText = submitBtn?.innerHTML;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание...';
+    }
+
     try {
         const docRef = await db.collection('events').add({
             organizationId: state.organization?.id || null,
@@ -7157,11 +7198,57 @@ async function submitEvent() {
 
         hideEventForm();
         renderEventsList();
-        alert('Событие создано!');
     } catch (e) {
         console.error('Error creating event:', e);
         alert('Ошибка при создании события');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
     }
+}
+
+async function deleteEvent(eventId) {
+    if (!db || !eventId) return;
+    if (!confirm('Удалить это событие?')) return;
+
+    try {
+        await db.collection('events').doc(eventId).delete();
+        renderEventsList();
+    } catch (e) {
+        console.error('Error deleting event:', e);
+        alert('Ошибка при удалении события');
+    }
+}
+
+async function updateEvent(eventId, updates) {
+    if (!db || !eventId) return;
+
+    try {
+        await db.collection('events').doc(eventId).update(updates);
+        renderEventsList();
+    } catch (e) {
+        console.error('Error updating event:', e);
+        alert('Ошибка при обновлении события');
+    }
+}
+
+function openEditEventModal(evt) {
+    if (!evt) return;
+    
+    // Use prompt for simple editing
+    const newTitle = prompt('Название события:', evt.title || '');
+    if (newTitle === null) return; // cancelled
+    if (!newTitle.trim()) { alert('Название не может быть пустым'); return; }
+    
+    const newDesc = prompt('Описание (можно оставить пустым):', evt.description || '');
+    if (newDesc === null) return; // cancelled
+    
+    updateEvent(evt.id, {
+        title: newTitle.trim(),
+        description: newDesc.trim()
+    });
 }
 
 function initEventsModule() {
