@@ -1472,7 +1472,7 @@ let state = {
     projects: [],
     tasks: [],
     users: [], // All users (for admin panel)
-    events: [], // Organization events (for Events modal)
+    events: [], // Organization events
     activeProjectId: null,
     boardView: 'assigned', // 'assigned' | 'in-progress' | 'done' (single-column board)
     role: 'guest', // Legacy role, now use orgRole
@@ -1522,18 +1522,19 @@ const elements = {
     // Events
     eventsBtn: document.getElementById('events-btn'),
     eventsModal: document.getElementById('events-modal'),
-    eventsList: document.getElementById('events-list'),
-    createEventToggle: document.getElementById('create-event-toggle'),
-    createEventPanel: document.getElementById('create-event-panel'),
-    eventTitleInput: document.getElementById('event-title'),
-    eventDateInput: document.getElementById('event-date'),
-    eventTimeInput: document.getElementById('event-time'),
-    eventParticipantSearch: document.getElementById('event-participant-search'),
-    eventParticipantsList: document.getElementById('event-participants-list'),
-    eventDescriptionInput: document.getElementById('event-description'),
-    eventReminder2h: document.getElementById('event-reminder-2h'),
-    cancelCreateEventBtn: document.getElementById('cancel-create-event'),
-    submitCreateEventBtn: document.getElementById('submit-create-event'),
+    evCreateWrap: document.getElementById('ev-create-wrap'),
+    evCreateToggle: document.getElementById('ev-create-toggle'),
+    evForm: document.getElementById('ev-form'),
+    evTitle: document.getElementById('ev-title'),
+    evDate: document.getElementById('ev-date'),
+    evTime: document.getElementById('ev-time'),
+    evSearch: document.getElementById('ev-search'),
+    evUsers: document.getElementById('ev-users'),
+    evDesc: document.getElementById('ev-desc'),
+    evReminder: document.getElementById('ev-reminder'),
+    evCancel: document.getElementById('ev-cancel'),
+    evSubmit: document.getElementById('ev-submit'),
+    evList: document.getElementById('ev-list'),
 
     // Forms
     projectForm: document.getElementById('project-form'),
@@ -1843,7 +1844,6 @@ function setupRealtimeListeners() {
     });
 
     // Listen for Events (filtered by organization)
-    // We listen to ALL events and filter client-side to avoid index requirements
     eventsListenerUnsubscribe = db.collection('events').orderBy('startsAt').onSnapshot(snapshot => {
         const events = [];
         snapshot.forEach(doc => {
@@ -1858,12 +1858,12 @@ function setupRealtimeListeners() {
         });
         state.events = events;
 
-        // If modal is open - refresh UI
-        if (elements.eventsModal && elements.eventsModal.classList.contains('active')) {
-            renderEventsModal();
+        // Refresh UI if modal is open
+        if (elements.eventsModal?.classList.contains('active')) {
+            renderEventsList();
         }
 
-        // Check 2h reminders (best-effort, same style as task reminders)
+        // Check reminders
         checkEventReminders(events);
     }, error => {
         console.error("Error listening to events:", error);
@@ -5654,76 +5654,6 @@ function checkReminders(tasks) {
     });
 }
 
-// ========================================
-// EVENTS: REMINDERS (2 HOURS BEFORE)
-// ========================================
-let eventsReminderIntervalId = null;
-
-function startEventsReminderLoop() {
-    // Start once per session (after auth) to avoid duplicates
-    if (eventsReminderIntervalId) return;
-    eventsReminderIntervalId = setInterval(() => {
-        try {
-            checkEventReminders(state.events || []);
-        } catch (e) {
-            console.warn('Event reminder loop error:', e?.message || e);
-        }
-    }, 60 * 1000); // every 1 minute
-}
-
-function checkEventReminders(events) {
-    // Best-effort (same approach as task reminders): requires app to be open somewhere
-    if (!db) return;
-    if (!state.users || state.users.length === 0) return;
-    if (!state.currentUser?.uid) return;
-
-    const now = new Date();
-    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-
-    (Array.isArray(events) ? events : []).forEach((evt) => {
-        try {
-            if (!evt) return;
-            if (!evt.reminder2h) return;
-            if (evt.reminder2hSent) return;
-            if (!evt.startsAt) return;
-
-            const startsAt = new Date(evt.startsAt);
-            if (isNaN(startsAt.getTime())) return;
-
-            const diff = startsAt.getTime() - now.getTime();
-            if (diff <= 0) return; // already started/past
-            if (diff > TWO_HOURS_MS) return; // too early
-
-            // Claim sending once via transaction to reduce duplicates
-            (async () => {
-                const ref = db.collection('events').doc(evt.id);
-                let claimed = false;
-                try {
-                    claimed = await db.runTransaction(async (tx) => {
-                        const snap = await tx.get(ref);
-                        if (!snap.exists) return false;
-                        const data = snap.data() || {};
-                        if (data.reminder2hSent) return false;
-                        tx.update(ref, {
-                            reminder2hSent: true,
-                            reminder2hSentAt: new Date().toISOString()
-                        });
-                        return true;
-                    });
-                } catch (e) {
-                    console.warn('Failed to claim event reminder:', e?.message || e);
-                    return;
-                }
-
-                if (!claimed) return;
-                await notifyEventParticipants(evt, true);
-            })();
-        } catch (e) {
-            console.warn('checkEventReminders item error:', e?.message || e);
-        }
-    });
-}
-
 async function deleteUser(userId, userName) {
     // Check permission - only owner or admin can delete users
     if (!canAccessAdmin()) return;
@@ -6950,129 +6880,86 @@ function cropImageToCircle() {
     });
 }
 
-// ========== EVENTS ==========
+// ========== EVENTS MODULE ==========
+let eventsReminderIntervalId = null;
 let eventsUIState = {
-    selectedParticipantIds: new Set(),
-    participantSearch: ''
+    selectedUserIds: new Set(),
+    searchQuery: ''
 };
+
+function startEventsReminderLoop() {
+    if (eventsReminderIntervalId) return;
+    eventsReminderIntervalId = setInterval(() => {
+        try {
+            checkEventReminders(state.events || []);
+        } catch (e) {
+            console.warn('Events reminder error:', e);
+        }
+    }, 60 * 1000);
+}
+
+function checkEventReminders(events) {
+    if (!db || !state.currentUser?.uid) return;
+    if (!state.users || state.users.length === 0) return;
+
+    const now = new Date();
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+
+    (Array.isArray(events) ? events : []).forEach(evt => {
+        if (!evt?.reminder2h || evt.reminder2hSent || !evt.startsAt) return;
+
+        const startsAt = new Date(evt.startsAt);
+        if (isNaN(startsAt.getTime())) return;
+
+        const diff = startsAt.getTime() - now.getTime();
+        if (diff <= 0 || diff > TWO_HOURS) return;
+
+        // Claim sending via transaction
+        (async () => {
+            const ref = db.collection('events').doc(evt.id);
+            let claimed = false;
+            try {
+                claimed = await db.runTransaction(async tx => {
+                    const snap = await tx.get(ref);
+                    if (!snap.exists || snap.data()?.reminder2hSent) return false;
+                    tx.update(ref, { reminder2hSent: true, reminder2hSentAt: new Date().toISOString() });
+                    return true;
+                });
+            } catch (e) {
+                return;
+            }
+            if (claimed) await notifyEventParticipants(evt, true);
+        })();
+    });
+}
 
 function openEventsModal() {
     if (!elements.eventsModal) return;
     elements.eventsModal.classList.add('active');
-    renderEventsModal();
-}
-
-function renderEventsModal() {
-    if (!elements.eventsList) return;
-
-    // If user isn't ready yet
-    if (!state.currentUser?.uid) {
-        elements.eventsList.innerHTML = `
-            <div class="event-item" style="align-items: center; text-align: center; color: var(--text-secondary);">
-                Загрузка...
-            </div>
-        `;
-        return;
-    }
-
+    hideEventForm();
     renderEventsList();
 }
 
-function getMyEvents() {
-    const uid = state.currentUser?.uid;
-    if (!uid) return [];
-    const all = Array.isArray(state.events) ? state.events : [];
-    return all.filter(e => Array.isArray(e.participantIds) && e.participantIds.includes(uid));
+function hideEventForm() {
+    if (elements.evForm) elements.evForm.style.display = 'none';
 }
 
-function formatEventDateTime(startsAt) {
-    const d = new Date(startsAt);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleString('ru-RU', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+function showEventForm() {
+    if (!elements.evForm) return;
+    elements.evForm.style.display = 'flex';
+    resetEventForm();
 }
 
-function renderEventsList() {
-    if (!elements.eventsList) return;
+function resetEventForm() {
+    eventsUIState.selectedUserIds = new Set([state.currentUser?.uid].filter(Boolean));
+    eventsUIState.searchQuery = '';
 
-    const events = getMyEvents().sort((a, b) => {
-        const ta = new Date(a.startsAt || 0).getTime() || 0;
-        const tb = new Date(b.startsAt || 0).getTime() || 0;
-        return ta - tb;
-    });
+    if (elements.evTitle) elements.evTitle.value = '';
+    if (elements.evDesc) elements.evDesc.value = '';
+    if (elements.evSearch) elements.evSearch.value = '';
+    if (elements.evReminder) elements.evReminder.checked = false;
 
-    if (events.length === 0) {
-        elements.eventsList.innerHTML = `
-            <div class="event-item" style="align-items: center; text-align: center; color: var(--text-secondary);">
-                <div style="font-size: 2rem; opacity: 0.35; margin-bottom: 0.25rem;"><i class="fa-regular fa-calendar"></i></div>
-                Пока нет событий, где вы участник
-            </div>
-        `;
-        return;
-    }
-
-    elements.eventsList.innerHTML = '';
-
-    events.forEach(evt => {
-        const item = document.createElement('div');
-        item.className = 'event-item';
-
-        const participants = (Array.isArray(evt.participantIds) ? evt.participantIds : [])
-            .map(id => state.users.find(u => u.id === id))
-            .filter(Boolean);
-
-        const participantsText = participants.length
-            ? participants.map(u => escapeHtml(getUserDisplayName(u))).slice(0, 4).join(', ') + (participants.length > 4 ? ` и ещё ${participants.length - 4}` : '')
-            : '—';
-
-        const dtText = formatEventDateTime(evt.startsAt);
-        const desc = (evt.description || '').trim();
-        const reminderBadge = evt.reminder2h ? `<span class="event-badge"><i class="fa-regular fa-bell"></i> Напоминание 2ч</span>` : '';
-        const creator = state.users.find(u => u.id === evt.createdById);
-        const creatorText = creator ? escapeHtml(getUserDisplayName(creator)) : (evt.createdByEmail ? escapeHtml(evt.createdByEmail) : '—');
-
-        item.innerHTML = `
-            <div class="event-item-top">
-                <div class="event-item-title">${escapeHtml(evt.title || 'Без названия')}</div>
-                <div class="event-item-datetime"><i class="fa-regular fa-clock"></i> ${dtText}</div>
-            </div>
-            <div class="event-item-meta"><i class="fa-solid fa-users"></i> ${participantsText}</div>
-            <div class="event-item-meta"><i class="fa-solid fa-user-pen"></i> Создатель: ${creatorText}</div>
-            ${desc ? `<div class="event-item-desc">${escapeHtml(desc)}</div>` : ''}
-            <div class="event-item-badges">
-                ${reminderBadge}
-            </div>
-        `;
-
-        elements.eventsList.appendChild(item);
-    });
-}
-
-function toggleCreateEventPanel(forceOpen = null) {
-    if (!elements.createEventPanel) return;
-    const shouldOpen = forceOpen === null ? elements.createEventPanel.style.display === 'none' : forceOpen;
-    elements.createEventPanel.style.display = shouldOpen ? 'flex' : 'none';
-    if (shouldOpen) {
-        resetCreateEventForm();
-    }
-}
-
-function resetCreateEventForm() {
-    if (!state.currentUser?.uid) return;
-    eventsUIState.selectedParticipantIds = new Set([state.currentUser.uid]); // creator always included
-    eventsUIState.participantSearch = '';
-
-    if (elements.eventTitleInput) elements.eventTitleInput.value = '';
-    if (elements.eventDescriptionInput) elements.eventDescriptionInput.value = '';
-    if (elements.eventParticipantSearch) elements.eventParticipantSearch.value = '';
-    if (elements.eventReminder2h) elements.eventReminder2h.checked = false;
-
-    // Pre-fill date/time with ближайшее округление (optional)
+    // Pre-fill date/time
     const now = new Date();
     const rounded = new Date(now.getTime() + 30 * 60 * 1000);
     rounded.setMinutes(rounded.getMinutes() - (rounded.getMinutes() % 5), 0, 0);
@@ -7081,166 +6968,195 @@ function resetCreateEventForm() {
     const dd = String(rounded.getDate()).padStart(2, '0');
     const hh = String(rounded.getHours()).padStart(2, '0');
     const mi = String(rounded.getMinutes()).padStart(2, '0');
-    if (elements.eventDateInput) elements.eventDateInput.value = `${yyyy}-${mm}-${dd}`;
-    if (elements.eventTimeInput) elements.eventTimeInput.value = `${hh}:${mi}`;
+    if (elements.evDate) elements.evDate.value = `${yyyy}-${mm}-${dd}`;
+    if (elements.evTime) elements.evTime.value = `${hh}:${mi}`;
 
-    renderEventParticipantsPicker();
+    renderEventUsersPicker();
 }
 
-function renderEventParticipantsPicker() {
-    if (!elements.eventParticipantsList) return;
-    const q = (eventsUIState.participantSearch || '').trim().toLowerCase();
+function renderEventUsersPicker() {
+    if (!elements.evUsers) return;
 
-    const users = Array.isArray(state.users) ? state.users : [];
-    const filtered = users.filter(u => {
+    const q = eventsUIState.searchQuery.trim().toLowerCase();
+    const users = (state.users || []).filter(u => {
         const name = getUserDisplayName(u).toLowerCase();
         const email = (u.email || '').toLowerCase();
         return !q || name.includes(q) || email.includes(q);
     });
 
-    elements.eventParticipantsList.innerHTML = '';
-
-    if (filtered.length === 0) {
-        elements.eventParticipantsList.innerHTML = `<div style="padding: 0.75rem; color: var(--text-secondary); text-align: center;">Нет совпадений</div>`;
+    if (users.length === 0) {
+        elements.evUsers.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-secondary);">Нет пользователей</div>';
         return;
     }
 
-    filtered.forEach(u => {
-        const row = document.createElement('div');
-        row.className = 'events-participant-item';
-
+    elements.evUsers.innerHTML = '';
+    users.forEach(u => {
         const isCreator = u.id === state.currentUser?.uid;
-        const checked = eventsUIState.selectedParticipantIds.has(u.id) || isCreator;
+        const checked = eventsUIState.selectedUserIds.has(u.id) || isCreator;
 
+        const row = document.createElement('label');
+        row.className = 'ev-user-row';
         row.innerHTML = `
-            <input type="checkbox" ${checked ? 'checked' : ''} ${isCreator ? 'disabled' : ''} data-user-id="${u.id}" style="width: 18px; height: 18px; margin: 0;">
-            <div class="events-participant-main">
-                <div class="events-participant-name">${escapeHtml(getUserDisplayName(u))}${u.telegramChatId ? ' <i class="fa-brands fa-telegram" style="color:#0088cc;" title="Telegram подключен"></i>' : ''}</div>
-                <div class="events-participant-email">${escapeHtml(u.email || '')}</div>
+            <input type="checkbox" ${checked ? 'checked' : ''} ${isCreator ? 'disabled' : ''} data-uid="${u.id}">
+            <div class="ev-user-info">
+                <div class="ev-user-name">${escapeHtml(getUserDisplayName(u))}</div>
+                <div class="ev-user-email">${escapeHtml(u.email || '')}</div>
             </div>
+            ${u.telegramChatId ? '<i class="fa-brands fa-telegram ev-user-tg"></i>' : ''}
         `;
 
         const cb = row.querySelector('input[type="checkbox"]');
-        if (cb) {
-            cb.addEventListener('change', () => {
-                const userId = cb.dataset.userId;
-                if (!userId) return;
-                if (cb.checked) eventsUIState.selectedParticipantIds.add(userId);
-                else eventsUIState.selectedParticipantIds.delete(userId);
-            });
-        }
+        cb?.addEventListener('change', () => {
+            const uid = cb.dataset.uid;
+            if (cb.checked) eventsUIState.selectedUserIds.add(uid);
+            else eventsUIState.selectedUserIds.delete(uid);
+        });
 
-        elements.eventParticipantsList.appendChild(row);
+        elements.evUsers.appendChild(row);
     });
 }
 
-function escapeTelegramHtml(text) {
-    return String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+function getMyEvents() {
+    const uid = state.currentUser?.uid;
+    if (!uid) return [];
+    return (state.events || []).filter(e => Array.isArray(e.participantIds) && e.participantIds.includes(uid));
+}
+
+function formatEventDT(isoStr) {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderEventsList() {
+    if (!elements.evList) return;
+
+    const events = getMyEvents().sort((a, b) => new Date(a.startsAt || 0) - new Date(b.startsAt || 0));
+
+    if (events.length === 0) {
+        elements.evList.innerHTML = `
+            <div class="ev-empty">
+                <i class="fa-regular fa-calendar"></i>
+                <span>Нет запланированных событий</span>
+            </div>
+        `;
+        return;
+    }
+
+    elements.evList.innerHTML = '';
+    events.forEach(evt => {
+        const card = document.createElement('div');
+        card.className = 'ev-card';
+
+        const participants = (evt.participantIds || []).map(id => state.users.find(u => u.id === id)).filter(Boolean);
+        const participantsText = participants.length
+            ? participants.slice(0, 3).map(u => escapeHtml(getUserDisplayName(u))).join(', ') + (participants.length > 3 ? ` и ещё ${participants.length - 3}` : '')
+            : '—';
+
+        const creator = state.users.find(u => u.id === evt.createdById);
+        const creatorName = creator ? escapeHtml(getUserDisplayName(creator)) : (evt.createdByEmail || '—');
+        const isMyEvent = evt.createdById === state.currentUser?.uid;
+
+        const badges = [];
+        if (evt.reminder2h) badges.push(`<span class="ev-badge reminder"><i class="fa-regular fa-bell"></i> 2ч</span>`);
+        if (isMyEvent) badges.push(`<span class="ev-badge creator"><i class="fa-solid fa-user"></i> Вы создатель</span>`);
+
+        card.innerHTML = `
+            <div class="ev-card-head">
+                <div class="ev-card-title">${escapeHtml(evt.title || 'Без названия')}</div>
+                <div class="ev-card-datetime"><i class="fa-regular fa-clock"></i> ${formatEventDT(evt.startsAt)}</div>
+            </div>
+            <div class="ev-card-meta">
+                <span><i class="fa-solid fa-users"></i> ${participantsText}</span>
+                ${!isMyEvent ? `<span><i class="fa-solid fa-user-pen"></i> ${creatorName}</span>` : ''}
+            </div>
+            ${evt.description ? `<div class="ev-card-desc">${escapeHtml(evt.description)}</div>` : ''}
+            ${badges.length ? `<div class="ev-card-badges">${badges.join('')}</div>` : ''}
+        `;
+
+        elements.evList.appendChild(card);
+    });
+}
+
+function escapeTgHtml(text) {
+    return String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 async function notifyEventParticipants(evt, isReminder = false) {
-    const participantIds = Array.isArray(evt.participantIds) ? evt.participantIds : [];
+    const participantIds = evt.participantIds || [];
     if (participantIds.length === 0) return;
 
-    const participants = participantIds
-        .map(id => state.users.find(u => u.id === id))
-        .filter(Boolean);
-
-    const participantsText = participants.length
-        ? participants.map(u => escapeTelegramHtml(getUserDisplayName(u))).join(', ')
-        : '—';
+    const participants = participantIds.map(id => state.users.find(u => u.id === id)).filter(Boolean);
+    const participantsText = participants.map(u => escapeTgHtml(getUserDisplayName(u))).join(', ') || '—';
 
     const creator = state.users.find(u => u.id === evt.createdById);
-    const creatorText = creator ? escapeTelegramHtml(getUserDisplayName(creator)) : (evt.createdByEmail ? escapeTelegramHtml(evt.createdByEmail) : '—');
+    const creatorText = creator ? escapeTgHtml(getUserDisplayName(creator)) : (evt.createdByEmail || '—');
 
-    const dtText = formatEventDateTime(evt.startsAt);
-    const title = escapeTelegramHtml(evt.title || 'Без названия');
+    const dtText = formatEventDT(evt.startsAt);
+    const title = escapeTgHtml(evt.title || 'Без названия');
     const desc = (evt.description || '').trim();
-    const descLine = desc ? `\n<b>Описание:</b> ${escapeTelegramHtml(desc)}` : '';
+    const descLine = desc ? `\n<b>Описание:</b> ${escapeTgHtml(desc)}` : '';
 
     const header = isReminder
-        ? `⏰ <b>Напоминание о событии</b>\nЧерез 2 часа: <b>${title}</b>`
+        ? `⏰ <b>Напоминание</b>\nЧерез 2 часа: <b>${title}</b>`
         : `📅 <b>Новое событие</b>\n<b>${title}</b>`;
 
-    const message = `${header}\n\n<b>Когда:</b> ${escapeTelegramHtml(dtText)}\n<b>Участники:</b> ${participantsText}\n<b>Создатель:</b> ${creatorText}${descLine}\n\nОткройте ProjectMan для подробностей.`;
+    const message = `${header}\n\n<b>Когда:</b> ${escapeTgHtml(dtText)}\n<b>Участники:</b> ${participantsText}\n<b>Создатель:</b> ${creatorText}${descLine}`;
 
-    await Promise.all(participants.map(async (u) => {
-        if (!u.telegramChatId) return;
-        await sendTelegramNotification(u.telegramChatId, message);
+    await Promise.all(participants.map(async u => {
+        if (u.telegramChatId) await sendTelegramNotification(u.telegramChatId, message);
     }));
 }
 
-async function submitCreateEvent() {
+async function submitEvent() {
     if (!db || !state.currentUser?.uid) return;
 
-    const title = (elements.eventTitleInput?.value || '').trim();
-    const description = (elements.eventDescriptionInput?.value || '').trim();
-    const date = (elements.eventDateInput?.value || '').trim();
-    const time = (elements.eventTimeInput?.value || '').trim();
-    const reminder2h = !!elements.eventReminder2h?.checked;
+    const title = (elements.evTitle?.value || '').trim();
+    const description = (elements.evDesc?.value || '').trim();
+    const date = (elements.evDate?.value || '').trim();
+    const time = (elements.evTime?.value || '').trim();
+    const reminder2h = !!elements.evReminder?.checked;
 
-    // Validation
-    if (!title) {
-        alert('Введите название события');
-        return;
-    }
-    if (!date) {
-        alert('Выберите дату');
-        return;
-    }
-    if (!time) {
-        alert('Выберите время');
-        return;
-    }
+    if (!title) { alert('Введите название'); return; }
+    if (!date) { alert('Выберите дату'); return; }
+    if (!time) { alert('Выберите время'); return; }
 
-    const startsAtLocal = new Date(`${date}T${time}`);
-    if (isNaN(startsAtLocal.getTime())) {
-        alert('Некорректные дата/время');
-        return;
-    }
+    const startsAt = new Date(`${date}T${time}`);
+    if (isNaN(startsAt.getTime())) { alert('Некорректная дата/время'); return; }
 
-    // Participants: always include creator
-    const participantIds = Array.from(eventsUIState.selectedParticipantIds || []);
+    const participantIds = Array.from(eventsUIState.selectedUserIds);
     if (!participantIds.includes(state.currentUser.uid)) participantIds.push(state.currentUser.uid);
-
-    const createdById = state.currentUser.uid;
-    const createdByEmail = state.currentUser.email || '';
 
     try {
         const docRef = await db.collection('events').add({
             organizationId: state.organization?.id || null,
             title,
             description,
-            startsAt: startsAtLocal.toISOString(),
+            startsAt: startsAt.toISOString(),
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdById,
-            createdByEmail,
+            createdById: state.currentUser.uid,
+            createdByEmail: state.currentUser.email || '',
             participantIds,
             reminder2h,
             reminder2hSent: false,
             reminder2hSentAt: null
         });
 
-        // Notify participants + creator (creator is included in participantIds)
         const evt = {
             id: docRef.id,
-            organizationId: state.organization?.id || null,
+            organizationId: state.organization?.id,
             title,
             description,
-            startsAt: startsAtLocal.toISOString(),
-            createdById,
-            createdByEmail,
+            startsAt: startsAt.toISOString(),
+            createdById: state.currentUser.uid,
+            createdByEmail: state.currentUser.email,
             participantIds,
-            reminder2h,
-            reminder2hSent: false
+            reminder2h
         };
         await notifyEventParticipants(evt, false);
 
-        toggleCreateEventPanel(false);
-        renderEventsModal();
+        hideEventForm();
+        renderEventsList();
         alert('Событие создано!');
     } catch (e) {
         console.error('Error creating event:', e);
@@ -7249,40 +7165,39 @@ async function submitCreateEvent() {
 }
 
 function initEventsModule() {
-    if (elements.eventsBtn && elements.eventsModal) {
-        elements.eventsBtn.addEventListener('click', () => {
-            playClickSound();
-            openEventsModal();
-        });
-    }
+    // Open modal
+    elements.eventsBtn?.addEventListener('click', () => {
+        playClickSound();
+        openEventsModal();
+    });
 
-    if (elements.createEventToggle) {
-        elements.createEventToggle.addEventListener('click', () => {
-            playClickSound();
-            toggleCreateEventPanel();
-        });
-    }
+    // Toggle form
+    elements.evCreateToggle?.addEventListener('click', () => {
+        playClickSound();
+        if (elements.evForm?.style.display === 'none' || !elements.evForm?.style.display) {
+            showEventForm();
+        } else {
+            hideEventForm();
+        }
+    });
 
-    if (elements.cancelCreateEventBtn) {
-        elements.cancelCreateEventBtn.addEventListener('click', () => {
-            playClickSound();
-            toggleCreateEventPanel(false);
-        });
-    }
+    // Cancel
+    elements.evCancel?.addEventListener('click', () => {
+        playClickSound();
+        hideEventForm();
+    });
 
-    if (elements.submitCreateEventBtn) {
-        elements.submitCreateEventBtn.addEventListener('click', async () => {
-            playClickSound();
-            await submitCreateEvent();
-        });
-    }
+    // Submit
+    elements.evSubmit?.addEventListener('click', async () => {
+        playClickSound();
+        await submitEvent();
+    });
 
-    if (elements.eventParticipantSearch) {
-        elements.eventParticipantSearch.addEventListener('input', (e) => {
-            eventsUIState.participantSearch = (e.target.value || '').toLowerCase();
-            renderEventParticipantsPicker();
-        });
-    }
+    // Search users
+    elements.evSearch?.addEventListener('input', e => {
+        eventsUIState.searchQuery = (e.target.value || '').toLowerCase();
+        renderEventUsersPicker();
+    });
 }
 
 // ========== LEADERBOARD ==========

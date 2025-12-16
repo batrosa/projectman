@@ -16,9 +16,9 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=21.0" as="style">
-    <link rel="stylesheet" href="style.css?v=21.0">
-    <link rel="stylesheet" href="mobile-additions.css?v=12.0">
+    <link rel="preload" href="style.css?v=22.0" as="style">
+    <link rel="stylesheet" href="style.css?v=22.0">
+    <link rel="stylesheet" href="mobile-additions.css?v=13.0">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -1030,12 +1030,12 @@
                 </button>
 
                 <button id="events-btn" class="settings-option">
-                    <div class="settings-option-icon" style="background: rgba(59, 130, 246, 0.12); color: #3b82f6;">
-                        <i class="fa-solid fa-calendar-days"></i>
+                    <div class="settings-option-icon events">
+                        <i class="fa-solid fa-calendar-check"></i>
                     </div>
                     <div class="settings-option-info">
                         <span class="settings-option-title">События</span>
-                        <span class="settings-option-desc">Встречи и напоминания</span>
+                        <span class="settings-option-desc">Встречи и мероприятия</span>
                     </div>
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
@@ -1217,66 +1217,59 @@
 
     <!-- Events Modal -->
     <div id="events-modal" class="modal">
-        <div class="modal-content events-modal-content">
-            <div class="modal-header">
-                <h2><i class="fa-solid fa-calendar-days"></i> События</h2>
+        <div class="modal-content ev-modal">
+            <div class="modal-header ev-header">
+                <h2><i class="fa-solid fa-calendar-check"></i> События</h2>
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div class="events-content">
-                <div class="events-toolbar">
-                    <button id="create-event-toggle" class="primary-btn">
-                        <i class="fa-solid fa-plus"></i> Создать событие
+
+            <div class="ev-body">
+                <!-- Create Event Form (collapsed by default) -->
+                <div class="ev-create-wrap" id="ev-create-wrap">
+                    <button type="button" class="ev-create-toggle" id="ev-create-toggle">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Создать событие</span>
                     </button>
-                    <div id="events-hint" style="color: var(--text-secondary); font-size: 0.85rem;">
-                        События видны только участникам
+
+                    <div class="ev-form" id="ev-form" style="display:none;">
+                        <div class="ev-form-row">
+                            <div class="ev-field">
+                                <label><i class="fa-solid fa-pen"></i> Название</label>
+                                <input type="text" id="ev-title" placeholder="Созвон, встреча..." autocomplete="off">
+                            </div>
+                        </div>
+                        <div class="ev-form-row ev-form-row-2">
+                            <div class="ev-field">
+                                <label><i class="fa-regular fa-calendar"></i> Дата</label>
+                                <input type="date" id="ev-date">
+                            </div>
+                            <div class="ev-field">
+                                <label><i class="fa-regular fa-clock"></i> Время</label>
+                                <input type="time" id="ev-time">
+                            </div>
+                        </div>
+                        <div class="ev-field">
+                            <label><i class="fa-solid fa-users"></i> Участники</label>
+                            <input type="text" id="ev-search" placeholder="Поиск..." autocomplete="off">
+                            <div class="ev-users" id="ev-users"></div>
+                        </div>
+                        <div class="ev-field">
+                            <label><i class="fa-solid fa-align-left"></i> Описание</label>
+                            <textarea id="ev-desc" rows="2" placeholder="Детали события (необязательно)"></textarea>
+                        </div>
+                        <label class="ev-reminder-label">
+                            <input type="checkbox" id="ev-reminder">
+                            <span><i class="fa-regular fa-bell"></i> Напомнить за 2 часа</span>
+                        </label>
+                        <div class="ev-form-actions">
+                            <button type="button" class="secondary-btn" id="ev-cancel">Отмена</button>
+                            <button type="button" class="primary-btn" id="ev-submit"><i class="fa-solid fa-check"></i> Создать</button>
+                        </div>
                     </div>
                 </div>
 
-                <div id="create-event-panel" class="events-create-panel" style="display: none;">
-                    <div class="events-form-grid">
-                        <div class="form-group" style="margin: 0;">
-                            <label for="event-title">Название</label>
-                            <input id="event-title" type="text" placeholder="Например: созвон по проекту" autocomplete="off">
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label for="event-date">Дата</label>
-                            <input id="event-date" type="date">
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label for="event-time">Время</label>
-                            <input id="event-time" type="time">
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label for="event-participant-search">Участники</label>
-                            <input id="event-participant-search" type="text" placeholder="Поиск по имени или email..." autocomplete="off">
-                        </div>
-                    </div>
-
-                    <div id="event-participants-list" class="events-participants-list">
-                        <!-- Participants checkboxes rendered by JS -->
-                    </div>
-
-                    <div class="form-group" style="margin: 0;">
-                        <label for="event-description">Описание</label>
-                        <textarea id="event-description" rows="3" placeholder="Детали события..."></textarea>
-                    </div>
-
-                    <label class="checkbox-label" style="margin-top: 0.75rem;">
-                        <input type="checkbox" id="event-reminder-2h">
-                        Напомнить за 2 часа
-                    </label>
-
-                    <div class="events-actions">
-                        <button id="cancel-create-event" type="button" class="secondary-btn">
-                            Отмена
-                        </button>
-                        <button id="submit-create-event" type="button" class="primary-btn">
-                            <i class="fa-solid fa-check"></i> Создать
-                        </button>
-                    </div>
-                </div>
-
-                <div id="events-list" class="events-list">
+                <!-- Events List -->
+                <div class="ev-list" id="ev-list">
                     <!-- Events rendered by JS -->
                 </div>
             </div>

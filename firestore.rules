@@ -18,16 +18,6 @@ service cloud.firestore {
       return userData.allowedProjects == null || userData.allowedProjects.size() == 0 || projectId in userData.allowedProjects;
     }
 
-    // Функция: Получить текущего пользователя
-    function currentUser() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    // Функция: Проверка принадлежности к организации
-    function inOrg(orgId) {
-      return request.auth != null && currentUser().organizationId == orgId;
-    }
-
     // Коллекция Users
     match /users/{userId} {
       // Читать могут все авторизованные (нужно для списков assignee), 
@@ -74,22 +64,27 @@ service cloud.firestore {
 
     // Коллекция Events (События)
     match /events/{eventId} {
-      // Читать: только участники события (в рамках своей организации)
+      // Вспомогательная функция: получить данные текущего пользователя
+      function getUserData() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      }
+      
+      // Читать: участники события из той же организации
       allow read: if request.auth != null
         && resource.data.organizationId != null
-        && inOrg(resource.data.organizationId)
+        && getUserData().organizationId == resource.data.organizationId
         && (request.auth.uid in resource.data.participantIds);
 
-      // Создать: авторизованный пользователь в своей организации, при этом создатель должен быть участником
+      // Создать: авторизованный из той же организации, создатель должен быть в участниках
       allow create: if request.auth != null
         && request.resource.data.organizationId != null
-        && inOrg(request.resource.data.organizationId)
+        && getUserData().organizationId == request.resource.data.organizationId
         && (request.auth.uid in request.resource.data.participantIds);
 
-      // Обновить: участники могут проставлять только флаги напоминаний; создатель может править всё
+      // Обновить: создатель может всё; участники могут обновлять только reminder флаги
       allow update: if request.auth != null
         && resource.data.organizationId != null
-        && inOrg(resource.data.organizationId)
+        && getUserData().organizationId == resource.data.organizationId
         && (
           request.auth.uid == resource.data.createdById
           || (
@@ -101,10 +96,10 @@ service cloud.firestore {
       // Удалить: только создатель
       allow delete: if request.auth != null
         && resource.data.organizationId != null
-        && inOrg(resource.data.organizationId)
+        && getUserData().organizationId == resource.data.organizationId
         && request.auth.uid == resource.data.createdById;
     }
-    
+
     // Коллекция telegramCodes - временные коды для подключения Telegram
     match /telegramCodes/{code} {
       // Пользователь может создать код для себя
