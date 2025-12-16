@@ -1522,9 +1522,8 @@ const elements = {
     // Events
     eventsBtn: document.getElementById('events-btn'),
     eventsModal: document.getElementById('events-modal'),
-    evCreateWrap: document.getElementById('ev-create-wrap'),
+    evCreateModal: document.getElementById('ev-create-modal'),
     evCreateToggle: document.getElementById('ev-create-toggle'),
-    evForm: document.getElementById('ev-form'),
     evTitle: document.getElementById('ev-title'),
     evDate: document.getElementById('ev-date'),
     evTime: document.getElementById('ev-time'),
@@ -6936,18 +6935,26 @@ function checkEventReminders(events) {
 function openEventsModal() {
     if (!elements.eventsModal) return;
     elements.eventsModal.classList.add('active');
-    hideEventForm();
     renderEventsList();
 }
 
+function openCreateEventModal() {
+    if (!elements.evCreateModal) return;
+    elements.evCreateModal.classList.add('active');
+    resetEventForm();
+}
+
+function closeCreateEventModal() {
+    if (elements.evCreateModal) elements.evCreateModal.classList.remove('active');
+}
+
+// Legacy aliases
 function hideEventForm() {
-    if (elements.evForm) elements.evForm.style.display = 'none';
+    closeCreateEventModal();
 }
 
 function showEventForm() {
-    if (!elements.evForm) return;
-    elements.evForm.style.display = 'flex';
-    resetEventForm();
+    openCreateEventModal();
 }
 
 function resetEventForm() {
@@ -7252,29 +7259,25 @@ function openEditEventModal(evt) {
 }
 
 function initEventsModule() {
-    // Open modal
+    // Open events list modal
     elements.eventsBtn?.addEventListener('click', () => {
         playClickSound();
         openEventsModal();
     });
 
-    // Toggle form
+    // Open create event modal
     elements.evCreateToggle?.addEventListener('click', () => {
         playClickSound();
-        if (elements.evForm?.style.display === 'none' || !elements.evForm?.style.display) {
-            showEventForm();
-        } else {
-            hideEventForm();
-        }
+        openCreateEventModal();
     });
 
-    // Cancel
+    // Cancel create event
     elements.evCancel?.addEventListener('click', () => {
         playClickSound();
-        hideEventForm();
+        closeCreateEventModal();
     });
 
-    // Submit
+    // Submit event
     elements.evSubmit?.addEventListener('click', async () => {
         playClickSound();
         await submitEvent();
