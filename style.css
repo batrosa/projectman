@@ -5490,6 +5490,27 @@ body.light-mode .ev-create-modal-content {
     box-shadow: 0 25px 80px rgba(0, 0, 0, 0.15);
 }
 
+body.light-mode .ev-create-modal-content .modal-header.ev-header,
+body.light-mode .ev-create-modal-content .ev-header {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+}
+
+body.light-mode .ev-create-modal-content .modal-header.ev-header h2,
+body.light-mode .ev-create-modal-content .ev-header h2 {
+    color: white !important;
+}
+
+body.light-mode .ev-create-modal-content .modal-header.ev-header h2 i,
+body.light-mode .ev-create-modal-content .ev-header h2 i {
+    color: white !important;
+}
+
+body.light-mode .ev-create-modal-content .modal-header.ev-header .close-modal,
+body.light-mode .ev-create-modal-content .ev-header .close-modal {
+    color: rgba(255, 255, 255, 0.8) !important;
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
 .ev-create-body {
     padding: 1.5rem;
     display: flex;
