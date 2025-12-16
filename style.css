@@ -4383,17 +4383,17 @@ body.light-mode .org-invite-code-row code {
     padding: 0.5rem 2rem 0.5rem 0.75rem;
     border-radius: 8px;
     border: 1px solid var(--border);
-    background: var(--card-bg);
+    background-color: var(--card-bg);
     color: var(--text-primary);
     font-size: 0.85rem;
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
-    /* Use a caret (triangle), not a "checkmark" chevron */
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3e%3cpath fill='%2394a3b8' d='M7,10L12,15L17,10Z'/%3e%3c/svg%3e");
-    background-repeat: no-repeat;
-    background-position: right 0.5rem center;
-    background-size: 1rem;
+    /* Use a caret (triangle) */
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3e%3cpath fill='%2394a3b8' d='M7,10L12,15L17,10Z'/%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 0.5rem center !important;
+    background-size: 16px 16px !important;
 }
 
 .role-select:focus {
@@ -4404,7 +4404,7 @@ body.light-mode .org-invite-code-row code {
 body.light-mode .role-select {
     background-color: #f8fafc;
     border-color: #e2e8f0;
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3e%3cpath fill='%230f172a' d='M7,10L12,15L17,10Z'/%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3e%3cpath fill='%230f172a' d='M7,10L12,15L17,10Z'/%3e%3c/svg%3e") !important;
 }
 
 /* Delete user button in admin panel */
