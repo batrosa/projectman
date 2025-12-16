@@ -5400,6 +5400,23 @@ body.light-mode .ev-modal {
     box-shadow: 0 25px 80px rgba(0, 0, 0, 0.15);
 }
 
+body.light-mode .ev-modal .ev-header {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+}
+
+body.light-mode .ev-modal .ev-header h2 {
+    color: white !important;
+}
+
+body.light-mode .ev-modal .ev-header h2 i {
+    color: white !important;
+}
+
+body.light-mode .ev-modal .ev-header .close-modal {
+    color: rgba(255, 255, 255, 0.8) !important;
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
 .ev-header {
     background: linear-gradient(135deg, #6366f1, #8b5cf6);
     padding: 1.25rem 1.5rem;
