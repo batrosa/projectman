@@ -6034,24 +6034,29 @@ body.light-mode .ev-badge.reminder {
         flex-direction: column;
     }
 
-    .ev-create-modal-content .ev-header {
+    .ev-create-modal-content .modal-header.ev-header {
         flex-shrink: 0;
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
-        padding: 1rem 1.25rem;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+        padding: 1rem 1.25rem !important;
+        margin-bottom: 0 !important;
+        display: flex !important;
+        justify-content: space-between;
+        align-items: center;
     }
 
-    .ev-create-modal-content .ev-header h2 {
+    .ev-create-modal-content .modal-header.ev-header h2 {
         color: white !important;
-        font-size: 1rem;
+        font-size: 1rem !important;
+        margin: 0;
     }
 
-    .ev-create-modal-content .ev-header h2 i {
+    .ev-create-modal-content .modal-header.ev-header h2 i {
         color: white !important;
     }
 
-    .ev-create-modal-content .ev-header .close-modal {
-        color: rgba(255, 255, 255, 0.8);
-        background: rgba(255, 255, 255, 0.15);
+    .ev-create-modal-content .modal-header.ev-header .close-modal {
+        color: rgba(255, 255, 255, 0.8) !important;
+        background: rgba(255, 255, 255, 0.15) !important;
     }
 
     .ev-create-body {
