@@ -1154,7 +1154,16 @@
                     </div>
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
-
+                <button id="calendar-btn" class="settings-option">
+                    <div class="settings-option-icon calendar">
+                        <i class="fa-solid fa-calendar-days"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">Календарь</span>
+                        <span class="settings-option-desc">Планирование и встречи</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
 
 
 
@@ -1332,6 +1341,85 @@
             <div class="leaderboard-content">
                 <div class="leaderboard-podium" id="leaderboard-podium">
                     <!-- Top 3 will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calendar Modal -->
+    <div id="calendar-modal" class="modal">
+        <div class="modal-content calendar-modal-content">
+            <div class="modal-header calendar-header">
+                <div class="calendar-header-nav">
+                    <button id="cal-prev-month" class="icon-btn"><i class="fa-solid fa-chevron-left"></i></button>
+                    <h2 id="cal-current-month">Июнь 2024</h2>
+                    <button id="cal-next-month" class="icon-btn"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+                <div class="calendar-header-actions">
+                    <button id="cal-today-btn" class="secondary-btn small">Сегодня</button>
+                    <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+
+            <div class="calendar-body">
+                <div class="calendar-week-days">
+                    <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+                </div>
+                <div id="calendar-grid" class="calendar-grid">
+                    <!-- Days will be injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Detail/Create Modal -->
+    <div id="cal-event-modal" class="modal">
+        <div class="modal-content cal-event-modal-content">
+            <div class="modal-header cal-header">
+                <h2 id="cal-event-modal-title"><i class="fa-solid fa-calendar-plus"></i> Встреча</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="cal-event-form-body">
+                <form id="cal-event-form">
+                    <div class="ev-field">
+                        <label><i class="fa-solid fa-pen"></i> Название</label>
+                        <input type="text" id="ce-title" required placeholder="Например: Обсуждение проекта"
+                            autocomplete="off">
+                    </div>
+                    <div class="ev-datetime-row">
+                        <div class="ev-datetime-field">
+                            <i class="fa-regular fa-calendar"></i>
+                            <input type="date" id="ce-date" required>
+                        </div>
+                        <div class="ev-datetime-field">
+                            <i class="fa-regular fa-clock"></i>
+                            <input type="time" id="ce-time" required>
+                        </div>
+                    </div>
+                    <div class="ev-field">
+                        <label><i class="fa-solid fa-users"></i> Участники</label>
+                        <div class="ce-participants-picker">
+                            <input type="text" id="ce-user-search" placeholder="Поиск участников..." autocomplete="off">
+                            <div id="ce-users-dropdown" class="ce-users-dropdown"></div>
+                        </div>
+                        <div id="ce-selected-users" class="ce-selected-users"></div>
+                    </div>
+                    <div class="ev-field">
+                        <label><i class="fa-solid fa-align-left"></i> Описание</label>
+                        <textarea id="ce-desc" rows="3" placeholder="Детали встречи (необязательно)"></textarea>
+                    </div>
+                    <input type="hidden" id="ce-id">
+                </form>
+            </div>
+            <div class="cal-event-footer">
+                <button type="button" id="ce-delete-btn" class="secondary-btn"
+                    style="color: var(--danger); border-color: var(--danger); display: none;">
+                    <i class="fa-solid fa-trash"></i> Удалить
+                </button>
+                <div style="margin-left: auto; display: flex; gap: 10px;">
+                    <button type="button" class="secondary-btn close-modal">Отмена</button>
+                    <button type="submit" form="cal-event-form" class="primary-btn"><i class="fa-solid fa-check"></i>
+                        Сохранить</button>
                 </div>
             </div>
         </div>
