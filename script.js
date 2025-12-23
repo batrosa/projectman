@@ -7063,6 +7063,10 @@ function initCalendarModule() {
         renderCalUserDropdown(query);
     });
 
+    calElements.userSearch?.addEventListener('focus', () => {
+        renderCalUserDropdown(calElements.userSearch.value.toLowerCase());
+    });
+
     document.addEventListener('click', (e) => {
         if (!calElements.userDropdown?.contains(e.target) && e.target !== calElements.userSearch) {
             calElements.userDropdown?.classList.remove('active');
@@ -7262,10 +7266,17 @@ async function handleCalendarSubmit(e) {
         return;
     }
 
-    const submitBtn = calElements.eventForm.querySelector('button[type="submit"]');
-    const originalBtnHTML = submitBtn.innerHTML;
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
+    const submitBtn = document.querySelector(`button[type="submit"][form="cal-event-form"]`);
+    if (!submitBtn) {
+        // Fallback search if the button setup is different
+        console.warn("Submit button not found by specific selector");
+    }
+
+    const originalBtnHTML = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
+    }
 
     try {
         if (id) {

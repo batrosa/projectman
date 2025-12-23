@@ -6001,6 +6001,10 @@ body.light-mode .leaderboard-empty {
     background: var(--bg-secondary);
 }
 
+.ce-participants-picker {
+    position: relative;
+}
+
 .ce-users-dropdown {
     position: absolute;
     top: 100%;
@@ -6011,9 +6015,23 @@ body.light-mode .leaderboard-empty {
     border-radius: 12px;
     max-height: 200px;
     overflow-y: auto;
-    z-index: 100;
+    z-index: 1000;
     display: none;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.ce-user-option {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: background 0.2s;
+    color: var(--text);
+}
+
+.ce-user-option:hover {
+    background: rgba(37, 99, 235, 0.1);
 }
 
 .ce-users-dropdown.active {
