@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -61,7 +62,7 @@
             left: -50%;
             width: 200%;
             height: 200%;
-            background: 
+            background:
                 radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
                 radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.12) 0%, transparent 40%),
                 radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
@@ -69,8 +70,15 @@
         }
 
         @keyframes gradientMove {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            50% { transform: translate(-2%, 2%) rotate(3deg); }
+
+            0%,
+            100% {
+                transform: translate(0, 0) rotate(0deg);
+            }
+
+            50% {
+                transform: translate(-2%, 2%) rotate(3deg);
+            }
         }
 
         .loading-screen.hidden {
@@ -109,15 +117,22 @@
             background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
             border-radius: 28px;
             animation: logoFloat 3s ease-in-out infinite;
-            box-shadow: 
+            box-shadow:
                 0 0 40px rgba(99, 102, 241, 0.4),
                 0 0 80px rgba(139, 92, 246, 0.2),
                 0 20px 40px rgba(0, 0, 0, 0.3);
         }
 
         @keyframes logoFloat {
-            0%, 100% { transform: translateY(0) rotate(0deg); }
-            50% { transform: translateY(-8px) rotate(2deg); }
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            50% {
+                transform: translateY(-8px) rotate(2deg);
+            }
         }
 
         .loading-logo i {
@@ -166,16 +181,31 @@
             box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
         }
 
-        .loading-dot:nth-child(1) { animation-delay: 0s; }
-        .loading-dot:nth-child(2) { animation-delay: 0.15s; }
-        .loading-dot:nth-child(3) { animation-delay: 0.3s; }
-        .loading-dot:nth-child(4) { animation-delay: 0.45s; }
+        .loading-dot:nth-child(1) {
+            animation-delay: 0s;
+        }
+
+        .loading-dot:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+
+        .loading-dot:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .loading-dot:nth-child(4) {
+            animation-delay: 0.45s;
+        }
 
         @keyframes dotPulse {
-            0%, 80%, 100% {
+
+            0%,
+            80%,
+            100% {
                 transform: scale(0.6);
                 opacity: 0.4;
             }
+
             40% {
                 transform: scale(1.2);
                 opacity: 1;
@@ -203,8 +233,13 @@
         }
 
         @keyframes progressShine {
-            0% { background-position: 100% 0; }
-            100% { background-position: -100% 0; }
+            0% {
+                background-position: 100% 0;
+            }
+
+            100% {
+                background-position: -100% 0;
+            }
         }
 
         /* Tip section */
@@ -295,6 +330,7 @@
                 transform: translate(-50%, -50%) scale(0.8);
                 opacity: 0.5;
             }
+
             100% {
                 transform: translate(-50%, -50%) scale(1.5);
                 opacity: 0;
@@ -321,28 +357,80 @@
             animation: particleFloat 8s ease-in-out infinite;
         }
 
-        .particle:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; animation-duration: 7s; }
-        .particle:nth-child(2) { left: 20%; top: 80%; animation-delay: 1s; animation-duration: 9s; }
-        .particle:nth-child(3) { left: 30%; top: 40%; animation-delay: 2s; animation-duration: 6s; }
-        .particle:nth-child(4) { left: 70%; top: 30%; animation-delay: 0.5s; animation-duration: 8s; }
-        .particle:nth-child(5) { left: 80%; top: 70%; animation-delay: 1.5s; animation-duration: 10s; }
-        .particle:nth-child(6) { left: 90%; top: 50%; animation-delay: 3s; animation-duration: 7s; }
-        .particle:nth-child(7) { left: 50%; top: 10%; animation-delay: 2.5s; animation-duration: 9s; }
-        .particle:nth-child(8) { left: 40%; top: 90%; animation-delay: 0.8s; animation-duration: 8s; }
+        .particle:nth-child(1) {
+            left: 10%;
+            top: 20%;
+            animation-delay: 0s;
+            animation-duration: 7s;
+        }
+
+        .particle:nth-child(2) {
+            left: 20%;
+            top: 80%;
+            animation-delay: 1s;
+            animation-duration: 9s;
+        }
+
+        .particle:nth-child(3) {
+            left: 30%;
+            top: 40%;
+            animation-delay: 2s;
+            animation-duration: 6s;
+        }
+
+        .particle:nth-child(4) {
+            left: 70%;
+            top: 30%;
+            animation-delay: 0.5s;
+            animation-duration: 8s;
+        }
+
+        .particle:nth-child(5) {
+            left: 80%;
+            top: 70%;
+            animation-delay: 1.5s;
+            animation-duration: 10s;
+        }
+
+        .particle:nth-child(6) {
+            left: 90%;
+            top: 50%;
+            animation-delay: 3s;
+            animation-duration: 7s;
+        }
+
+        .particle:nth-child(7) {
+            left: 50%;
+            top: 10%;
+            animation-delay: 2.5s;
+            animation-duration: 9s;
+        }
+
+        .particle:nth-child(8) {
+            left: 40%;
+            top: 90%;
+            animation-delay: 0.8s;
+            animation-duration: 8s;
+        }
 
         @keyframes particleFloat {
-            0%, 100% { 
+
+            0%,
+            100% {
                 transform: translateY(0) translateX(0);
                 opacity: 0.3;
             }
+
             25% {
                 transform: translateY(-30px) translateX(15px);
                 opacity: 0.8;
             }
-            50% { 
+
+            50% {
                 transform: translateY(-20px) translateX(-10px);
                 opacity: 0.5;
             }
+
             75% {
                 transform: translateY(-40px) translateX(5px);
                 opacity: 0.7;
@@ -355,32 +443,32 @@
                 width: 80px;
                 height: 80px;
             }
-            
+
             .loading-logo-bg {
                 border-radius: 22px;
             }
-            
+
             .loading-logo i {
                 font-size: 2.2rem;
             }
-            
+
             .loading-brand {
                 font-size: 1.8rem;
             }
-            
+
             .loading-tagline {
                 font-size: 0.85rem;
             }
-            
+
             .loading-tip-container {
                 max-width: 280px;
                 padding: 0.875rem 1rem;
             }
-            
+
             .loading-tip {
                 font-size: 0.85rem;
             }
-            
+
             .loading-progress-container {
                 width: 160px;
             }
@@ -398,9 +486,11 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
-        
+
         /* Critical fallback styles for mobile layout */
         @media (max-width: 768px) {
             .app-container {
@@ -409,6 +499,7 @@
                 width: 100% !important;
                 overflow: hidden !important;
             }
+
             .sidebar {
                 position: fixed !important;
                 left: 0 !important;
@@ -423,18 +514,22 @@
                 flex-direction: column !important;
                 padding: 1.5rem !important;
             }
+
             body.light-mode .sidebar {
                 background: #ffffff !important;
             }
+
             .sidebar.active {
                 transform: translateX(0) !important;
             }
+
             .main-content {
                 width: 100% !important;
                 height: 100vh !important;
                 display: flex !important;
                 flex-direction: column !important;
             }
+
             .project-list {
                 flex: 1 !important;
                 overflow-y: auto !important;
@@ -445,6 +540,7 @@
                 visibility: visible !important;
                 opacity: 1 !important;
             }
+
             .project-item {
                 display: block !important;
                 visibility: visible !important;
@@ -456,9 +552,11 @@
                 cursor: pointer !important;
                 background: transparent !important;
             }
+
             body.light-mode .project-item {
                 color: #64748b !important;
             }
+
             .project-item.active {
                 background: rgba(99, 102, 241, 0.15) !important;
                 color: #6366f1 !important;
@@ -486,7 +584,7 @@
         <div class="loading-ring"></div>
         <div class="loading-ring"></div>
         <div class="loading-ring"></div>
-        
+
         <!-- Floating particles -->
         <div class="loading-particles">
             <div class="particle"></div>
@@ -498,7 +596,7 @@
             <div class="particle"></div>
             <div class="particle"></div>
         </div>
-        
+
         <div class="loading-screen-content">
             <div class="loading-logo-container">
                 <div class="loading-logo">
@@ -506,21 +604,21 @@
                     <i class="fa-solid fa-layer-group"></i>
                 </div>
             </div>
-            
+
             <div class="loading-brand">ProjectMan</div>
             <div class="loading-tagline">Управление задачами нового поколения</div>
-            
+
             <div class="loading-spinner-modern">
                 <div class="loading-dot"></div>
                 <div class="loading-dot"></div>
                 <div class="loading-dot"></div>
                 <div class="loading-dot"></div>
             </div>
-            
+
             <div class="loading-progress-container">
                 <div class="loading-progress-bar"></div>
             </div>
-            
+
             <div class="loading-tip-container">
                 <div class="loading-tip">
                     <div class="loading-tip-icon">
@@ -558,7 +656,8 @@
                         <i class="fa-solid fa-lock"></i>
                         Пароль
                     </label>
-                    <input type="password" id="login-password" required placeholder="Введите пароль" autocomplete="current-password">
+                    <input type="password" id="login-password" required placeholder="Введите пароль"
+                        autocomplete="current-password">
                 </div>
                 <p id="login-error" class="auth-error"></p>
                 <button type="submit" class="auth-submit-btn">
@@ -578,14 +677,16 @@
                             <i class="fa-solid fa-user"></i>
                             Имя
                         </label>
-                        <input type="text" id="register-first-name" required placeholder="Иван" autocomplete="given-name">
+                        <input type="text" id="register-first-name" required placeholder="Иван"
+                            autocomplete="given-name">
                     </div>
                     <div class="auth-form-group">
                         <label for="register-last-name">
                             <i class="fa-solid fa-user"></i>
                             Фамилия
                         </label>
-                        <input type="text" id="register-last-name" required placeholder="Иванов" autocomplete="family-name">
+                        <input type="text" id="register-last-name" required placeholder="Иванов"
+                            autocomplete="family-name">
                     </div>
                 </div>
                 <div class="auth-form-group">
@@ -600,14 +701,16 @@
                         <i class="fa-solid fa-lock"></i>
                         Пароль
                     </label>
-                    <input type="password" id="register-password" required placeholder="Минимум 6 символов" autocomplete="new-password">
+                    <input type="password" id="register-password" required placeholder="Минимум 6 символов"
+                        autocomplete="new-password">
                 </div>
                 <div class="auth-form-group">
                     <label for="register-password-confirm">
                         <i class="fa-solid fa-shield-halved"></i>
                         Подтвердите пароль
                     </label>
-                    <input type="password" id="register-password-confirm" required placeholder="Повторите пароль" autocomplete="new-password">
+                    <input type="password" id="register-password-confirm" required placeholder="Повторите пароль"
+                        autocomplete="new-password">
                 </div>
                 <p id="register-error" class="auth-error"></p>
                 <button type="submit" class="auth-submit-btn">
@@ -655,7 +758,7 @@
             </div>
             <h2 style="text-align: center;">Добро пожаловать!</h2>
             <p id="org-welcome-name" style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;"></p>
-            
+
             <div style="display: flex; flex-direction: column; gap: 1rem;">
                 <button id="org-create-btn" class="org-choice-btn">
                     <div class="org-choice-icon"><i class="fa-solid fa-building"></i></div>
@@ -675,12 +778,13 @@
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
             </div>
-            
-            <button id="org-logout-btn" class="secondary-btn" style="width: 100%; justify-content: center; margin-top: 2rem;">
+
+            <button id="org-logout-btn" class="secondary-btn"
+                style="width: 100%; justify-content: center; margin-top: 2rem;">
                 <i class="fa-solid fa-right-from-bracket"></i> Выйти из аккаунта
             </button>
         </div>
-        
+
         <!-- Create Organization Screen -->
         <div id="org-create-screen" class="login-card" style="display: none; max-width: 450px;">
             <button id="org-create-back" class="back-btn">
@@ -693,19 +797,20 @@
             <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
                 Вы станете владельцем и сможете приглашать сотрудников
             </p>
-            
+
             <form id="org-create-form">
                 <div class="form-group">
                     <label for="org-name">Название организации *</label>
                     <input type="text" id="org-name" required placeholder="ООО «Ромашка»" maxlength="100">
                 </div>
-                <p id="org-create-error" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
+                <p id="org-create-error"
+                    style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
                 <button type="submit" class="primary-btn" style="width: 100%; justify-content: center;">
                     <i class="fa-solid fa-plus"></i> Создать организацию
                 </button>
             </form>
         </div>
-        
+
         <!-- Join Organization Screen -->
         <div id="org-join-screen" class="login-card" style="display: none; max-width: 450px;">
             <button id="org-join-back" class="back-btn">
@@ -718,18 +823,22 @@
             <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
                 Введите код приглашения от администратора
             </p>
-            
+
             <form id="org-join-form">
                 <div class="form-group">
                     <label for="org-invite-code">Код приглашения *</label>
-                    <input type="text" id="org-invite-code" required placeholder="ABC123" maxlength="20" style="text-transform: uppercase; letter-spacing: 2px; font-size: 1.2rem; text-align: center;">
+                    <input type="text" id="org-invite-code" required placeholder="ABC123" maxlength="20"
+                        style="text-transform: uppercase; letter-spacing: 2px; font-size: 1.2rem; text-align: center;">
                 </div>
-                <p id="org-join-error" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
-                <div id="org-join-preview" style="display: none; background: rgba(99, 102, 241, 0.1); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                <p id="org-join-error"
+                    style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
+                <div id="org-join-preview"
+                    style="display: none; background: rgba(99, 102, 241, 0.1); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
                     <p style="margin: 0; font-weight: 600;" id="org-join-name"></p>
                     <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);" id="org-join-members"></p>
                 </div>
-                <button type="submit" class="primary-btn" id="org-join-submit-btn" style="width: 100%; justify-content: center;">
+                <button type="submit" class="primary-btn" id="org-join-submit-btn"
+                    style="width: 100%; justify-content: center;">
                     <i class="fa-solid fa-right-to-bracket"></i> Присоединиться
                 </button>
             </form>
@@ -747,7 +856,7 @@
                     </div>
                     <i class="fa-solid fa-chevron-down org-chevron"></i>
                 </button>
-                
+
                 <!-- Organization Dropdown Menu -->
                 <div id="org-dropdown" class="org-dropdown" style="display: none;">
                     <div class="org-dropdown-header">
@@ -774,12 +883,13 @@
                     <button id="org-leave-btn" class="org-dropdown-item org-leave">
                         <i class="fa-solid fa-right-from-bracket"></i> Покинуть организацию
                     </button>
-                    <button id="org-delete-btn" class="org-dropdown-item org-delete" style="display: none; color: var(--danger);">
+                    <button id="org-delete-btn" class="org-dropdown-item org-delete"
+                        style="display: none; color: var(--danger);">
                         <i class="fa-solid fa-trash"></i> Удалить организацию
                     </button>
                 </div>
             </div>
-            
+
             <div class="brand" id="brand-logo">
                 <i class="fa-solid fa-layer-group"></i> ProjectMan
             </div>
@@ -835,7 +945,8 @@
 
             <div class="board-container" id="board-container">
                 <div id="category-picker" style="display:none;justify-content:center;padding:8px 0 12px;">
-                    <button type="button" id="category-btn" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border:none;border-radius:50px;background:#6366f1;color:#fff;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);">
+                    <button type="button" id="category-btn"
+                        style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border:none;border-radius:50px;background:#6366f1;color:#fff;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);">
                         <span id="category-btn-text">Назначенные</span>
                         <i class="fa-solid fa-caret-down" style="font-size:12px;opacity:0.8;"></i>
                     </button>
@@ -916,14 +1027,14 @@
     <div id="project-modal" class="modal">
         <div class="modal-content project-modal-content">
             <button class="close-modal project-modal-close"><i class="fa-solid fa-xmark"></i></button>
-            
+
             <div class="project-modal-icon">
                 <i class="fa-solid fa-folder-plus"></i>
             </div>
-            
+
             <h2 class="project-modal-title">Новый проект</h2>
             <p class="project-modal-subtitle">Создайте проект для организации задач</p>
-            
+
             <form id="project-form" class="project-modal-form">
                 <div class="project-form-group">
                     <label for="p-name">
@@ -932,7 +1043,7 @@
                     </label>
                     <input type="text" id="p-name" required placeholder="Введите название...">
                 </div>
-                
+
                 <div class="project-form-group">
                     <label for="p-desc">
                         <i class="fa-solid fa-align-left"></i>
@@ -940,7 +1051,7 @@
                     </label>
                     <textarea id="p-desc" rows="3" placeholder="Краткое описание проекта..."></textarea>
                 </div>
-                
+
                 <div class="project-deadline-toggle">
                     <label class="toggle-switch">
                         <input type="checkbox" id="p-has-deadline">
@@ -951,7 +1062,7 @@
                         Установить срок
                     </span>
                 </div>
-                
+
                 <div class="project-form-group project-deadline-field" id="p-deadline-group">
                     <label for="p-deadline">
                         <i class="fa-solid fa-clock"></i>
@@ -959,7 +1070,7 @@
                     </label>
                     <input type="date" id="p-deadline">
                 </div>
-                
+
                 <div class="project-modal-actions">
                     <button type="button" class="project-btn-cancel close-modal">
                         <i class="fa-solid fa-xmark"></i>
@@ -973,18 +1084,18 @@
             </form>
         </div>
     </div>
-    
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal">
         <div class="modal-content settings-modal-content">
             <button class="close-modal settings-modal-close"><i class="fa-solid fa-xmark"></i></button>
-            
+
             <div class="settings-modal-icon">
                 <i class="fa-solid fa-sliders"></i>
             </div>
-            
+
             <h2 class="settings-modal-title">Панель управления</h2>
-            
+
             <div class="settings-options">
                 <button id="admin-panel-btn" class="settings-option">
                     <div class="settings-option-icon admin">
@@ -996,7 +1107,7 @@
                     </div>
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
-                
+
                 <button id="theme-toggle" class="settings-option">
                     <div class="settings-option-icon theme">
                         <i class="fa-regular fa-sun"></i>
@@ -1010,7 +1121,7 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </button>
-                
+
                 <button id="telegram-connect-btn" class="settings-option">
                     <div class="settings-option-icon telegram">
                         <i class="fa-brands fa-telegram"></i>
@@ -1021,7 +1132,7 @@
                     </div>
                     <i class="fa-solid fa-chevron-right" id="telegram-chevron"></i>
                 </button>
-                
+
                 <button id="profile-btn" class="settings-option">
                     <div class="settings-option-icon profile">
                         <i class="fa-solid fa-user"></i>
@@ -1032,7 +1143,7 @@
                     </div>
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
-                
+
                 <button id="leaderboard-btn" class="settings-option">
                     <div class="settings-option-icon leaderboard">
                         <i class="fa-solid fa-trophy"></i>
@@ -1044,20 +1155,11 @@
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
 
-                <button id="events-btn" class="settings-option">
-                    <div class="settings-option-icon events">
-                        <i class="fa-solid fa-calendar-check"></i>
-                    </div>
-                    <div class="settings-option-info">
-                        <span class="settings-option-title">События</span>
-                        <span class="settings-option-desc">Встречи и мероприятия</span>
-                    </div>
-                    <i class="fa-solid fa-chevron-right"></i>
-                </button>
+
             </div>
         </div>
     </div>
-    
+
     <!-- Telegram Connect Modal -->
     <div id="telegram-modal" class="modal">
         <div class="modal-content" style="max-width: 450px;">
@@ -1069,7 +1171,7 @@
                 <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
                     Получайте уведомления о новых задачах и возвратах прямо в Telegram!
                 </p>
-                
+
                 <div class="telegram-steps">
                     <div class="telegram-step">
                         <span class="step-number">1</span>
@@ -1100,17 +1202,20 @@
                         </div>
                     </div>
                 </div>
-                
-                <div id="telegram-error" style="display: none; color: var(--danger); margin-top: 1rem; text-align: center;"></div>
+
+                <div id="telegram-error"
+                    style="display: none; color: var(--danger); margin-top: 1rem; text-align: center;"></div>
             </div>
-            
+
             <div id="telegram-connected-screen" style="padding: 1.5rem; display: none;">
                 <div style="text-align: center;">
-                    <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #0088cc, #00a2e8); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
+                    <div
+                        style="width: 80px; height: 80px; background: linear-gradient(135deg, #0088cc, #00a2e8); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
                         <i class="fa-brands fa-telegram" style="font-size: 2.5rem; color: white;"></i>
                     </div>
                     <h3 style="color: var(--success); margin-bottom: 0.5rem;">Telegram подключен!</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;" id="telegram-user-info">@username</p>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;" id="telegram-user-info">@username
+                    </p>
                     <button type="button" class="danger-btn" id="disconnect-telegram-btn" style="width: 100%;">
                         <i class="fa-solid fa-unlink"></i> Отключить Telegram
                     </button>
@@ -1118,7 +1223,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Personal Profile Modal -->
     <div id="profile-modal" class="modal">
         <div class="modal-content profile-modal-content">
@@ -1143,7 +1248,7 @@
                         <p id="profile-email">email@example.com</p>
                     </div>
                 </div>
-                
+
                 <div class="profile-level-section">
                     <div class="profile-level-badge">
                         <span class="level-number" id="profile-level">1</span>
@@ -1154,7 +1259,7 @@
                     </div>
                     <p class="xp-text"><span id="profile-xp">0</span> / <span id="profile-xp-next">50</span> XP</p>
                 </div>
-                
+
                 <div class="profile-stats">
                     <div class="profile-stat">
                         <div class="stat-icon active">
@@ -1214,7 +1319,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Leaderboard Modal -->
     <div id="leaderboard-modal" class="modal">
         <div class="modal-content leaderboard-modal-content">
@@ -1230,73 +1335,10 @@
         </div>
     </div>
 
-    <!-- Events Modal -->
-    <div id="events-modal" class="modal">
-        <div class="modal-content ev-modal">
-            <div class="modal-header ev-header">
-                <h2><i class="fa-solid fa-calendar-check"></i> События</h2>
-                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
-            </div>
 
-            <div class="ev-body">
-                <button type="button" class="ev-create-toggle" id="ev-create-toggle">
-                    <i class="fa-solid fa-plus"></i>
-                    <span>Создать событие</span>
-                </button>
 
-                <!-- Events List -->
-                <div class="ev-list" id="ev-list">
-                    <!-- Events rendered by JS -->
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Create Event Modal -->
-    <div id="ev-create-modal" class="modal">
-        <div class="modal-content ev-create-modal-content">
-            <div class="modal-header ev-header">
-                <h2><i class="fa-solid fa-plus"></i> Новое событие</h2>
-                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
-            </div>
 
-            <div class="ev-create-body">
-                <div class="ev-field">
-                    <label><i class="fa-solid fa-pen"></i> Название</label>
-                    <input type="text" id="ev-title" placeholder="Созвон, встреча..." autocomplete="off">
-                </div>
-                <div class="ev-datetime-row">
-                    <div class="ev-datetime-field">
-                        <i class="fa-regular fa-calendar"></i>
-                        <input type="date" id="ev-date">
-                    </div>
-                    <div class="ev-datetime-field">
-                        <i class="fa-regular fa-clock"></i>
-                        <input type="time" id="ev-time">
-                    </div>
-                </div>
-                <div class="ev-field">
-                    <label><i class="fa-solid fa-users"></i> Участники</label>
-                    <input type="text" id="ev-search" placeholder="Поиск..." autocomplete="off">
-                    <div class="ev-users" id="ev-users"></div>
-                </div>
-                <div class="ev-field">
-                    <label><i class="fa-solid fa-align-left"></i> Описание</label>
-                    <textarea id="ev-desc" rows="2" placeholder="Детали события (необязательно)"></textarea>
-                </div>
-                <label class="ev-reminder-label">
-                    <input type="checkbox" id="ev-reminder">
-                    <span><i class="fa-regular fa-bell"></i> Напомнить за 2 часа</span>
-                </label>
-            </div>
-
-            <div class="ev-create-footer">
-                <button type="button" class="secondary-btn" id="ev-cancel">Отмена</button>
-                <button type="button" class="primary-btn" id="ev-submit"><i class="fa-solid fa-check"></i> Создать</button>
-            </div>
-        </div>
-    </div>
-    
     <!-- Photo Crop Modal -->
     <div id="crop-modal" class="modal">
         <div class="modal-content crop-modal-content">
@@ -1350,7 +1392,8 @@
                                     <!-- Selected assignee chips will appear here -->
                                 </div>
                                 <div class="assignee-search-wrapper">
-                                    <input type="text" id="assignee-search" class="assignee-search-input" placeholder="Введите имя..." autocomplete="off">
+                                    <input type="text" id="assignee-search" class="assignee-search-input"
+                                        placeholder="Введите имя..." autocomplete="off">
                                     <div id="assignee-dropdown" class="assignee-dropdown">
                                         <!-- Search results will appear here -->
                                     </div>
@@ -1373,8 +1416,8 @@
                             <button type="button" id="add-attachment-btn" class="add-attachment-btn">
                                 <i class="fa-solid fa-plus"></i> Прикрепить файл
                             </button>
-                            <input type="file" id="file-input" style="display: none;" 
-                                   accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar">
+                            <input type="file" id="file-input" style="display: none;"
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar">
                             <p class="attachment-hint">PDF, Word, Excel, изображения, архивы. Макс. 10 MB</p>
                         </div>
                     </div>
@@ -1401,19 +1444,25 @@
             <div class="help-content">
                 <div class="help-section">
                     <h3><i class="fa-solid fa-rocket"></i> О приложении</h3>
-                    <p>ProjectMan — система управления задачами с двойным контролем выполнения. Приложение позволяет создавать организации, проекты, назначать задачи сотрудникам и отслеживать их выполнение в реальном времени.</p>
+                    <p>ProjectMan — система управления задачами с двойным контролем выполнения. Приложение позволяет
+                        создавать организации, проекты, назначать задачи сотрудникам и отслеживать их выполнение в
+                        реальном времени.</p>
                 </div>
 
                 <div class="help-section">
                     <h3><i class="fa-solid fa-building"></i> Организации</h3>
                     <p>Каждая команда работает в своей организации — изолированном рабочем пространстве.</p>
                     <ul>
-                        <li><strong>Создание:</strong> Зарегистрируйтесь и создайте организацию — вы станете её владельцем</li>
-                        <li><strong>Присоединение:</strong> Получите код приглашения от администратора и введите его при входе</li>
-                        <li><strong>Код приглашения:</strong> 6-значный код для приглашения сотрудников (виден в меню организации)</li>
+                        <li><strong>Создание:</strong> Зарегистрируйтесь и создайте организацию — вы станете её
+                            владельцем</li>
+                        <li><strong>Присоединение:</strong> Получите код приглашения от администратора и введите его при
+                            входе</li>
+                        <li><strong>Код приглашения:</strong> 6-значный код для приглашения сотрудников (виден в меню
+                            организации)</li>
                     </ul>
                     <div class="help-note">
-                        <i class="fa-solid fa-share-nodes"></i> Поделитесь ссылкой с кодом приглашения — сотрудник автоматически присоединится после регистрации.
+                        <i class="fa-solid fa-share-nodes"></i> Поделитесь ссылкой с кодом приглашения — сотрудник
+                        автоматически присоединится после регистрации.
                     </div>
                 </div>
 
@@ -1426,7 +1475,8 @@
                         <li>Удаление организации</li>
                         <li>Все права администратора</li>
                     </ul>
-                    <p><strong><i class="fa-solid fa-user-shield" style="color: var(--primary);"></i> Администратор:</strong></p>
+                    <p><strong><i class="fa-solid fa-user-shield" style="color: var(--primary);"></i>
+                            Администратор:</strong></p>
                     <ul>
                         <li>Создание и удаление проектов</li>
                         <li>Создание, редактирование и удаление задач</li>
@@ -1439,7 +1489,8 @@
                         <li>Назначение ответственных</li>
                         <li>Подтверждение выполнения задач</li>
                     </ul>
-                    <p><strong><i class="fa-solid fa-user" style="color: var(--text-secondary);"></i> Сотрудник:</strong></p>
+                    <p><strong><i class="fa-solid fa-user" style="color: var(--text-secondary);"></i>
+                            Сотрудник:</strong></p>
                     <ul>
                         <li>Просмотр назначенных проектов и задач</li>
                         <li>Принятие задач в работу</li>
@@ -1468,7 +1519,8 @@
                         <li><strong>Файлы:</strong> До 2 файлов (макс. 10 МБ каждый)</li>
                     </ul>
                     <div class="help-note">
-                        <i class="fa-solid fa-envelope"></i> При назначении задачи сотруднику отправляется email-уведомление.
+                        <i class="fa-solid fa-envelope"></i> При назначении задачи сотруднику отправляется
+                        email-уведомление.
                     </div>
                 </div>
 
@@ -1476,20 +1528,28 @@
                     <h3><i class="fa-solid fa-list-check"></i> Статусы задач</h3>
                     <ul style="list-style: none; padding-left: 0;">
                         <li style="margin-bottom: 0.75rem;">
-                            <span style="color: #e67e22; font-weight: 600;"><i class="fa-solid fa-circle-exclamation"></i> Задача поставлена</span><br>
-                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Новая задача ожидает принятия сотрудником</span>
+                            <span style="color: #e67e22; font-weight: 600;"><i
+                                    class="fa-solid fa-circle-exclamation"></i> Задача поставлена</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Новая задача ожидает принятия
+                                сотрудником</span>
                         </li>
                         <li style="margin-bottom: 0.75rem;">
-                            <span style="color: #f39c12; font-weight: 600;"><i class="fa-solid fa-person-digging"></i> В работе</span><br>
-                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Сотрудник принял задачу и работает над ней</span>
+                            <span style="color: #f39c12; font-weight: 600;"><i class="fa-solid fa-person-digging"></i> В
+                                работе</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Сотрудник принял задачу и
+                                работает над ней</span>
                         </li>
                         <li style="margin-bottom: 0.75rem;">
-                            <span style="color: #2ecc71; font-weight: 600;"><i class="fa-solid fa-check"></i> Завершена</span><br>
-                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Сотрудник выполнил, ожидает проверки руководителем</span>
+                            <span style="color: #2ecc71; font-weight: 600;"><i class="fa-solid fa-check"></i>
+                                Завершена</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Сотрудник выполнил, ожидает
+                                проверки руководителем</span>
                         </li>
                         <li>
-                            <span style="color: #10b981; font-weight: 600;"><i class="fa-solid fa-check-double"></i> Готово</span><br>
-                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Руководитель подтвердил выполнение, задача в архиве</span>
+                            <span style="color: #10b981; font-weight: 600;"><i class="fa-solid fa-check-double"></i>
+                                Готово</span><br>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Руководитель подтвердил
+                                выполнение, задача в архиве</span>
                         </li>
                     </ul>
                     <div class="help-note">
@@ -1501,7 +1561,8 @@
                     <h3><i class="fa-solid fa-shield-halved"></i> Двойной контроль выполнения</h3>
                     <p>Система двойной проверки гарантирует качество выполнения:</p>
                     <ul>
-                        <li><strong>Шаг 1:</strong> Сотрудник завершает задачу, пишет отчёт и прикрепляет подтверждение</li>
+                        <li><strong>Шаг 1:</strong> Сотрудник завершает задачу, пишет отчёт и прикрепляет подтверждение
+                        </li>
                         <li><strong>Шаг 2:</strong> Руководитель проверяет работу и подтверждает выполнение</li>
                     </ul>
                     <p>Только после подтверждения руководителем задача переходит в статус «Готово».</p>
@@ -1619,11 +1680,14 @@
                         Опишите выполненную работу и прикрепите подтверждение (фото, документ)
                     </p>
                     <div class="form-group">
-                        <label for="completion-comment">Комментарий о выполнении <span style="color: var(--danger);">*</span></label>
-                        <textarea id="completion-comment" rows="4" required placeholder="Опишите что было сделано..."></textarea>
+                        <label for="completion-comment">Комментарий о выполнении <span
+                                style="color: var(--danger);">*</span></label>
+                        <textarea id="completion-comment" rows="4" required
+                            placeholder="Опишите что было сделано..."></textarea>
                     </div>
                     <div class="form-group">
-                        <label><i class="fa-solid fa-paperclip"></i> Файлы-подтверждения <span style="color: var(--danger);">*</span></label>
+                        <label><i class="fa-solid fa-paperclip"></i> Файлы-подтверждения <span
+                                style="color: var(--danger);">*</span></label>
                         <div id="completion-attachments-container" class="attachments-container">
                             <div id="completion-attachments-list" class="attachments-list">
                                 <!-- Attached files will appear here -->
@@ -1632,7 +1696,7 @@
                                 <i class="fa-solid fa-camera"></i> Прикрепить файл / фото
                             </button>
                             <input type="file" id="completion-file-input" style="display: none;"
-                                   accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar,.heic">
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar,.heic">
                             <p class="attachment-hint">До 3 файлов. Фото, PDF, документы. Макс. 10 MB каждый</p>
                         </div>
                     </div>
@@ -1661,8 +1725,10 @@
                         Укажите причину возврата задачи. Исполнитель увидит этот комментарий.
                     </p>
                     <div class="form-group">
-                        <label for="revision-reason">Причина возврата <span style="color: var(--danger);">*</span></label>
-                        <textarea id="revision-reason" rows="4" required placeholder="Опишите, что нужно доработать..."></textarea>
+                        <label for="revision-reason">Причина возврата <span
+                                style="color: var(--danger);">*</span></label>
+                        <textarea id="revision-reason" rows="4" required
+                            placeholder="Опишите, что нужно доработать..."></textarea>
                     </div>
                     <input type="hidden" id="revision-task-id">
                 </div>
@@ -1808,11 +1874,13 @@
                     </div>
 
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem;">
+                        <div
+                            style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem;">
                             <div style="color: var(--text-secondary); font-size: 0.8rem;">Онлайн</div>
                             <div id="online-users-count" style="font-size: 1.25rem; font-weight: 700;">0</div>
                         </div>
-                        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem;">
+                        <div
+                            style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem;">
                             <div style="color: var(--text-secondary); font-size: 0.8rem;">Всего пользователей</div>
                             <div id="total-users-count" style="font-size: 1.25rem; font-weight: 700;">0</div>
                         </div>
@@ -1841,21 +1909,27 @@
     </div>
 
     <!-- Category Picker Modal (mobile) -->
-    <div id="category-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px);">
-        <div style="background:var(--card-bg,#1e293b);border-radius:20px;padding:8px;min-width:200px;box-shadow:0 25px 60px rgba(0,0,0,0.5);">
-            <button type="button" data-view="assigned" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+    <div id="category-modal"
+        style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px);">
+        <div
+            style="background:var(--card-bg,#1e293b);border-radius:20px;padding:8px;min-width:200px;box-shadow:0 25px 60px rgba(0,0,0,0.5);">
+            <button type="button" data-view="assigned"
+                style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
                 <i class="fa-solid fa-inbox" style="color:#6366f1;width:20px;"></i>
                 <span>Назначенные</span>
             </button>
-            <button type="button" data-view="in-progress" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+            <button type="button" data-view="in-progress"
+                style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
                 <i class="fa-solid fa-spinner" style="color:#6366f1;width:20px;"></i>
                 <span>В процессе</span>
             </button>
-            <button type="button" data-view="review" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+            <button type="button" data-view="review"
+                style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
                 <i class="fa-solid fa-magnifying-glass" style="color:#eab308;width:20px;"></i>
                 <span>На проверке</span>
             </button>
-            <button type="button" data-view="done" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
+            <button type="button" data-view="done"
+                style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
                 <i class="fa-solid fa-check" style="color:#6366f1;width:20px;"></i>
                 <span>Готово</span>
             </button>
