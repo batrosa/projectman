@@ -1380,48 +1380,51 @@
     <!-- Event Detail/Create Modal -->
     <div id="cal-event-modal" class="modal">
         <div class="modal-content cal-event-modal-content">
-            <div class="modal-header">
-                <h2 id="cal-event-modal-title">Запланировать встречу</h2>
+            <div class="modal-header cal-header">
+                <h2 id="cal-event-modal-title"><i class="fa-solid fa-calendar-plus"></i> Встреча</h2>
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="cal-event-form-body">
                 <form id="cal-event-form">
-                    <div class="form-group">
-                        <label for="ce-title">Название встречи</label>
-                        <input type="text" id="ce-title" required placeholder="Например: Обсуждение проекта">
+                    <div class="ev-field">
+                        <label><i class="fa-solid fa-pen"></i> Название</label>
+                        <input type="text" id="ce-title" required placeholder="Например: Обсуждение проекта"
+                            autocomplete="off">
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="ce-date">Дата</label>
+                    <div class="ev-datetime-row">
+                        <div class="ev-datetime-field">
+                            <i class="fa-regular fa-calendar"></i>
                             <input type="date" id="ce-date" required>
                         </div>
-                        <div class="form-group">
-                            <label for="ce-time">Время</label>
+                        <div class="ev-datetime-field">
+                            <i class="fa-regular fa-clock"></i>
                             <input type="time" id="ce-time" required>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Участники</label>
+                    <div class="ev-field">
+                        <label><i class="fa-solid fa-users"></i> Участники</label>
                         <div class="ce-participants-picker">
                             <input type="text" id="ce-user-search" placeholder="Поиск участников..." autocomplete="off">
                             <div id="ce-users-dropdown" class="ce-users-dropdown"></div>
-                            <div id="ce-selected-users" class="ce-selected-users"></div>
                         </div>
+                        <div id="ce-selected-users" class="ce-selected-users"></div>
                     </div>
-                    <div class="form-group">
-                        <label for="ce-desc">Описание (необязательно)</label>
-                        <textarea id="ce-desc" rows="3" placeholder="Детали встречи..."></textarea>
+                    <div class="ev-field">
+                        <label><i class="fa-solid fa-align-left"></i> Описание</label>
+                        <textarea id="ce-desc" rows="3" placeholder="Детали встречи (необязательно)"></textarea>
                     </div>
                     <input type="hidden" id="ce-id">
                 </form>
             </div>
             <div class="cal-event-footer">
-                <button type="button" id="ce-delete-btn" class="danger-btn" style="display: none;">
+                <button type="button" id="ce-delete-btn" class="secondary-btn"
+                    style="color: var(--danger); border-color: var(--danger); display: none;">
                     <i class="fa-solid fa-trash"></i> Удалить
                 </button>
                 <div style="margin-left: auto; display: flex; gap: 10px;">
                     <button type="button" class="secondary-btn close-modal">Отмена</button>
-                    <button type="submit" form="cal-event-form" class="primary-btn">Сохранить</button>
+                    <button type="submit" form="cal-event-form" class="primary-btn"><i class="fa-solid fa-check"></i>
+                        Сохранить</button>
                 </div>
             </div>
         </div>

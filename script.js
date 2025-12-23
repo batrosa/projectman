@@ -7251,13 +7251,29 @@ async function handleCalendarSubmit(e) {
         updatedAt: new Date().toISOString()
     };
 
+    if (!db) {
+        alert("Ошибка подключения к базе данных");
+        return;
+    }
+
+    const orgId = state.organization?.id;
+    if (!orgId) {
+        alert("Ошибка: не найдена ваша организация. Попробуйте перезагрузить страницу.");
+        return;
+    }
+
+    const submitBtn = calElements.eventForm.querySelector('button[type="submit"]');
+    const originalBtnHTML = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
+
     try {
         if (id) {
             await db.collection('calendar_events').doc(id).update(eventData);
         } else {
             eventData.createdAt = new Date().toISOString();
             eventData.createdById = state.currentUser?.uid;
-            const docRef = await db.collection('calendar_events').add(eventData);
+            await db.collection('calendar_events').add(eventData);
 
             // Notify participants via Telegram
             notifyCalendarParticipants(eventData);
@@ -7265,7 +7281,10 @@ async function handleCalendarSubmit(e) {
         calElements.eventModal?.classList.remove('active');
     } catch (err) {
         console.error("Error saving calendar event:", err);
-        alert("Ошибка при сохранении события");
+        alert("Ошибка при сохранении события: " + err.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnHTML;
     }
 }
 
