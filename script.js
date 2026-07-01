@@ -3877,6 +3877,15 @@ function setupEventListeners() {
     // Organization event listeners
     setupOrgEventListeners();
 
+    // Telegram login button -> official Telegram auth popup
+    const telegramLoginBtn = document.getElementById('telegram-login-btn');
+    if (telegramLoginBtn) {
+        telegramLoginBtn.addEventListener('click', () => {
+            playClickSound();
+            window.startTelegramLogin();
+        });
+    }
+
     // Modals
     elements.addProjectBtn.addEventListener('click', () => {
         playClickSound();
@@ -4400,6 +4409,31 @@ window.onTelegramAuth = async function onTelegramAuth(telegramUser) {
         console.error('Telegram login failed', error);
         alert('Не удалось войти через Telegram. Попробуйте ещё раз.');
     }
+};
+
+// Opens Telegram's official auth popup from our own styled button.
+// bot_id is public (the part before ":" in the bot token) — not a secret.
+// If the user is already logged into Telegram in this browser, the popup
+// confirms instantly; otherwise Telegram sends a confirmation to their
+// Telegram app (that delivery step is handled entirely by Telegram).
+window.startTelegramLogin = function startTelegramLogin() {
+    const tg = window.Telegram && window.Telegram.Login;
+    if (!tg || typeof tg.auth !== 'function') {
+        if (elements.loginError) {
+            elements.loginError.textContent = 'Telegram ещё загружается, попробуйте через секунду.';
+        }
+        return;
+    }
+    if (elements.loginError) elements.loginError.textContent = '';
+    tg.auth({ bot_id: '8318306872', request_access: 'write' }, (user) => {
+        if (!user) {
+            if (elements.loginError) {
+                elements.loginError.textContent = 'Вход через Telegram отменён.';
+            }
+            return;
+        }
+        window.onTelegramAuth(user);
+    });
 };
 
 function onAuthStateChanged(user) {
