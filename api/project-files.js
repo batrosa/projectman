@@ -26,8 +26,8 @@ export function validateUpload({ projectId, filename, url, sizeBytes }) {
 
   if (sizeBytes !== undefined && sizeBytes !== null && sizeBytes !== "") {
     const size = Number(sizeBytes);
-    if (Number.isFinite(size) && size > MAX_FILE_BYTES) {
-      return { ok: false, status: 400, error: "File exceeds 10 MB limit" };
+    if (!Number.isFinite(size) || size < 0 || size > MAX_FILE_BYTES) {
+      return { ok: false, status: 400, error: "Invalid or oversized file size" };
     }
   }
 
@@ -99,9 +99,12 @@ export default async function handler(request, response) {
   try {
     waitUntil(extraction);
   } catch (error) {
-    // waitUntil() throws if called outside a Vercel serverless invocation
-    // (e.g. local dev, tests). The promise above is already running, so
-    // nothing further to do here.
+    // waitUntil() no-ops safely outside a real Vercel invocation (getContext()
+    // returns {} and it calls context.waitUntil?.(promise) via optional
+    // chaining) — it does not throw. This try/catch only guards against
+    // waitUntil()'s own defensive TypeError if the argument weren't a Promise,
+    // which can't happen here. The promise above is already running
+    // regardless, so nothing further to do here either way.
   }
 
   return response.status(200).json({ ok: true, fileId: fileRef.id });

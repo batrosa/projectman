@@ -66,7 +66,27 @@ describe("validateUpload", () => {
 
   it("rejects files over the 10 MB limit", () => {
     const result = validateUpload({ ...base, sizeBytes: MAX_FILE_BYTES + 1 });
-    expect(result).toMatchObject({ ok: false, status: 400, error: "File exceeds 10 MB limit" });
+    expect(result).toMatchObject({ ok: false, status: 400, error: "Invalid or oversized file size" });
+  });
+
+  it("rejects a non-numeric sizeBytes instead of silently letting it through", () => {
+    const result = validateUpload({ ...base, sizeBytes: "not-a-number" });
+    expect(result).toMatchObject({ ok: false, status: 400, error: "Invalid or oversized file size" });
+  });
+
+  it("rejects a negative sizeBytes", () => {
+    const result = validateUpload({ ...base, sizeBytes: -500 });
+    expect(result).toMatchObject({ ok: false, status: 400, error: "Invalid or oversized file size" });
+  });
+
+  it("rejects sizeBytes: Infinity", () => {
+    const result = validateUpload({ ...base, sizeBytes: Infinity });
+    expect(result).toMatchObject({ ok: false, status: 400, error: "Invalid or oversized file size" });
+  });
+
+  it("rejects sizeBytes: NaN", () => {
+    const result = validateUpload({ ...base, sizeBytes: NaN });
+    expect(result).toMatchObject({ ok: false, status: 400, error: "Invalid or oversized file size" });
   });
 
   it("accepts a file exactly at the size limit", () => {
