@@ -31,7 +31,9 @@ function mockResponse() {
 }
 
 // In-memory fake Firestore: only implements what api/telegram-auth.js uses.
-function makeFakeDb(initialUsers = {}) {
+// Pass `queryError` to make the `.where(...).limit(1).get()` lookup reject,
+// simulating a transient Firestore outage.
+function makeFakeDb(initialUsers = {}, { queryError } = {}) {
   const users = new Map(Object.entries(initialUsers));
   return {
     users,
@@ -45,6 +47,7 @@ function makeFakeDb(initialUsers = {}) {
               return this;
             },
             async get() {
+              if (queryError) throw queryError;
               const match = [...users.entries()].find(([, data]) => data.telegramId === value);
               return {
                 empty: !match,
@@ -160,5 +163,36 @@ describe("POST /api/telegram-auth", () => {
     await handler({ method: "POST", body: payload }, res);
     expect(res.statusCode).toBe(401);
     expect(state.createCustomToken).not.toHaveBeenCalled();
+  });
+
+  it("returns a generic 500 and does not leak details when Firestore rejects", async () => {
+    state.db = makeFakeDb({}, { queryError: new Error("UNAVAILABLE: deadline exceeded") });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const payload = signPayload({ id: 444, first_name: "Ivan", auth_date: Math.floor(Date.now() / 1000) });
+    const res = mockResponse();
+    await handler({ method: "POST", body: payload }, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "Internal error during authentication" });
+    expect(JSON.stringify(res.body)).not.toContain("deadline exceeded");
+    expect(state.createCustomToken).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("returns a generic 500 when createCustomToken rejects", async () => {
+    state.createCustomToken = vi.fn(async () => {
+      throw new Error("Admin SDK misconfigured");
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const payload = signPayload({ id: 555, first_name: "Ivan", auth_date: Math.floor(Date.now() / 1000) });
+    const res = mockResponse();
+    await handler({ method: "POST", body: payload }, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "Internal error during authentication" });
+
+    consoleErrorSpy.mockRestore();
   });
 });

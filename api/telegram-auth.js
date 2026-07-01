@@ -26,50 +26,58 @@ export default async function handler(request, response) {
   }
 
   const telegramId = verification.telegramId;
-  const db = adminDb();
-  const usersRef = db.collection("users");
 
-  // Query by telegramId (not a deterministic tg_<id> doc lookup) because an
-  // admin can pre-link an existing pre-Telegram account by manually setting
-  // telegramId on that account's doc before the member's first Telegram
-  // login (documented migration path for the email/password -> Telegram
-  // cutover, since the widget provides no email to auto-match on). Only
-  // brand-new Telegram users get the derived uid = tg_<telegramId>.
-  const existing = await usersRef.where("telegramId", "==", telegramId).limit(1).get();
-
-  let uid;
+  let customToken;
   let isNewUser;
-  if (!existing.empty) {
-    uid = existing.docs[0].id;
-    isNewUser = false;
-    await usersRef.doc(uid).set(
-      { telegramChatId: telegramId, telegramUsername: body.username || null, lastLogin: new Date().toISOString() },
-      { merge: true }
-    );
-  } else {
-    // Deterministic uid for brand-new Telegram users: two concurrent first
-    // logins for the same Telegram id both resolve to the same doc path
-    // (users/tg_<id>), so Firestore's per-document write serialization
-    // prevents a duplicate/second user record rather than relying on
-    // application-level locking.
-    uid = `tg_${telegramId}`;
-    isNewUser = true;
-    await usersRef.doc(uid).set(
-      {
-        telegramId,
-        telegramChatId: telegramId,
-        telegramUsername: body.username || null,
-        firstName: body.first_name || null,
-        lastName: body.last_name || null,
-        role: "reader",
-        createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+  try {
+    const db = adminDb();
+    const usersRef = db.collection("users");
+
+    // Query by telegramId (not a deterministic tg_<id> doc lookup) because an
+    // admin can pre-link an existing pre-Telegram account by manually setting
+    // telegramId on that account's doc before the member's first Telegram
+    // login (documented migration path for the email/password -> Telegram
+    // cutover, since the widget provides no email to auto-match on). Only
+    // brand-new Telegram users get the derived uid = tg_<telegramId>.
+    const existing = await usersRef.where("telegramId", "==", telegramId).limit(1).get();
+
+    let uid;
+    if (!existing.empty) {
+      uid = existing.docs[0].id;
+      isNewUser = false;
+      await usersRef.doc(uid).set(
+        { telegramChatId: telegramId, telegramUsername: body.username || null, lastLogin: new Date().toISOString() },
+        { merge: true }
+      );
+    } else {
+      // Deterministic uid for brand-new Telegram users: two concurrent first
+      // logins for the same Telegram id both resolve to the same doc path
+      // (users/tg_<id>), so Firestore's per-document write serialization
+      // prevents a duplicate/second user record rather than relying on
+      // application-level locking.
+      uid = `tg_${telegramId}`;
+      isNewUser = true;
+      await usersRef.doc(uid).set(
+        {
+          telegramId,
+          telegramChatId: telegramId,
+          telegramUsername: body.username || null,
+          firstName: body.first_name || null,
+          lastName: body.last_name || null,
+          role: "reader",
+          createdAt: new Date().toISOString(),
+          lastLogin: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    }
+
+    customToken = await adminAuth().createCustomToken(uid);
+  } catch (error) {
+    console.error("Telegram auth: Firestore/Admin SDK failure:", error);
+    return response.status(500).json({ error: "Internal error during authentication" });
   }
 
-  const customToken = await adminAuth().createCustomToken(uid);
   return response.status(200).json({ ok: true, token: customToken, isNewUser });
 }
 
