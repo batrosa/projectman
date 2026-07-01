@@ -22,13 +22,16 @@ const WORK_REQUEST_RE =
   /(что\s+(у\s+меня|делать|сделать|по\s+)|какие\s+(задачи|сроки|проекты)|кто\s+(отвечает|исполнитель|назначен)|на\s+(сегодня|завтра|неделе)|мои\s+(задачи|проекты|дела)|покажи\s+(задачи|проекты|сроки)|найди\s+(задачу|проект|файл))/i;
 
 const GREETING_OR_CAPABILITY_RE =
-  /^(привет|здравствуй|здравствуйте|добрый\s+(день|вечер|утро)|hi|hello|помоги|help|что\s+ты\s+умеешь|чем\s+ты\s+можешь\s+помочь)[\s.!?]*$/i;
+  /^(привет|приветствую|здравствуй|здравствуйте|добрый\s+(день|вечер|утро)|доброе\s+утро|hi|hello|hey|помоги|help|что\s+ты\s+умеешь|чем\s+ты\s+можешь\s+помочь|спасибо|благодарю|спс|ок|окей|okay|ok|хорошо|понятно|понял|поняла|ясно|пока|до\s+свидания|thanks|thank\s+you)[\s.!?)]*$/i;
 
 const SYSTEM_PROMPT_RULES = [
-  "Ты — ИИ Руководитель проекта, ассистент внутри системы управления задачами.",
-  "Отвечай только в рамках ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
-  `Если вопрос не относится к ProjectMan или проектам организации — ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
+  "Ты — ИИ Руководитель проекта, ассистент внутри системы управления задачами ProjectMan.",
+  "На приветствия, благодарности и короткие обращения (например «привет», «здравствуйте», «спасибо», «ок») отвечай коротко, дружелюбно и по-человечески, и предлагай помощь по проектам и задачам. Это НЕ повод для отказа.",
+  "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
+  `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
   "Отвечай коротко и по делу: 1-3 тезиса по умолчанию, простым не техническим языком.",
+  "Пиши обычным человеческим текстом. НИКОГДА не используй markdown и технические символы: без ** * _ ` # ~, без markdown-списков и markdown-ссылок. Если нужен список — просто пиши пунктами с новой строки или через запятую.",
+  "НИКОГДА не показывай технические идентификаторы, коды или ID документов. Проекты, задачи и людей называй только их человеческими именами.",
   "Ты знаешь все задачи, сроки и статусы всей организации, а не только открытый экран — не проси открыть раздел или выбрать проект, если данные уже есть ниже.",
   "Если факта нет в данных — прямо скажи, что этого пока нет в системе. Не выдумывай.",
   "Никогда не придумывай кнопки, разделы, статусы или функции, которых нет в приложении.",
@@ -188,7 +191,7 @@ async function loadOrganizationContext(db, organizationId) {
     const project = projects[index];
     filesSnap.docs.forEach((doc) => {
       const data = doc.data();
-      if (data.extractedText) files.push({ projectId: project.id, filename: data.filename, extractedText: data.extractedText });
+      if (data.extractedText) files.push({ projectName: project.name || "без названия", filename: data.filename, extractedText: data.extractedText });
     });
   });
 
@@ -235,10 +238,12 @@ function compactContext(context) {
   // small org that doesn't use its full structured allowance leaves more
   // room for file text) goes to file text, cut at the file boundary.
   let fileBudget = CONTEXT_CHAR_LIMIT - structured.length - 4; // 4 for the two newlines joining them
+  const projectNameById = new Map(context.projects.map((p) => [p.id, p.name || "без названия"]));
   const fileTexts = [];
   let filesTruncated = false;
   for (const f of context.files) {
-    const chunk = `Файл "${f.filename}" (проект ${f.projectId}):\n${f.extractedText}`;
+    const projectName = f.projectName || projectNameById.get(f.projectId) || "без проекта";
+    const chunk = `Файл "${f.filename}" (проект «${projectName}»):\n${f.extractedText}`;
     if (fileBudget <= 0) {
       filesTruncated = true;
       break;
@@ -303,11 +308,18 @@ const PROJECTS_BUDGET_RATIO = 0.15;
 // growing array on every iteration — the latter is O(n^2) and noticeably
 // slow for orgs with thousands of tasks/projects.
 function buildBoundedStructured(context, budget) {
+  // Map internal Firestore doc-ids -> human project names so NO opaque id
+  // (e.g. "eQg1UFGwRzGUxCgqGlZc") is ever placed in the model's context and
+  // therefore can never leak into a user-facing answer. Tasks reference their
+  // project by name, not id.
+  const projectNameById = new Map();
+  for (const p of context.projects) projectNameById.set(p.id, p.name || "без названия");
+
   const projectsBudget = Math.floor(budget * PROJECTS_BUDGET_RATIO);
   const sortedProjects = [...context.projects].sort((a, b) => projectRecency(b) - projectRecency(a));
 
   const { included: includedProjects, omittedCount: omittedProjectCount, jsonLength: projectsJsonLength } =
-    buildBoundedList(sortedProjects, projectsBudget, (p) => ({ id: p.id, name: p.name }));
+    buildBoundedList(sortedProjects, projectsBudget, (p) => ({ name: p.name || "без названия" }));
 
   // Tasks get whatever's left of the structured budget after projects
   // actually used their slice (not the reserved projectsBudget) — a small
@@ -317,7 +329,7 @@ function buildBoundedStructured(context, budget) {
   const sortedTasks = [...context.tasks].sort((a, b) => taskRecency(b) - taskRecency(a));
   const { included: includedTasks, omittedCount: omittedTaskCount } =
     buildBoundedList(sortedTasks, tasksBudget, (t) => ({
-      id: t.id, projectId: t.projectId, title: t.title, assignee: t.assignee,
+      title: t.title, project: projectNameById.get(t.projectId) || "без проекта", assignee: t.assignee,
       deadline: t.deadline, status: t.status, subStatus: t.subStatus,
     }));
 
@@ -429,6 +441,18 @@ function cleanAnswer(text) {
   return String(text)
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/в предоставленном контексте/gi, "в данных проекта")
+    // Strip markdown/technical symbols so the plain-text chat UI never shows
+    // raw ** _ ` # ~ or markdown link/heading syntax (the frontend renders
+    // answers via textContent, not markdown). Belt-and-suspenders on top of
+    // the system-prompt "plain text only" instruction.
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) -> text
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")       // **bold**/__bold__ -> bold
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1$2") // *italic* -> italic
+    .replace(/`+/g, "")                        // inline/code backticks
+    .replace(/~~/g, "")                         // strikethrough
+    .replace(/^#{1,6}\s+/gm, "")               // # headings
+    .replace(/^\s*[-*]\s+/gm, "• ")            // md bullets -> plain bullet
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
 

@@ -123,10 +123,13 @@ describe("compactContext", () => {
       files: [{ projectId: "p1", filename: "huge.pdf", extractedText: "x".repeat(100000) }],
     };
     const result = compactContext(context);
-    expect(result).toContain('"id":"p1"');
+    expect(result).not.toContain('"id":"p1"');
+    expect(result).not.toContain('"projectId":"p1"');
     expect(result).toContain('"name":"Project One"');
     expect(result).toContain('"title":"Task One"');
+    expect(result).toContain('"project":"Project One"');
     expect(result).toContain('"assignee":"Alice"');
+    expect(result).toContain('Файл "huge.pdf" (проект «Project One»)');
   });
 
   it("truncates file text (not task data) when the combined size exceeds the character limit", () => {
@@ -225,8 +228,8 @@ describe("compactContext", () => {
 
     const result = compactContext({ projects, tasks, files: [] });
 
-    expect(result).toContain('"id":"t1999"'); // newest task kept
-    expect(result).not.toContain('"id":"t0"'); // oldest task omitted
+    expect(result).toContain('"title":"Task 1999"'); // newest task kept
+    expect(result).not.toContain('"title":"Task 0"'); // oldest task omitted
     expect(result).toMatch(/не поместилось \d+ задач/);
   });
 
@@ -252,9 +255,9 @@ describe("compactContext", () => {
     };
     expect(() => compactContext(context)).not.toThrow();
     const result = compactContext(context);
-    expect(result).toContain('"id":"recent"');
-    expect(result).toContain('"id":"no-date"');
-    expect(result).toContain('"id":"bad-date"');
+    expect(result).toContain('"title":"Recent"');
+    expect(result).toContain('"title":"No date"');
+    expect(result).toContain('"title":"Bad date"');
   });
 
   // Regression test for the "projects array has no size cap" bug found in the
@@ -288,8 +291,8 @@ describe("compactContext", () => {
 
     const result = compactContext({ projects, tasks: [], files: [] });
 
-    expect(result).toContain('"id":"p4999"'); // newest project kept
-    expect(result).not.toContain('"id":"p0"'); // oldest project omitted
+    expect(result).toContain('"name":"Project 4999"'); // newest project kept
+    expect(result).not.toContain('"name":"Project 0"'); // oldest project omitted
     expect(result).toMatch(/не поместилось \d+ проект/);
   });
 
@@ -335,9 +338,9 @@ describe("compactContext", () => {
     };
     expect(() => compactContext(context)).not.toThrow();
     const result = compactContext(context);
-    expect(result).toContain('"id":"recent"');
-    expect(result).toContain('"id":"no-date"');
-    expect(result).toContain('"id":"bad-date"');
+    expect(result).toContain('"name":"Recent"');
+    expect(result).toContain('"name":"No date"');
+    expect(result).toContain('"name":"Bad date"');
   });
 
   // Regression test for the "taskRecency can throw synchronously" bug found
@@ -362,8 +365,8 @@ describe("compactContext", () => {
     };
     expect(() => compactContext(context)).not.toThrow();
     const result = compactContext(context);
-    expect(result).toContain('"id":"good"');
-    expect(result).toContain('"id":"malformed"');
+    expect(result).toContain('"title":"Good task"');
+    expect(result).toContain('"title":"Malformed task"');
   });
 
   it("does not throw when a project's createdAt.toDate() throws (same defensive path as tasks)", () => {
@@ -382,8 +385,8 @@ describe("compactContext", () => {
     };
     expect(() => compactContext(context)).not.toThrow();
     const result = compactContext(context);
-    expect(result).toContain('"id":"good"');
-    expect(result).toContain('"id":"malformed"');
+    expect(result).toContain('"name":"Good project"');
+    expect(result).toContain('"name":"Malformed project"');
   });
 
   // Verifies the {seconds, nanoseconds}-shaped-object handling (a real
@@ -408,7 +411,7 @@ describe("compactContext", () => {
     // The {seconds,nanoseconds}-shaped recent task must survive the trim
     // (it's the newest of all included tasks), proving it was NOT sorted as
     // -Infinity/oldest.
-    expect(result).toContain('"id":"seconds-shape-recent"');
+    expect(result).toContain('"title":"Recent via seconds shape"');
   });
 
   // Pathological case: construct a scenario where structured data could
