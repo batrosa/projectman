@@ -139,9 +139,15 @@ describe("project and task organization permissions", () => {
     await assertSucceeds(moderator.collection("tasks").doc("t1").delete());
   });
 
-  it("blocks a reader from deleting tasks but allows moving an accessible task to work/completed states", async () => {
+  it("blocks a reader from deleting tasks but allows moving their assigned task to work/completed states", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("users").doc("reader1").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "employee",
+        allowedProjects: ["p1"],
+      });
+      await ctx.firestore().collection("users").doc("reader2").set({
         role: "reader",
         organizationId: "org-1",
         orgRole: "employee",
@@ -155,11 +161,20 @@ describe("project and task organization permissions", () => {
         status: "in-progress",
         subStatus: "assigned",
         assigneeCompleted: false,
+        assigneeIds: ["reader1"],
       });
     });
 
     const reader = testEnv.authenticatedContext("reader1").firestore();
+    const otherReader = testEnv.authenticatedContext("reader2").firestore();
     await assertFails(reader.collection("tasks").doc("t1").delete());
+    await assertFails(otherReader.collection("tasks").doc("t1").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T00:00:00.000Z",
+      takenToWorkBy: "Other Reader",
+    }));
     await assertSucceeds(reader.collection("tasks").doc("t1").update({
       status: "in-progress",
       subStatus: "in_work",

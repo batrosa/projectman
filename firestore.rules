@@ -82,6 +82,14 @@ service cloud.firestore {
         && projectBelongsToOrg(projectId, userData.organizationId);
     }
 
+    function canReaderWorkOnTask() {
+      return request.auth != null
+        && canViewProject(resource.data.projectId)
+        && (!('assigneeIds' in resource.data)
+            || resource.data.assigneeIds.size() == 0
+            || resource.data.assigneeIds.hasAny([request.auth.uid]));
+    }
+
     function isOrgUserManagerUpdate() {
       let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
       let managerData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -204,7 +212,7 @@ service cloud.firestore {
             && request.resource.data.projectId == resource.data.projectId
             && (!('organizationId' in resource.data) || request.resource.data.organizationId == resource.data.organizationId))
         || (request.auth != null
-            && canViewProject(resource.data.projectId)
+            && canReaderWorkOnTask()
             && request.resource.data.projectId == resource.data.projectId
             && request.resource.data.status == 'in-progress'
             && request.resource.data.subStatus in ['in_work', 'completed']
