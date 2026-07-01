@@ -5110,8 +5110,6 @@ async function awardXP(userId, taskId, wasOnTime, wasReturned) {
 }
 
 // ========== TELEGRAM NOTIFICATIONS ==========
-const TELEGRAM_BOT_TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Generate random code for Telegram verification
 function generateTelegramCode() {
@@ -5123,18 +5121,18 @@ function generateTelegramCode() {
     return code;
 }
 
-// Send Telegram notification directly
+// Send Telegram notification via server-side endpoint (bot token stays server-only)
 async function sendTelegramNotification(chatId, message) {
     if (!chatId) return;
 
     try {
-        const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+        const response = await fetch('/api/notify-telegram', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                chat_id: chatId,
+                chatId,
                 text: message,
-                parse_mode: 'HTML'
+                parseMode: 'HTML'
             })
         });
 
@@ -5142,7 +5140,7 @@ async function sendTelegramNotification(chatId, message) {
         if (result.ok) {
             console.log('Telegram notification sent successfully');
         } else {
-            console.error('Telegram notification failed:', result.description);
+            console.error('Telegram notification failed:', result.error || result.description);
         }
     } catch (error) {
         console.error('Telegram notification error:', error);
@@ -5335,80 +5333,19 @@ function initTelegramConnection() {
 
     if (verifyBtn) {
         verifyBtn.addEventListener('click', async () => {
-            verifyBtn.disabled = true;
-            verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Проверяю...';
-            if (errorEl) errorEl.style.display = 'none';
-
-            try {
-                // Temporarily delete webhook to use getUpdates
-                await fetch(`${TELEGRAM_API}/deleteWebhook`);
-
-                // Get updates
-                const response = await fetch(`${TELEGRAM_API}/getUpdates?limit=100`);
-                const result = await response.json();
-
-                // Restore webhook
-                await fetch(`${TELEGRAM_API}/setWebhook?url=https://projectman-git-main-batrosas-projects.vercel.app/api/webhook`);
-
-                if (result.ok) {
-                    // Find message with the code
-                    const updates = result.result || [];
-                    let found = null;
-
-                    for (const update of updates.reverse()) {
-                        const msg = update.message;
-                        if (msg && msg.text && msg.text.toUpperCase().includes(currentCode)) {
-                            found = {
-                                chatId: msg.chat.id,
-                                username: msg.from.username
-                            };
-                            break;
-                        }
-                    }
-
-                    if (found) {
-                        // Save to Firestore
-                        await db.collection('users').doc(state.currentUser.uid).update({
-                            telegramChatId: String(found.chatId),
-                            telegramUsername: found.username || null
-                        });
-
-                        state.currentUser.telegramChatId = String(found.chatId);
-                        state.currentUser.telegramUsername = found.username;
-
-                        // Show success
-                        connectScreen.style.display = 'none';
-                        connectedScreen.style.display = 'block';
-                        userInfoEl.textContent = found.username ? `@${found.username}` : 'Telegram подключен';
-                        window.updateTelegramStatus && window.updateTelegramStatus();
-
-                        // Send welcome message
-                        await sendTelegramNotification(found.chatId,
-                            '✅ <b>Telegram успешно подключен!</b>\n\nТеперь вы будете получать уведомления о новых задачах и возвратах на доработку.');
-
-                        playClickSound();
-                    } else {
-                        if (errorEl) {
-                            errorEl.textContent = 'Код не найден. Убедитесь, что отправили код боту.';
-                            errorEl.style.display = 'block';
-                        }
-                    }
-                } else {
-                    if (errorEl) {
-                        errorEl.textContent = 'Ошибка проверки. Попробуйте ещё раз.';
-                        errorEl.style.display = 'block';
-                    }
-                }
-            } catch (error) {
-                console.error('Verify error:', error);
-                if (errorEl) {
-                    errorEl.textContent = 'Ошибка соединения. Попробуйте ещё раз.';
-                    errorEl.style.display = 'block';
-                }
+            // NOTE: this manual "Verify connection" check used to poll Telegram's
+            // getUpdates/deleteWebhook/setWebhook directly from the browser with the
+            // bot token, which is a bigger security hole than the sendMessage leak
+            // (it could rip out the production webhook). Disabled here as an interim
+            // safety fix. The bot itself already completes the connection server-side
+            // via api/webhook.js as soon as the user sends it the code — this button
+            // is a redundant manual re-check, not the only path to connecting.
+            // This whole "connect Telegram" screen is planned for removal once the
+            // Telegram Login Widget becomes the sole sign-in method.
+            if (errorEl) {
+                errorEl.textContent = 'Проверка временно недоступна — вход через Telegram скоро заменит эту настройку. Если вы отправили код боту, подключение произойдёт автоматически.';
+                errorEl.style.display = 'block';
             }
-
-            verifyBtn.disabled = false;
-            verifyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Проверить подключение';
         });
     }
 
