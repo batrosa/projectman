@@ -135,7 +135,9 @@ service cloud.firestore {
 
     // Коллекция Projects
     match /projects/{projectId} {
-      allow read: if isAdmin() || (request.auth != null && canViewProject(projectId));
+      allow read: if isAdmin()
+        || hasOrgRole(resource.data.organizationId, ['owner', 'admin'])
+        || (request.auth != null && canViewProject(projectId));
       allow create: if isAdmin() || hasOrgRole(request.resource.data.organizationId, ['owner', 'admin']);
       allow update: if isAdmin()
         || (hasOrgRole(resource.data.organizationId, ['owner', 'admin'])
@@ -147,7 +149,9 @@ service cloud.firestore {
     match /tasks/{taskId} {
       // Чтение: Админ или если есть доступ к проекту (тут сложно проверить проект без лишнего get, 
       // но мы проверим через поле projectId в самой задаче)
-      allow read: if isAdmin() || (request.auth != null && canViewProject(resource.data.projectId));
+      allow read: if isAdmin()
+        || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
+        || (request.auth != null && canViewProject(resource.data.projectId));
       
       // Запись: 
       // 1. Админ может всё.

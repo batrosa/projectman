@@ -1,4 +1,4 @@
-const CACHE_NAME = 'projectman-v66';
+const CACHE_NAME = 'projectman-v67';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -82,4 +82,3 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
-

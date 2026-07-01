@@ -36,6 +36,24 @@ describe("project and task organization permissions", () => {
     );
   });
 
+  it("allows an organization owner with stale allowedProjects to read all projects in their org", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("owner1").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "owner",
+        allowedProjects: ["old-project"],
+      });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "One", organizationId: "org-1" });
+      await ctx.firestore().collection("projects").doc("p2").set({ name: "Two", organizationId: "org-1" });
+      await ctx.firestore().collection("projects").doc("p3").set({ name: "Other", organizationId: "org-2" });
+    });
+
+    const owner = testEnv.authenticatedContext("owner1").firestore();
+    await assertSucceeds(owner.collection("projects").where("organizationId", "==", "org-1").get());
+    await assertFails(owner.collection("projects").where("organizationId", "==", "org-2").get());
+  });
+
   it("blocks employees and moderators from creating projects", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await seedOrgUser(ctx, "employee1", { organizationId: "org-1", orgRole: "employee" });

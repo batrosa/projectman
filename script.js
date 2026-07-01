@@ -1331,6 +1331,21 @@ function canAccessAdmin() {
     return ['owner', 'admin'].includes(state.orgRole);
 }
 
+function getCurrentOrganizationId() {
+    return state.organization?.id || state.currentUser?.organizationId || null;
+}
+
+function getFirestoreDateMs(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (typeof value.toDate === 'function') return value.toDate().getTime();
+    if (typeof value === 'object' && typeof value.seconds === 'number') {
+        return (value.seconds * 1000) + (typeof value.nanoseconds === 'number' ? value.nanoseconds / 1e6 : 0);
+    }
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 function canChangeUserRole(targetRole) {
     // Owner can change anyone's role (except owner - that's themselves)
     if (state.orgRole === 'owner') {
@@ -1699,7 +1714,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.7'; // FIX DATE FORMATTING FOR FIREBASE TIMESTAMPS
+    const CURRENT_VERSION = '5.8'; // FIX PROJECT CREATION VISIBILITY AND AGENT EMPTY TEXT
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -1779,26 +1794,18 @@ function setupRealtimeListeners() {
     if (usersListenerUnsubscribe) usersListenerUnsubscribe();
 
 
-    const orgId = state.organization?.id;
+    const orgId = getCurrentOrganizationId();
+    const projectsQuery = orgId
+        ? db.collection('projects').where('organizationId', '==', orgId)
+        : db.collection('projects').orderBy('createdAt');
 
-    // Listen for ALL Projects and filter client-side
-    projectsListenerUnsubscribe = db.collection('projects').orderBy('createdAt').onSnapshot(snapshot => {
+    projectsListenerUnsubscribe = projectsQuery.onSnapshot(snapshot => {
         const projects = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Include projects ONLY if:
-            // 1. We have orgId AND project's organizationId matches exactly
-            // 2. OR we don't have orgId (legacy mode - include all)
-            if (orgId) {
-                // Strict filter: only projects in THIS organization
-                if (data.organizationId === orgId) {
-                    projects.push({ id: doc.id, ...data });
-                }
-            } else {
-                // Legacy mode: include all projects
-                projects.push({ id: doc.id, ...data });
-            }
+            projects.push({ id: doc.id, ...data });
         });
+        projects.sort((a, b) => getFirestoreDateMs(a.createdAt) - getFirestoreDateMs(b.createdAt));
         state.projects = projects;
 
         // If active project was deleted, deselect it
@@ -4075,11 +4082,15 @@ function setupEventListeners() {
         if (!canManageProjects()) {
             return Promise.reject(new Error('Недостаточно прав для создания проекта'));
         }
+        const organizationId = getCurrentOrganizationId();
+        if (!organizationId) {
+            return Promise.reject(new Error('Организация ещё не загружена. Обновите страницу и попробуйте снова.'));
+        }
 
         const projectData = {
             name,
             description,
-            organizationId: state.organization?.id || null,
+            organizationId,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
@@ -6166,8 +6177,8 @@ function unsubscribeFromMyTasks() {
 function getFilteredProjects() {
     if (!state.currentUser) return [];
 
-    // Admin sees all projects
-    if (state.role === 'admin') {
+    // Organization owners/admins see all projects in their organization.
+    if (canManageProjects() || state.role === 'admin') {
         return state.projects;
     }
 
@@ -7545,7 +7556,7 @@ function renderAgentChatEmptyState() {
     elements.agentChatMessages.innerHTML = '';
     const empty = document.createElement('div');
     empty.className = 'agent-chat-empty';
-    empty.textContent = 'Спросите про сроки, статусы, задачи или проекты организации — агент видит все проекты, а не только ваши.';
+    empty.textContent = 'Спросите про задачи, сроки, статусы или файлы текущей организации.';
     elements.agentChatMessages.appendChild(empty);
 }
 
