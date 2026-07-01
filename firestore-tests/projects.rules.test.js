@@ -195,5 +195,73 @@ describe("project and task organization permissions", () => {
       revisionReturnedBy: null,
       revisionReturnedAt: null,
     }));
+
+    // A non-admin assignee still must not be able to change protected task fields,
+    // even when bundled with an otherwise-legal subStatus transition.
+    await assertFails(reader.collection("tasks").doc("t1").update({
+      title: "Renamed by reader",
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T02:00:00.000Z",
+      takenToWorkBy: "Reader",
+    }));
+    await assertFails(reader.collection("tasks").doc("t1").update({
+      deadline: "2099-01-01",
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+    }));
+    await assertFails(reader.collection("tasks").doc("t1").update({
+      assignee: "Someone Else",
+      assigneeEmail: "someone@else.com",
+      assigneeIds: ["reader2"],
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+    }));
+    await assertFails(reader.collection("tasks").doc("t1").update({
+      description: "Rewritten description",
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+    }));
+  });
+
+  it("legacy-shaped data (organizationId:null orgRole:null user, task without assigneeIds/organizationId) still allows the assignee to take the task into work", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("legacyReader1").set({
+        role: "reader",
+        organizationId: null,
+        orgRole: null,
+        allowedProjects: [],
+      });
+      await ctx.firestore().collection("projects").doc("legacy-p1").set({ name: "Legacy Project" });
+      await ctx.firestore().collection("tasks").doc("legacy-t1").set({
+        projectId: "legacy-p1",
+        title: "Legacy task",
+        assignee: "Legacy Reader",
+        assigneeEmail: "legacyreader1@example.com",
+        status: "in-progress",
+        subStatus: "assigned",
+        assigneeCompleted: false,
+      });
+    });
+
+    const legacyReader = testEnv.authenticatedContext("legacyReader1").firestore();
+    await assertSucceeds(legacyReader.collection("tasks").doc("legacy-t1").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T00:00:00.000Z",
+      takenToWorkBy: "Legacy Reader",
+      completedAt: null,
+      completionComment: null,
+      completionProof: null,
+      completionProofs: null,
+      completedBy: null,
+      archivedAt: null,
+      archivedBy: null,
+    }));
   });
 });
