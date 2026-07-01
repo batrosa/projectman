@@ -70,14 +70,28 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Функция: Изменение membersCount ровно на ±1 (шаг присоединения/выхода участника)
+    function isMemberCountStep() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return changedKeys.hasOnly(['membersCount'])
+        && (request.resource.data.membersCount == resource.data.membersCount + 1
+            || request.resource.data.membersCount == resource.data.membersCount - 1);
+    }
+
     // Коллекция Organizations
     match /organizations/{orgId} {
       // Читать могут все авторизованные пользователи
       allow read: if request.auth != null;
       // Создать может только тот, кто указывает себя владельцем
       allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      // Обновлять/удалять: владелец организации ИЛИ пользователь с orgRole owner/admin
-      allow update, delete: if request.auth != null && (
+      // Обновлять: владелец организации ИЛИ пользователь с orgRole owner/admin ИЛИ шаг ±1 membersCount (join/leave)
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin'] ||
+        isMemberCountStep()
+      );
+      // Удалять: только владелец организации ИЛИ пользователь с orgRole owner/admin
+      allow delete: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin']
       );

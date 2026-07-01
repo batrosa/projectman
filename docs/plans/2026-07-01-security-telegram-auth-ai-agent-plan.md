@@ -315,6 +315,33 @@ describe("organizations privilege escalation", () => {
       leaver.collection("users").doc("leaver").update({ organizationId: null, orgRole: null })
     );
   });
+
+  it("allows a plain employee to bump membersCount by exactly 1 on the org they just joined (real joinOrganization() follow-up write)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("joiner").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
+      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+    });
+
+    const joiner = testEnv.authenticatedContext("joiner").firestore();
+    await assertSucceeds(
+      joiner.collection("organizations").doc("some-org").update({ membersCount: 2 })
+    );
+  });
+
+  it("blocks a plain employee from changing membersCount by more than 1 or touching other org fields", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("joiner2").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
+      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+    });
+
+    const joiner2 = testEnv.authenticatedContext("joiner2").firestore();
+    await assertFails(
+      joiner2.collection("organizations").doc("some-org").update({ membersCount: 5 })
+    );
+    await assertFails(
+      joiner2.collection("organizations").doc("some-org").update({ membersCount: 2, name: "Renamed" })
+    );
+  });
 });
 ```
 
@@ -372,15 +399,29 @@ allow update: if (request.auth != null && request.auth.uid == userId
 Add, after the `users` match block:
 
 ```
+function isMemberCountStep() {
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['membersCount'])
+    && (request.resource.data.membersCount == resource.data.membersCount + 1
+        || request.resource.data.membersCount == resource.data.membersCount - 1);
+}
+
 match /organizations/{orgId} {
   allow read: if request.auth != null;
   allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-  allow update, delete: if request.auth != null && (
+  allow update: if request.auth != null && (
+    resource.data.ownerId == request.auth.uid ||
+    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin'] ||
+    isMemberCountStep()
+  );
+  allow delete: if request.auth != null && (
     resource.data.ownerId == request.auth.uid ||
     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin']
   );
 }
 ```
+
+**Second correction recorded during execution:** the implementer traced `joinOrganization()` (script.js:666-668) and found it calls `organizations/{orgId}.update({membersCount: increment(1)})` immediately after the self-join succeeds — under the `organizations` block above (before this correction), a plain employee is neither `ownerId` nor `orgRole in ['owner','admin']`, so that follow-up write would be denied, breaking the join flow (or at least leaving `membersCount` out of sync while the user doc itself did get updated). This is a regression in the rules block written for *this task*, not pre-existing debt — fixed by adding `isMemberCountStep()`, a narrow carve-out limited to the single `membersCount` field changing by exactly ±1 per write. This intentionally does not verify the caller is joining/leaving *this specific* org (that would require correlating two separate document writes, which isn't reliably expressible in security rules without a transaction guarantee this app doesn't use) — accepted as a reasonable, low-severity trade-off since `membersCount` is a display/limit-tracking counter, not a field that gates any actual permission.
 
 **Note — pre-existing, out-of-scope gap found while tracing this (do not fix as part of Task 5, just record in "Known gaps"):** promoting/demoting a *different* user's `orgRole` (e.g. an org owner making a teammate `admin`/`moderator`, or removing a member) is done in `script.js` (around line 4553 admin role-change UI, line 4763-4766 member removal, line 713-718 `deleteOrganization`'s batch update of other members) but the `users/{userId}` update rule only grants non-owner-of-the-target-doc writes via `isAdmin()` (the legacy global admin/reader flag), which typical org owners/admins don't have. This looks broken today independent of this task and is a separate, larger feature gap (would need a rule path like "caller's own orgRole is owner/admin AND caller's organizationId matches the target user's organizationId" or a dedicated server-side endpoint) — track as a follow-up, do not attempt in Task 5.
 
@@ -388,7 +429,7 @@ match /organizations/{orgId} {
 
 First, check whether the Firestore emulator can actually run in this environment: `java -version`. The emulator (`firebase emulators:exec`) requires Java.
 
-- **If Java is available**: `npm run test:rules` — expect PASS on all 6 tests (the original 3 plus the 3 create/leave tests added above).
+- **If Java is available**: `npm run test:rules` — expect PASS on all 8 tests (the original 3, plus the 3 create/leave tests, plus the 2 membersCount tests added above).
 - **If Java is NOT available**: attempt to install one before giving up, since this task is security-critical and worth the effort — e.g. `brew install openjdk` if Homebrew is present (`brew --version`), then retry. If installation isn't feasible in your environment either, fall back to careful manual/static tracing of the rules logic against every test case (as documented in this plan's corrected Step 4), and say so explicitly and honestly in your report — do not claim tests passed if they were never executed.
 
 **Step 6: Deploy and commit**
