@@ -229,6 +229,176 @@ describe("compactContext", () => {
     expect(result).toContain('"id":"no-date"');
     expect(result).toContain('"id":"bad-date"');
   });
+
+  // Regression test for the "projects array has no size cap" bug found in the
+  // third adversarial-review round: the earlier fix bounded `tasks` via an
+  // incremental budget but left `projects` mapped/serialized in full with
+  // zero budget participation. The reviewer's reproduction: 5,000 empty-name
+  // projects alone produce 167,807 chars (3.7x the 45,000-char
+  // CONTEXT_CHAR_LIMIT). This test pushes further (10,000 projects with
+  // realistic names, no tasks at all) and asserts the TOTAL output stays
+  // bounded and discloses the omission — mirroring the existing large-tasks
+  // regression test above.
+  it("keeps the TOTAL output bounded for a large org (thousands of projects), unlike the unbounded-projects bug", () => {
+    const projects = Array.from({ length: 10000 }, (_, i) => ({
+      id: `p${i}`,
+      name: `Project ${i} — a moderately descriptive realistic project name`,
+      createdAt: new Date(2025, 0, 1 + (i % 300)).toISOString(),
+    }));
+
+    const result = compactContext({ projects, tasks: [], files: [] });
+
+    expect(result.length).toBeLessThan(CONTEXT_CHAR_LIMIT * 1.05);
+    expect(result).toMatch(/не поместилось \d+ проект/);
+  });
+
+  it("prioritizes the most-recently-created projects when the structured project list must be trimmed", () => {
+    const projects = Array.from({ length: 5000 }, (_, i) => ({
+      id: `p${i}`,
+      name: `Project ${i}`,
+      createdAt: new Date(2020, 0, 1 + i).toISOString(), // ascending: p4999 is newest
+    }));
+
+    const result = compactContext({ projects, tasks: [], files: [] });
+
+    expect(result).toContain('"id":"p4999"'); // newest project kept
+    expect(result).not.toContain('"id":"p0"'); // oldest project omitted
+    expect(result).toMatch(/не поместилось \d+ проект/);
+  });
+
+  it("still bounds output and discloses omissions when BOTH projects and tasks are large simultaneously", () => {
+    const projects = Array.from({ length: 3000 }, (_, i) => ({ id: `p${i}`, name: `Project ${i}`, createdAt: new Date(2025, 0, 1 + i).toISOString() }));
+    const tasks = Array.from({ length: 3000 }, (_, i) => ({
+      id: `t${i}`,
+      projectId: `p${i % 3000}`,
+      title: `Task ${i}`,
+      assignee: "someone",
+      deadline: "2026-01-01",
+      status: "open",
+      subStatus: null,
+      createdAt: new Date(2025, 0, 1 + i).toISOString(),
+    }));
+
+    const result = compactContext({ projects, tasks, files: [] });
+
+    expect(result.length).toBeLessThan(CONTEXT_CHAR_LIMIT * 1.05);
+    expect(result).toMatch(/не поместилось \d+ проект/);
+    expect(result).toMatch(/не поместилось \d+ задач/);
+  });
+
+  it("does not add a project-omission notice when all projects fit", () => {
+    const context = {
+      projects: [{ id: "p1", name: "P" }],
+      tasks: [],
+      files: [],
+    };
+    const result = compactContext(context);
+    expect(result).not.toMatch(/не поместилось \d+ проект/);
+  });
+
+  it("handles projects with missing/unparseable createdAt without throwing, sorting them last", () => {
+    const context = {
+      projects: [
+        { id: "recent", name: "Recent", createdAt: "2026-01-01T00:00:00.000Z" },
+        { id: "no-date", name: "No date" },
+        { id: "bad-date", name: "Bad date", createdAt: "not-a-date" },
+      ],
+      tasks: [],
+      files: [],
+    };
+    expect(() => compactContext(context)).not.toThrow();
+    const result = compactContext(context);
+    expect(result).toContain('"id":"recent"');
+    expect(result).toContain('"id":"no-date"');
+    expect(result).toContain('"id":"bad-date"');
+  });
+
+  // Regression test for the "taskRecency can throw synchronously" bug found
+  // in the third adversarial-review round: a task whose createdAt is a
+  // malformed/corrupted object (e.g. a `.toDate` that throws instead of
+  // behaving like a normal Firestore Timestamp method) must not crash
+  // compactContext — it should degrade gracefully, sorting the bad record as
+  // oldest, with every other task's data still present.
+  it("does not throw when a task's createdAt.toDate() throws (malformed/corrupted Timestamp-like object)", () => {
+    const throwingCreatedAt = {
+      toDate() {
+        throw new Error("corrupted timestamp: cannot convert to Date");
+      },
+    };
+    const context = {
+      projects: [{ id: "p1", name: "P" }],
+      tasks: [
+        { id: "good", projectId: "p1", title: "Good task", assignee: "A", deadline: null, status: "open", subStatus: null, createdAt: "2026-01-01T00:00:00.000Z" },
+        { id: "malformed", projectId: "p1", title: "Malformed task", assignee: "A", deadline: null, status: "open", subStatus: null, createdAt: throwingCreatedAt },
+      ],
+      files: [],
+    };
+    expect(() => compactContext(context)).not.toThrow();
+    const result = compactContext(context);
+    expect(result).toContain('"id":"good"');
+    expect(result).toContain('"id":"malformed"');
+  });
+
+  it("does not throw when a project's createdAt.toDate() throws (same defensive path as tasks)", () => {
+    const throwingCreatedAt = {
+      toDate() {
+        throw new Error("corrupted timestamp");
+      },
+    };
+    const context = {
+      projects: [
+        { id: "good", name: "Good project", createdAt: "2026-01-01T00:00:00.000Z" },
+        { id: "malformed", name: "Malformed project", createdAt: throwingCreatedAt },
+      ],
+      tasks: [],
+      files: [],
+    };
+    expect(() => compactContext(context)).not.toThrow();
+    const result = compactContext(context);
+    expect(result).toContain('"id":"good"');
+    expect(result).toContain('"id":"malformed"');
+  });
+
+  // Verifies the {seconds, nanoseconds}-shaped-object handling (a real
+  // Firestore Timestamp that round-tripped through JSON.stringify/parse, or
+  // was read via a non-Admin-SDK path): it must be reconstructed and sorted
+  // as genuinely recent, not silently treated as -Infinity/oldest.
+  it("recognizes a plain {seconds, nanoseconds} Timestamp-like object as recent, not as -Infinity/oldest", () => {
+    const veryRecentSeconds = Math.floor(new Date("2026-06-01T00:00:00.000Z").getTime() / 1000);
+    const projects = [{ id: "p1", name: "P" }];
+    const tasks = [
+      { id: "old", projectId: "p1", title: "Old", assignee: "A", deadline: null, status: "open", subStatus: null, createdAt: "2020-01-01T00:00:00.000Z" },
+      { id: "seconds-shape-recent", projectId: "p1", title: "Recent via seconds shape", assignee: "A", deadline: null, status: "open", subStatus: null, createdAt: { seconds: veryRecentSeconds, nanoseconds: 0 } },
+    ];
+    // Force a trim so ordering actually matters: budget only room for one task.
+    const manyOldTasks = Array.from({ length: 2000 }, (_, i) => ({
+      id: `filler${i}`, projectId: "p1", title: `Filler ${i}`, assignee: "A", deadline: null, status: "open", subStatus: null,
+      createdAt: "2019-01-01T00:00:00.000Z",
+    }));
+
+    const result = compactContext({ projects, tasks: [...tasks, ...manyOldTasks], files: [] });
+
+    // The {seconds,nanoseconds}-shaped recent task must survive the trim
+    // (it's the newest of all included tasks), proving it was NOT sorted as
+    // -Infinity/oldest.
+    expect(result).toContain('"id":"seconds-shape-recent"');
+  });
+
+  // Pathological case: construct a scenario where structured data could
+  // still be at risk of exceeding its sub-budget even with the incremental
+  // logic in place (a single-entry list where the entry itself is larger
+  // than the entire budget), and confirm the defensive final-length-check
+  // in compactContext catches it and always discloses.
+  it("defensively truncates and discloses when a single structured entry alone would exceed the structured budget", () => {
+    const context = {
+      projects: [{ id: "p1", name: "x".repeat(60000) }], // a single project name larger than the entire CONTEXT_CHAR_LIMIT
+      tasks: [],
+      files: [],
+    };
+    const result = compactContext(context);
+    expect(result.length).toBeLessThan(CONTEXT_CHAR_LIMIT * 1.05);
+    expect(result).toContain("данные проектов/задач обрезаны");
+  });
 });
 
 function mockResponse() {
@@ -408,5 +578,65 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(res.statusCode).toBe(200);
     // All 5 projects' files subcollections must have been queried exactly once.
     expect(state.db.filesCalls.sort()).toEqual(["p0", "p1", "p2", "p3", "p4"]);
+  });
+
+  // Regression test for the "compactContext has no try/catch at its call
+  // site" bug found in the third adversarial-review round: a task with a
+  // malformed createdAt (a `.toDate` that throws) reaching the full handler
+  // through real-shaped Firestore data must not crash the request — it
+  // should still return a normal AI answer (taskRecency's own defensiveness
+  // prevents the throw), and even in a hypothetical future regression of
+  // that inner fix, the outer try/catch here provides a second line of
+  // defense degrading to the same HTTP 200 fallback used elsewhere.
+  it("still returns a normal answer end-to-end when a task's createdAt is a malformed object that throws on .toDate()", async () => {
+    const throwingCreatedAt = {
+      toDate() {
+        throw new Error("corrupted timestamp");
+      },
+    };
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1" },
+      projects: [{ id: "p1", name: "Project One", organizationId: "org-1" }],
+      tasks: [
+        { id: "t1", projectId: "p1", title: "Task", organizationId: "org-1", createdAt: throwingCreatedAt },
+      ],
+      filesByProject: {},
+    });
+    const res = mockResponse();
+    await handler(makeRequest({ message: "hi" }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.answer).toBe("AI answer");
+  });
+
+  // Verifies the outer compactContext call-site try/catch itself, not just
+  // taskRecency's inner defensiveness — via a genuine failure mode that
+  // taskRecency's per-field defenses don't (and can't) cover: a corrupted
+  // field value that reaches JSON.stringify() inside buildBoundedList (e.g.
+  // a `toJSON()` that throws instead of behaving like a normal method).
+  // loadOrganizationContext itself never serializes anything, so this error
+  // can only ever surface inside compactContext — it's a direct, realistic
+  // test of that specific try/catch, distinct from the taskRecency-focused
+  // test above. Without the call-site try/catch this would crash the whole
+  // request; with it, the handler degrades to the same graceful HTTP 200
+  // fallback used for the Firestore-read failures.
+  it("returns a graceful HTTP 200 fallback end-to-end when a corrupted field throws during JSON.stringify inside compactContext", async () => {
+    const throwingToJSON = { toJSON() { throw new Error("corrupted field: cannot serialize"); } };
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1" },
+      projects: [{ id: "p1", name: throwingToJSON, organizationId: "org-1" }],
+      tasks: [],
+      filesByProject: {},
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockResponse();
+    await handler(makeRequest({ message: "hi" }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.answer).toContain("Не удалось загрузить данные организации");
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });

@@ -71,7 +71,20 @@ export default async function handler(request, response) {
     console.error("agent-chat: failed to load organization context", error);
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
   }
-  const contextText = compactContext(context);
+  let contextText;
+  try {
+    contextText = compactContext(context);
+  } catch (error) {
+    // Defense in depth: compactContext's internals (taskRecency,
+    // buildBoundedStructured, JSON.stringify over org-controlled document
+    // data, etc.) are hardened individually, but this call site is wrapped
+    // too so ANY future failure mode in that pipeline degrades gracefully
+    // (HTTP 200 fallback, same pattern as the Firestore-read failures above)
+    // instead of crashing the whole request — matching how this file already
+    // treats every other external-data-dependent step.
+    console.error("agent-chat: failed to compact organization context", error);
+    return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
+  }
 
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   if (!openRouterKey) {
@@ -179,7 +192,22 @@ const STRUCTURED_BUDGET_RATIO = 0.7;
 
 function compactContext(context) {
   const structuredBudget = Math.floor(CONTEXT_CHAR_LIMIT * STRUCTURED_BUDGET_RATIO);
-  const { structured, omittedTaskCount } = buildBoundedStructured(context, structuredBudget);
+  let { structured, omittedTaskCount, omittedProjectCount } = buildBoundedStructured(context, structuredBudget);
+
+  // Defense in depth / root-cause guard: buildBoundedStructured's incremental
+  // budgeting is only as good as the assumptions baked into it (e.g. that a
+  // single project/task entry is reasonably small). If some unanticipated
+  // edge case — a single absurdly long name, a future field added to the
+  // compact task/project shape, a change to the incremental logic itself —
+  // ever lets `structured` exceed its sub-budget, we must never silently
+  // return an over-budget (or silently-truncated-with-no-signal) payload.
+  // Hard-truncate here as a last resort and ALWAYS disclose it, even though
+  // this should be unreachable in normal operation.
+  let structuredOverBudget = false;
+  if (structured.length > structuredBudget) {
+    structuredOverBudget = true;
+    structured = structured.slice(0, structuredBudget);
+  }
 
   // Truncation priority: structured project/task data is capped first (see
   // buildBoundedStructured), then whatever budget remains (CONTEXT_CHAR_LIMIT
@@ -207,8 +235,14 @@ function compactContext(context) {
 
   let combined = `${structured}\n\n${fileTexts.join("\n\n")}`;
   const notices = [];
+  if (omittedProjectCount > 0) {
+    notices.push(`...[в контекст не поместилось ${omittedProjectCount} проект(ов) — данные по ним не учтены]`);
+  }
   if (omittedTaskCount > 0) {
     notices.push(`...[в контекст не поместилось ${omittedTaskCount} задач(и) — данные по ним не учтены]`);
+  }
+  if (structuredOverBudget) {
+    notices.push("...[данные проектов/задач обрезаны по объёму — часть структурированных данных могла не попасть в контекст]");
   }
   if (filesTruncated) {
     notices.push("...[данные обрезаны по объёму — часть файлов могла не попасть в контекст]");
@@ -217,74 +251,141 @@ function compactContext(context) {
   return combined;
 }
 
-// Builds the structured projects+tasks JSON incrementally, sorted
-// most-recently-created first (createdAt desc; tasks without a parseable
-// createdAt sort last), stopping once adding the next task would exceed
-// `budget`. This guarantees `structured` itself is bounded regardless of org
-// size — the earlier version serialized the FULL task list unconditionally,
-// which reached ~950KB in a 5,000-task synthetic org despite a 45,000-char
-// CONTEXT_CHAR_LIMIT.
+// Budget split *within* the structured sub-budget: projects get a small
+// fixed slice, tasks get the remainder.
+//
+// Reasoning: projects are typically far fewer and lighter (id + name only)
+// than tasks, so a small reservation comfortably covers the common case
+// while still being a genuine, enforced cap rather than "always include
+// everything" (which is exactly the bug this fixes — nothing in
+// Firestore/the UI caps how many projects an org can have; a prior review
+// found 5,000 empty-name projects alone produce 167,807 chars, 3.7x the
+// entire 45,000-char CONTEXT_CHAR_LIMIT, and the projects array participated
+// in zero budgeting). Giving tasks "whatever's left" (rather than also a
+// fixed ratio of the whole) means a small org with few projects doesn't
+// waste reserved-but-unused project budget — tasks get to use it instead,
+// since buildBoundedStructured computes the task budget as
+// (structuredBudget - actual project JSON length), not a fixed ratio.
+const PROJECTS_BUDGET_RATIO = 0.15;
+
+// Builds the structured projects+tasks JSON incrementally. Both projects and
+// tasks are sorted most-recently-created first (createdAt desc; entries
+// without a parseable createdAt sort last) and built up one entry at a time,
+// stopping once adding the next entry would exceed its respective budget.
+// This guarantees `structured` itself is bounded regardless of org size —
+// an earlier version serialized the FULL task list unconditionally (~950KB
+// for 5,000 tasks against a 45,000-char CONTEXT_CHAR_LIMIT), and a later
+// review found the *projects* array had the exact same unbounded-serialization
+// bug (167,807 chars for 5,000 projects) that had never been fixed.
+//
+// Length is tracked incrementally (each entry's own serialized length, plus
+// 1 char for the joining comma) rather than re-stringifying the whole
+// growing array on every iteration — the latter is O(n^2) and noticeably
+// slow for orgs with thousands of tasks/projects.
 function buildBoundedStructured(context, budget) {
-  const projects = context.projects.map((p) => ({ id: p.id, name: p.name }));
+  const projectsBudget = Math.floor(budget * PROJECTS_BUDGET_RATIO);
+  const sortedProjects = [...context.projects].sort((a, b) => projectRecency(b) - projectRecency(a));
+
+  const { included: includedProjects, omittedCount: omittedProjectCount, jsonLength: projectsJsonLength } =
+    buildBoundedList(sortedProjects, projectsBudget, (p) => ({ id: p.id, name: p.name }));
+
+  // Tasks get whatever's left of the structured budget after projects
+  // actually used their slice (not the reserved projectsBudget) — a small
+  // org with few/short project names leaves more room for tasks, the side
+  // that's usually much larger and more numerous.
+  const tasksBudget = budget - projectsJsonLength;
   const sortedTasks = [...context.tasks].sort((a, b) => taskRecency(b) - taskRecency(a));
-
-  // Projects are always included whole: there are orders of magnitude fewer
-  // projects than tasks in practice, and losing project names/ids would
-  // break every task's projectId reference.
-  //
-  // Length is tracked incrementally (each task's own serialized length, plus
-  // 1 char for the joining comma) rather than re-stringifying the whole
-  // growing array on every iteration — the latter is O(n^2) and noticeably
-  // slow for orgs with thousands of tasks.
-  const skeleton = JSON.stringify({ projects, tasks: [] });
-  // `{"projects":[...],"tasks":[]}` -> length before/after the empty "[]"
-  // tells us exactly how many characters a non-empty tasks array adds:
-  // one pair of brackets already counted in `skeleton`, plus a comma
-  // between each task once there's more than one.
-  let runningLength = skeleton.length;
-  const includedTasks = [];
-  let omittedTaskCount = 0;
-
-  for (const t of sortedTasks) {
-    const compact = {
+  const { included: includedTasks, omittedCount: omittedTaskCount } =
+    buildBoundedList(sortedTasks, tasksBudget, (t) => ({
       id: t.id, projectId: t.projectId, title: t.title, assignee: t.assignee,
       deadline: t.deadline, status: t.status, subStatus: t.subStatus,
-    };
-    const taskJson = JSON.stringify(compact);
-    const addedLength = taskJson.length + (includedTasks.length > 0 ? 1 : 0); // +1 for comma separator
-    if (runningLength + addedLength > budget && includedTasks.length > 0) {
-      omittedTaskCount = sortedTasks.length - includedTasks.length;
-      break;
-    }
-    includedTasks.push(compact);
-    runningLength += addedLength;
-    // Even a single task can't fit (pathological — shouldn't happen with
-    // this schema, but avoid silently exceeding budget on the very first task).
-    if (runningLength > budget && includedTasks.length === 1 && sortedTasks.length > 1) {
-      omittedTaskCount = sortedTasks.length - 1;
-      break;
-    }
-  }
+    }));
 
-  const structured = JSON.stringify({ projects, tasks: includedTasks });
-  return { structured, omittedTaskCount };
+  const structured = JSON.stringify({ projects: includedProjects, tasks: includedTasks });
+  return { structured, omittedTaskCount, omittedProjectCount };
 }
 
-// Extracts a millisecond timestamp from a task's createdAt for recency
-// sorting. Handles Firestore Timestamp objects (`.toDate()`), ISO/date
-// strings, and missing values — mirrors the tolerant parsing already used
-// for this exact field in script.js. Unparseable/missing values sort last
-// (treated as oldest) rather than throwing or defaulting to "now", so a task
-// with bad data doesn't unfairly jump to the front of the kept set.
-function taskRecency(task) {
-  const raw = task && task.createdAt;
-  if (!raw) return -Infinity;
-  if (typeof raw.toDate === "function") {
-    const d = raw.toDate();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d.getTime() : -Infinity;
+// Shared incremental-budget builder: maps `items` through `toCompact` one at
+// a time (in the given, already-sorted order), tracking the running
+// serialized-array length, and stops including further items once the next
+// one would exceed `budget`. Always includes at least one item (if any exist
+// and `budget` isn't absurdly small) so a single pathological entry doesn't
+// wipe out the entire category — but that guard itself is bounded by the
+// caller-side final structured-length check in compactContext, so a single
+// oversized entry can never silently blow the overall budget with zero
+// disclosure.
+function buildBoundedList(items, budget, toCompact) {
+  const skeleton = "[]";
+  let runningLength = skeleton.length;
+  const included = [];
+  let omittedCount = 0;
+
+  for (const item of items) {
+    const compact = toCompact(item);
+    const json = JSON.stringify(compact);
+    const addedLength = json.length + (included.length > 0 ? 1 : 0); // +1 for comma separator
+    if (runningLength + addedLength > budget && included.length > 0) {
+      omittedCount = items.length - included.length;
+      break;
+    }
+    included.push(compact);
+    runningLength += addedLength;
+    // Even a single item can't fit (pathological — shouldn't happen with
+    // this schema, but avoid silently exceeding budget on the very first item
+    // while still guaranteeing at least one entry is present when possible).
+    if (runningLength > budget && included.length === 1 && items.length > 1) {
+      omittedCount = items.length - 1;
+      break;
+    }
   }
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? -Infinity : d.getTime();
+
+  const jsonLength = JSON.stringify(included).length;
+  return { included, omittedCount, jsonLength };
+}
+
+// Extracts a millisecond timestamp from a `createdAt` field for recency
+// sorting. Handles Firestore Timestamp objects (`.toDate()`), plain
+// `{seconds, nanoseconds}`-shaped objects (what a real Timestamp becomes
+// after a JSON.stringify/parse round-trip, or when read via a non-Admin-SDK
+// path — reconstructed via `new Date(seconds * 1000)` rather than silently
+// falling through to -Infinity, so a genuinely recent task/project isn't
+// misordered as "oldest" and preferentially dropped under budget pressure),
+// ISO/date strings, and missing values — mirrors the tolerant parsing
+// already used for this exact field in script.js. Unparseable/missing
+// values sort last (treated as oldest) rather than throwing or defaulting to
+// "now", so bad data doesn't unfairly jump to the front of the kept set.
+//
+// Defensively wrapped end-to-end: `raw` is attacker/data-corruption
+// influenced (arbitrary Firestore document content), so ANY property access
+// or method call on it — including a malicious/corrupted `.toDate` that
+// throws when invoked instead of behaving like a normal method — must never
+// propagate an exception out of this function. A single bad record sorting
+// as -Infinity (oldest, so it's first in line to be dropped under budget
+// pressure) is an acceptable degradation; a crash of the whole request is not.
+function recencyOf(raw) {
+  try {
+    if (!raw) return -Infinity;
+    if (typeof raw.toDate === "function") {
+      const d = raw.toDate();
+      return d instanceof Date && !Number.isNaN(d.getTime()) ? d.getTime() : -Infinity;
+    }
+    if (typeof raw === "object" && typeof raw.seconds === "number") {
+      const ms = raw.seconds * 1000 + (typeof raw.nanoseconds === "number" ? raw.nanoseconds / 1e6 : 0);
+      return Number.isNaN(ms) ? -Infinity : ms;
+    }
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? -Infinity : d.getTime();
+  } catch {
+    return -Infinity;
+  }
+}
+
+function taskRecency(task) {
+  return recencyOf(task && task.createdAt);
+}
+
+function projectRecency(project) {
+  return recencyOf(project && project.createdAt);
 }
 
 function normalizeHistory(history) {
