@@ -1218,6 +1218,24 @@
         </div>
     </div>
 
+    <!-- Day Tasks Modal (opens when a calendar day is clicked) -->
+    <div id="day-tasks-modal" class="modal">
+        <div class="modal-content day-tasks-modal-content">
+            <div class="modal-header day-tasks-header">
+                <h2 id="day-tasks-title"><i class="fa-regular fa-calendar-check"></i> Задачи дня</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="day-tasks-body" class="day-tasks-body">
+                <!-- Task rows injected here -->
+            </div>
+            <div class="day-tasks-footer">
+                <button type="button" id="day-add-event-btn" class="secondary-btn small">
+                    <i class="fa-solid fa-calendar-plus"></i> Добавить встречу
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Event Detail/Create Modal -->
     <div id="cal-event-modal" class="modal">
         <div class="modal-content cal-event-modal-content">

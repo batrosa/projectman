@@ -2575,6 +2575,30 @@ function closeGlobalStatusMenu() {
     }, 300);
 }
 
+// Determines whether the signed-in user is an assignee of the task.
+// Primary match is by uid (task.assigneeIds vs currentUser.uid) — this is the
+// only reliable key for Telegram-login users, who have no email. Falls back to
+// email and then full-name matching for legacy tasks created before assigneeIds
+// was stored. Without the uid check, a self-assigned task never showed the
+// "Взять в работу" action for Telegram users (empty email → no match).
+function isCurrentUserAssignee(task) {
+    const user = state.currentUser;
+    if (!user || !task) return false;
+
+    if (user.uid && Array.isArray(task.assigneeIds) && task.assigneeIds.includes(user.uid)) {
+        return true;
+    }
+    if (user.email && task.assigneeEmail) {
+        const emails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
+        if (emails.includes(user.email.toLowerCase())) return true;
+    }
+    if (task.assignee) {
+        const name = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (name && task.assignee.split(',').map(n => n.trim()).includes(name)) return true;
+    }
+    return false;
+}
+
 function openStatusMenu(event, task, currentSubStatus) {
     event.stopPropagation();
     playClickSound();
@@ -2586,19 +2610,7 @@ function openStatusMenu(event, task, currentSubStatus) {
     const isMobile = window.innerWidth <= 768;
 
     // Check if user is assignee
-    let isAssignee = false;
-    if (state.currentUser) {
-        if (state.currentUser.email && task.assigneeEmail) {
-            const emails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
-            isAssignee = emails.includes(state.currentUser.email.toLowerCase());
-        }
-        if (!isAssignee && task.assignee) {
-            const name = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
-            if (name && task.assignee.split(',').map(n => n.trim()).includes(name)) {
-                isAssignee = true;
-            }
-        }
-    }
+    const isAssignee = isCurrentUserAssignee(task);
 
     // Add header
     const header = document.createElement('div');
@@ -2813,21 +2825,8 @@ function createTaskCard(task) {
     let canInteract = false;
     const canManage = canManageTasks(); // owner, admin, moderator
 
-    // Check assignee logic for interactivity check
-    let isAssignee = false;
-    if (state.currentUser) {
-        if (state.currentUser.email && task.assigneeEmail) {
-            const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
-            isAssignee = assigneeEmails.map(e => e.trim()).includes(state.currentUser.email.toLowerCase());
-        }
-        if (!isAssignee && !task.assigneeEmail && task.assignee) {
-            const currentUserFullName = state.currentUser.fullName || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
-            const assigneeNames = task.assignee.split(',').map(n => n.trim());
-            if (currentUserFullName && assigneeNames.includes(currentUserFullName)) {
-                isAssignee = true;
-            }
-        }
-    }
+    // Check assignee logic for interactivity check (uid-first; see helper)
+    const isAssignee = isCurrentUserAssignee(task);
 
     // Permission check for cursor style
     // Tasks in 'done' (archive) cannot be modified - they are final
@@ -3962,6 +3961,21 @@ function closeModalElement(modal) {
     if (elements.agentChatModal && modal === elements.agentChatModal) {
         agentChatState.generation += 1;
     }
+    // Detach the calendar's live listeners when it is dismissed so they don't
+    // keep running in the background after the calendar is closed.
+    if (calElements.modal && modal === calElements.modal) {
+        if (calendarState.listenerUnsubscribe) {
+            calendarState.listenerUnsubscribe();
+            calendarState.listenerUnsubscribe = null;
+        }
+        if (calendarState.tasksListenerUnsubscribe) {
+            calendarState.tasksListenerUnsubscribe();
+            calendarState.tasksListenerUnsubscribe = null;
+        }
+    }
+    if (calElements.dayTasksModal && modal === calElements.dayTasksModal) {
+        calendarState.openDayDate = null;
+    }
 }
 
 // Event Listeners
@@ -4237,19 +4251,12 @@ function setupEventListeners() {
                 createdByEmail: state.currentUser?.email || ''
             });
 
-            if (assigneeEmail) {
-                // Send notifications to all assignees
-                const emails = assigneeEmail.split(',');
-                const names = assignee.split(', ');
-                const projectName = document.getElementById('project-title')?.textContent || 'Проект';
-
-                emails.forEach((email, index) => {
-                    if (email && email.trim()) {
-                        // Send Telegram notification
-                        sendTelegramTaskNotification(email.trim(), title, projectName, deadline);
-                    }
-                });
-            }
+            // Notify every assignee by uid (email fallback) so self-assignment
+            // by a Telegram-login user — who has no email — still gets a message.
+            const projectName = document.getElementById('project-title')?.textContent || 'Проект';
+            selectedAssignees.forEach(a => {
+                sendNewTaskNotificationToAssignee(a, title, projectName, deadline);
+            });
 
             console.log("✅ Задача успешно создана!");
             elements.taskModal.classList.remove('active');
@@ -5614,6 +5621,38 @@ async function sendTelegramTaskNotification(userEmail, taskTitle, projectName, d
 Откройте ProjectMan для подробностей.`;
 
     await sendTelegramNotification(user.telegramChatId, message);
+}
+
+// Resolves a picked assignee ({id, email, name}) to their Telegram chat id.
+// Telegram-login users have no email, so the uid is the only reliable key —
+// email is kept as a fallback for legacy/email-login accounts.
+function resolveAssigneeChatId(assignee) {
+    if (!assignee) return null;
+    let user = null;
+    if (assignee.id) user = state.users.find(u => u.id === assignee.id);
+    if (!user && assignee.email) {
+        user = state.users.find(u => u.email?.toLowerCase() === assignee.email.toLowerCase());
+    }
+    return user?.telegramChatId || null;
+}
+
+// Notifies one assignee about a newly created task. Resolves the recipient by
+// uid first (so self-assignment by a Telegram user actually delivers), then
+// email. Fire-and-forget; missing chat id just means the user hasn't linked
+// Telegram yet.
+async function sendNewTaskNotificationToAssignee(assignee, taskTitle, projectName, deadline) {
+    const chatId = resolveAssigneeChatId(assignee);
+    if (!chatId) return;
+
+    const message = `📋 <b>Новая задача!</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Срок:</b> ${deadline || 'Не указан'}
+
+Откройте ProjectMan для подробностей.`;
+
+    await sendTelegramNotification(chatId, message);
 }
 
 // Send revision notification via Telegram
@@ -7229,8 +7268,11 @@ function initProfileAndLeaderboard() {
 let calendarState = {
     currentDate: new Date(),
     events: [],
+    tasks: [],
     selectedUsers: new Set(),
-    listenerUnsubscribe: null
+    listenerUnsubscribe: null,
+    tasksListenerUnsubscribe: null,
+    openDayDate: null
 };
 
 const calElements = {
@@ -7253,7 +7295,12 @@ const calElements = {
 
     userSearch: document.getElementById('ce-user-search'),
     userDropdown: document.getElementById('ce-users-dropdown'),
-    selectedUsersCont: document.getElementById('ce-selected-users')
+    selectedUsersCont: document.getElementById('ce-selected-users'),
+
+    dayTasksModal: document.getElementById('day-tasks-modal'),
+    dayTasksTitle: document.getElementById('day-tasks-title'),
+    dayTasksBody: document.getElementById('day-tasks-body'),
+    dayAddEventBtn: document.getElementById('day-add-event-btn')
 };
 
 function initCalendarModule() {
@@ -7279,6 +7326,19 @@ function initCalendarModule() {
 
     calElements.eventForm?.addEventListener('submit', handleCalendarSubmit);
     calElements.deleteBtn?.addEventListener('click', deleteCalendarEvent);
+
+    // Day-tasks modal: close button(s) + "add meeting" shortcut
+    calElements.dayTasksModal?.querySelectorAll('.close-modal').forEach(btn => {
+        btn.addEventListener('click', closeDayTasksModal);
+    });
+    calElements.dayTasksModal?.addEventListener('click', (e) => {
+        if (e.target === calElements.dayTasksModal) closeDayTasksModal();
+    });
+    calElements.dayAddEventBtn?.addEventListener('click', () => {
+        const date = calendarState.openDayDate;
+        closeDayTasksModal();
+        openEventModal(null, date);
+    });
 
     calElements.userSearch?.addEventListener('input', (e) => {
         const query = e.target.value.toLowerCase();
@@ -7314,6 +7374,24 @@ function setupCalendarListener() {
             calendarState.events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderCalendar();
         }, err => console.error("Calendar listener error:", err));
+
+    setupCalendarTasksListener();
+}
+
+// Loads all tasks visible to the current user so the calendar can plot them by
+// deadline. Mirrors the org-wide, unfiltered listener already used by the "My
+// Tasks" badge (subscribeToMyTasks) so it works for the same set of users;
+// tasks without a deadline are ignored when rendering.
+function setupCalendarTasksListener() {
+    if (calendarState.tasksListenerUnsubscribe) calendarState.tasksListenerUnsubscribe();
+
+    calendarState.tasksListenerUnsubscribe = db.collection('tasks')
+        .onSnapshot(snapshot => {
+            calendarState.tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderCalendar();
+            // Keep an open day modal in sync with live task changes.
+            if (calendarState.openDayDate) renderDayTasks(calendarState.openDayDate);
+        }, err => console.error("Calendar tasks listener error:", err));
 }
 
 function renderCalendar() {
@@ -7351,6 +7429,45 @@ function renderCalendar() {
     }
 }
 
+// Local YYYY-MM-DD (not toISOString, which is UTC and can shift the day across
+// the midnight boundary for non-UTC users — the same timezone-skew class of bug
+// fixed earlier in scheduleStatus).
+function localDateStr(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+// Resolves a task to one calendar status key. Order matters: archived/done and
+// assignee-completed win over the overdue check so a finished task never shows
+// as "просрочена".
+function calendarTaskStatusKey(task) {
+    if (task.status === 'done') return 'done';
+    const sub = task.subStatus || (task.assigneeCompleted ? 'completed' : 'assigned');
+    if (sub === 'completed' || task.assigneeCompleted) return 'completed';
+    if (task.deadline) {
+        const dl = new Date(task.deadline);
+        dl.setHours(23, 59, 59, 999);
+        if (dl < new Date()) return 'overdue';
+    }
+    return sub === 'in_work' ? 'in_work' : 'assigned';
+}
+
+function calendarTaskStatusLabel(key) {
+    return ({
+        assigned: 'Назначена',
+        in_work: 'В работе',
+        completed: 'На проверке',
+        done: 'Готово',
+        overdue: 'Просрочена'
+    })[key] || 'Назначена';
+}
+
+function calendarTasksForDate(dateStr) {
+    return calendarState.tasks.filter(t => t.deadline && String(t.deadline).slice(0, 10) === dateStr);
+}
+
 function addDayToGrid(num, otherMonth, fullDate) {
     const dayEl = document.createElement('div');
     dayEl.className = `calendar-day ${otherMonth ? 'other-month' : ''}`;
@@ -7360,14 +7477,18 @@ function addDayToGrid(num, otherMonth, fullDate) {
         dayEl.classList.add('today');
     }
 
-    dayEl.innerHTML = `
-        <div class="day-number">${num}</div>
-        <div class="calendar-events-container"></div>
-    `;
+    const dateStr = localDateStr(fullDate);
 
-    const eventsCont = dayEl.querySelector('.calendar-events-container');
-    const dateStr = fullDate.toISOString().split('T')[0];
+    const numEl = document.createElement('div');
+    numEl.className = 'day-number';
+    numEl.textContent = num;
+    dayEl.appendChild(numEl);
 
+    const cont = document.createElement('div');
+    cont.className = 'calendar-events-container';
+    dayEl.appendChild(cont);
+
+    // Meetings (existing feature) first, then task pills coloured by status.
     const dayEvents = calendarState.events.filter(e => e.date === dateStr);
     dayEvents.forEach(evt => {
         const pill = document.createElement('div');
@@ -7377,11 +7498,118 @@ function addDayToGrid(num, otherMonth, fullDate) {
             e.stopPropagation();
             openEventModal(evt);
         });
-        eventsCont.appendChild(pill);
+        cont.appendChild(pill);
     });
 
-    dayEl.addEventListener('click', () => openEventModal(null, dateStr));
+    const dayTasks = calendarTasksForDate(dateStr);
+    const MAX_PILLS = 3;
+    dayTasks.slice(0, MAX_PILLS).forEach(task => {
+        const key = calendarTaskStatusKey(task);
+        const pill = document.createElement('div');
+        pill.className = `calendar-task-pill task-${key}`;
+        const dot = document.createElement('span');
+        dot.className = 'pill-dot';
+        pill.appendChild(dot);
+        const label = document.createElement('span');
+        label.textContent = task.title || 'Задача';
+        label.style.overflow = 'hidden';
+        label.style.textOverflow = 'ellipsis';
+        pill.appendChild(label);
+        pill.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openDayTasksModal(dateStr);
+        });
+        cont.appendChild(pill);
+    });
+
+    if (dayTasks.length > MAX_PILLS) {
+        const more = document.createElement('div');
+        more.className = 'calendar-day-more';
+        more.textContent = `+${dayTasks.length - MAX_PILLS} ещё`;
+        cont.appendChild(more);
+    }
+
+    // A click anywhere on the day opens the list of that day's tasks.
+    dayEl.addEventListener('click', () => openDayTasksModal(dateStr));
     calElements.grid.appendChild(dayEl);
+}
+
+// Opens the modal listing every task due on the given day.
+function openDayTasksModal(dateStr) {
+    calendarState.openDayDate = dateStr;
+
+    if (calElements.dayTasksTitle) {
+        const d = new Date(dateStr + 'T00:00:00');
+        const formatted = new Intl.DateTimeFormat('ru-RU', {
+            day: 'numeric', month: 'long', year: 'numeric'
+        }).format(d);
+        calElements.dayTasksTitle.textContent = formatted;
+    }
+
+    renderDayTasks(dateStr);
+    calElements.dayTasksModal?.classList.add('active');
+}
+
+function renderDayTasks(dateStr) {
+    const body = calElements.dayTasksBody;
+    if (!body) return;
+    body.innerHTML = '';
+
+    const tasks = calendarTasksForDate(dateStr).slice().sort((a, b) =>
+        (a.title || '').localeCompare(b.title || '', 'ru'));
+
+    if (!tasks.length) {
+        const empty = document.createElement('p');
+        empty.className = 'day-tasks-empty';
+        empty.textContent = 'На этот день задач нет';
+        body.appendChild(empty);
+        return;
+    }
+
+    tasks.forEach(task => {
+        const key = calendarTaskStatusKey(task);
+        const project = state.projects.find(p => p.id === task.projectId);
+
+        const row = document.createElement('div');
+        row.className = `day-task-row task-${key}`;
+
+        const info = document.createElement('div');
+        info.className = 'day-task-info';
+
+        const title = document.createElement('div');
+        title.className = 'day-task-title';
+        title.textContent = task.title || 'Задача';
+        info.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.className = 'day-task-meta';
+        const parts = [];
+        if (project?.name) parts.push(project.name);
+        if (task.assignee && task.assignee !== 'Не назначен') parts.push(task.assignee);
+        meta.textContent = parts.join(' · ') || 'Без проекта';
+        info.appendChild(meta);
+
+        const tag = document.createElement('div');
+        tag.className = `day-task-status-tag task-${key}`;
+        tag.textContent = calendarTaskStatusLabel(key);
+
+        row.appendChild(info);
+        row.appendChild(tag);
+
+        // Navigate to the task's project board (calendar is a modal on top of it).
+        row.addEventListener('click', () => {
+            if (task.projectId) selectProject(task.projectId);
+            closeDayTasksModal();
+            calElements.modal?.classList.remove('active');
+        });
+
+        body.appendChild(row);
+    });
+}
+
+function closeDayTasksModal() {
+    calElements.dayTasksModal?.classList.remove('active');
+    calendarState.openDayDate = null;
 }
 
 function openEventModal(event = null, defaultDate = null) {
