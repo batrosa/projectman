@@ -270,6 +270,51 @@ describe("organizations privilege escalation", () => {
       bystander.collection("organizations").doc("some-org").update({ name: "Hijacked" })
     );
   });
+
+  it("allows the real createOrganization() write shape (organizationId + orgRole:'owner' + email + displayName) when the caller actually owns the referenced org", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("founder").set({ role: "reader" });
+      await ctx.firestore().collection("organizations").doc("new-org").set({ ownerId: "founder", name: "New Org" });
+    });
+
+    const founder = testEnv.authenticatedContext("founder").firestore();
+    await assertSucceeds(
+      founder.collection("users").doc("founder").update({
+        organizationId: "new-org",
+        orgRole: "owner",
+        email: "founder@example.com",
+        displayName: "Founder",
+      })
+    );
+  });
+
+  it("blocks self-granting orgRole:'owner' by pointing organizationId at an org the caller does not own", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("faker").set({ role: "reader" });
+      await ctx.firestore().collection("organizations").doc("real-org").set({ ownerId: "realowner", name: "Real Org" });
+    });
+
+    const faker = testEnv.authenticatedContext("faker").firestore();
+    await assertFails(
+      faker.collection("users").doc("faker").update({
+        organizationId: "real-org",
+        orgRole: "owner",
+      })
+    );
+  });
+
+  it("allows the real leaveOrganization() write shape (organizationId + orgRole both set to null)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("leaver").set({
+        role: "reader", organizationId: "some-org", orgRole: "employee",
+      });
+    });
+
+    const leaver = testEnv.authenticatedContext("leaver").firestore();
+    await assertSucceeds(
+      leaver.collection("users").doc("leaver").update({ organizationId: null, orgRole: null })
+    );
+  });
 });
 ```
 
@@ -280,16 +325,39 @@ Expected: FAIL — first test fails because the current rules have no `organizat
 
 **Step 4: Apply the rules fix**
 
+> **Correction recorded during execution:** the original version of this step (adding `isSelfServiceOrgJoin()` as an OR-branch while leaving `notUpdatingRestrictedFields()`'s blocklist unchanged) was a no-op — `notUpdatingRestrictedFields()` never blocked `organizationId`/`orgRole` in the first place, so the OR made no difference and the vulnerability would NOT actually have been fixed. The corrected version below (a) adds `organizationId`/`orgRole` to the blocklist, then (b) adds three narrow, verified carve-outs matching each of the three real self-service write shapes used by `createOrganization()`/`joinOrganization()`/`leaveOrganization()` in `script.js`, with the create carve-out cryptographically tied to actually owning the referenced org document (via `get()`), not just claiming to. Verified against official Firebase docs that `"field" in resource.data` is the documented-safe way to check a possibly-missing field (do not compare a possibly-absent field directly to `null`) — see https://firebase.google.com/docs/firestore/security/rules-conditions.
+
 In `firestore.rules`, replace the `notUpdatingRestrictedFields` function and the `users` update rule, and add a new `organizations` match block:
 
 ```
 function notUpdatingRestrictedFields() {
-  return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects']);
+  return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects', 'organizationId', 'orgRole']);
 }
 
 function isSelfServiceOrgJoin() {
-  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'orgRole'])
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['organizationId', 'orgRole'])
     && request.resource.data.orgRole == 'employee';
+}
+
+function isSelfServiceOrgLeave() {
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['organizationId', 'orgRole'])
+    && request.resource.data.organizationId == null
+    && request.resource.data.orgRole == null;
+}
+
+function wasNotYetInOrg() {
+  return !('organizationId' in resource.data) || resource.data.organizationId == null;
+}
+
+function isSelfServiceOrgCreate() {
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['organizationId', 'orgRole', 'email', 'displayName'])
+    && request.resource.data.orgRole == 'owner'
+    && wasNotYetInOrg()
+    && exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
+    && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerId == request.auth.uid;
 }
 ```
 
@@ -297,7 +365,7 @@ and change the `users/{userId}` update rule to:
 
 ```
 allow update: if (request.auth != null && request.auth.uid == userId
-                   && (notUpdatingRestrictedFields() || isSelfServiceOrgJoin()))
+                   && (notUpdatingRestrictedFields() || isSelfServiceOrgJoin() || isSelfServiceOrgLeave() || isSelfServiceOrgCreate()))
               || isAdmin();
 ```
 
@@ -314,15 +382,19 @@ match /organizations/{orgId} {
 }
 ```
 
+**Note — pre-existing, out-of-scope gap found while tracing this (do not fix as part of Task 5, just record in "Known gaps"):** promoting/demoting a *different* user's `orgRole` (e.g. an org owner making a teammate `admin`/`moderator`, or removing a member) is done in `script.js` (around line 4553 admin role-change UI, line 4763-4766 member removal, line 713-718 `deleteOrganization`'s batch update of other members) but the `users/{userId}` update rule only grants non-owner-of-the-target-doc writes via `isAdmin()` (the legacy global admin/reader flag), which typical org owners/admins don't have. This looks broken today independent of this task and is a separate, larger feature gap (would need a rule path like "caller's own orgRole is owner/admin AND caller's organizationId matches the target user's organizationId" or a dedicated server-side endpoint) — track as a follow-up, do not attempt in Task 5.
+
 **Step 5: Run to verify it passes**
 
-Run: `npm run test:rules`
-Expected: PASS (all three tests)
+First, check whether the Firestore emulator can actually run in this environment: `java -version`. The emulator (`firebase emulators:exec`) requires Java.
+
+- **If Java is available**: `npm run test:rules` — expect PASS on all 6 tests (the original 3 plus the 3 create/leave tests added above).
+- **If Java is NOT available**: attempt to install one before giving up, since this task is security-critical and worth the effort — e.g. `brew install openjdk` if Homebrew is present (`brew --version`), then retry. If installation isn't feasible in your environment either, fall back to careful manual/static tracing of the rules logic against every test case (as documented in this plan's corrected Step 4), and say so explicitly and honestly in your report — do not claim tests passed if they were never executed.
 
 **Step 6: Deploy and commit**
 
-1. Confirm Firebase project access is working (`projectman-96d3c` visible via MCP/CLI).
-2. `firebase deploy --only firestore:rules` (from `/Users/teko/Desktop/projectman`, with the correct project selected).
+1. Confirm Firebase project access is working (`projectman-96d3c` visible via MCP/CLI). If not yet available, skip the deploy sub-step and flag it as still needed — do not skip committing the code/rules/tests themselves.
+2. `firebase deploy --only firestore:rules` (from `/Users/teko/Desktop/projectman`, with the correct project selected) — once access is confirmed.
 3. `git add firestore.rules firestore-tests/ package.json firebase.json && git commit -m "fix: close organizations privilege-escalation gap in Firestore rules"`
 
 ---
