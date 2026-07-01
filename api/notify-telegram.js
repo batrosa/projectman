@@ -39,12 +39,17 @@ export default async function handler(request, response) {
     let callerOrgId;
     try {
         const userDoc = await adminDb().collection('users').doc(decoded.uid).get();
-        callerOrgId = userDoc.exists ? userDoc.data().organizationId : null;
+        if (!userDoc.exists) return response.status(403).json({ error: 'Unknown caller' });
+        // organizationId may legitimately be null/undefined: a large share of
+        // real accounts predate the multi-tenant org feature and were never
+        // migrated into an organization. Treat "no org" as its own tenant
+        // (null) rather than rejecting outright — the recipient check below
+        // still scopes the send to same-tenant users only.
+        callerOrgId = userDoc.data().organizationId ?? null;
     } catch (error) {
         console.error('notify-telegram: failed to load caller user doc', error);
         return response.status(500).json({ ok: false, error: 'Failed to verify caller' });
     }
-    if (!callerOrgId) return response.status(403).json({ error: 'No organization' });
 
     let body;
     try {
@@ -60,11 +65,13 @@ export default async function handler(request, response) {
     }
 
     // Open-relay guard: the caller may only message a Telegram chatId that
-    // belongs to a user in their own organization. Without this, any
-    // authenticated user (of any org) could relay arbitrary text to any
-    // chatId that happens to exist in the users collection — this endpoint
-    // was previously reachable with no auth at all, so this check plus the
-    // idToken requirement above together close that hole.
+    // belongs to a user in their own tenant. Without this, any authenticated
+    // user (of any org) could relay arbitrary text to any chatId that happens
+    // to exist in the users collection — this endpoint was previously
+    // reachable with no auth at all, so this check plus the idToken
+    // requirement above together close that hole. "Tenant" includes the
+    // legacy no-org case (organizationId null/undefined on both sides), so
+    // pre-org accounts can still notify each other, e.g. self-assignment.
     let recipientSnap;
     try {
         recipientSnap = await adminDb()
@@ -77,7 +84,8 @@ export default async function handler(request, response) {
         return response.status(500).json({ ok: false, error: 'Failed to verify recipient' });
     }
     const recipientDoc = recipientSnap.empty ? null : recipientSnap.docs[0];
-    if (!recipientDoc || recipientDoc.data().organizationId !== callerOrgId) {
+    const recipientOrgId = recipientDoc ? (recipientDoc.data().organizationId ?? null) : undefined;
+    if (!recipientDoc || recipientOrgId !== callerOrgId) {
         return response.status(403).json({ ok: false, error: 'Recipient not in your organization' });
     }
 
