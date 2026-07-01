@@ -1,9 +1,9 @@
-const TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 
 // Firebase Admin for serverless
 const FIREBASE_PROJECT_ID = 'projectman-96d3c';
-const FIREBASE_API_KEY = 'AIzaSyBqNCgLUmlxfIKlDCwmx0-9D-JJm63RpuU';
+const FIREBASE_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
 // Firestore REST API helper
 async function firestoreGet(collection, docId) {
