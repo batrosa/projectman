@@ -3878,12 +3878,14 @@ function setupEventListeners() {
     // Organization event listeners
     setupOrgEventListeners();
 
-    // Telegram login button -> official Telegram auth popup
+    // Telegram login button -> reliable bot deep-link flow (opens the bot,
+    // user taps Start, site finishes login by polling). Replaces the fragile
+    // oauth.telegram.org phone-confirmation flow.
     const telegramLoginBtn = document.getElementById('telegram-login-btn');
     if (telegramLoginBtn) {
         telegramLoginBtn.addEventListener('click', () => {
             playClickSound();
-            window.startTelegramLogin();
+            window.startTelegramBotLogin();
         });
     }
     if (elements.telegramBotLoginBtn) {
@@ -4397,6 +4399,8 @@ function setLoginErrorMessage(message) {
 }
 
 function setTelegramBotLoginBusy(isBusy) {
+    const primaryBtn = document.getElementById('telegram-login-btn');
+    if (primaryBtn) primaryBtn.disabled = isBusy;
     if (elements.telegramBotLoginBtn) elements.telegramBotLoginBtn.disabled = isBusy;
 }
 
