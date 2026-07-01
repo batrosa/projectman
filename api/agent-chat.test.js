@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { cleanAnswer, normalizeHistory, compactContext } from "./agent-chat.js";
+import { cleanAnswer, normalizeHistory, compactContext, isProgramScopedMessage, OFF_TOPIC_RESPONSE } from "./agent-chat.js";
 
 const CONTEXT_CHAR_LIMIT = 45000;
 
@@ -85,6 +85,33 @@ describe("normalizeHistory", () => {
 
   it("handles an empty array", () => {
     expect(normalizeHistory([])).toEqual([]);
+  });
+});
+
+describe("isProgramScopedMessage", () => {
+  it("allows project/task questions", () => {
+    expect(isProgramScopedMessage("Какие задачи просрочены по проекту Паулайнер?")).toBe(true);
+    expect(isProgramScopedMessage("Кто отвечает за проверку файлов?")).toBe(true);
+  });
+
+  it("allows app support questions framed inside ProjectMan", () => {
+    expect(isProgramScopedMessage("Почему не приходит уведомление в Telegram?")).toBe(true);
+    expect(isProgramScopedMessage("Вход через телеграм не работает")).toBe(true);
+  });
+
+  it("allows simple greetings and capability prompts", () => {
+    expect(isProgramScopedMessage("привет")).toBe(true);
+    expect(isProgramScopedMessage("что ты умеешь?")).toBe(true);
+  });
+
+  it("blocks general-knowledge questions outside the app", () => {
+    expect(isProgramScopedMessage("Когда отменили крепостное право?")).toBe(false);
+    expect(isProgramScopedMessage("Какое расстояние до Луны?")).toBe(false);
+  });
+
+  it("allows short anaphoric follow-ups only after scoped history", () => {
+    expect(isProgramScopedMessage("расскажи подробнее", [{ role: "assistant", content: "В проекте есть просроченные задачи." }])).toBe(true);
+    expect(isProgramScopedMessage("расскажи подробнее", [{ role: "assistant", content: "Луна находится рядом с Землей." }])).toBe(false);
   });
 });
 
@@ -517,6 +544,15 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
   beforeEach(() => {
     process.env.OPENROUTER_API_KEY = "test-key";
     state.verifyIdToken = vi.fn(async () => ({ uid: "user-1" }));
+  });
+
+  it("returns the scope-guard answer for off-topic questions before loading org data", async () => {
+    state.db = null;
+    const res = mockResponse();
+    await handler(makeRequest({ message: "когда отменили крепостное право?" }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, answer: OFF_TOPIC_RESPONSE, model: "scope-guard" });
   });
 
   it("returns a graceful HTTP 200 fallback when the user-doc lookup rejects", async () => {

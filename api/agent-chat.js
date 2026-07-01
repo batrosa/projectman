@@ -9,9 +9,25 @@ import { buildOpenRouterModels, openRouterModelBody, fetchWithTimeout } from "..
 const CONTEXT_CHAR_LIMIT = 45000;
 const MAX_HISTORY_TURNS = 8;
 const MAX_MESSAGE_CHARS = 4000;
+const OFF_TOPIC_RESPONSE =
+  "Я отвечаю только по ProjectMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
+
+const PROJECT_SCOPE_RE =
+  /(projectman|проект|проекты|проекту|проектам|задач|таск|task|tasks|дедлайн|deadline|срок|сроки|исполнител|ответственн|назначен|статус|подстатус|просроч|готово|сделано|провер|архив|файл|документ|отчет|отчёт|организац|сотрудник|участник|команд|роль|роли|админ|владел|owner|admin|moderator|модератор|reader|читател|доска|kanban|колонк|календар|встреч|совещан|комментар|чеклист|подзадач)/i;
+
+const APP_SCOPE_RE =
+  /(уведомлен|telegram|телеграм|бот|webhook|логин|вход|авторизац|аккаунт|firebase|firestore|vercel|openrouter|ии|агент|приложени|программа|система|не приходит|не работает|ошибка|настро)/i;
+
+const WORK_REQUEST_RE =
+  /(что\s+(у\s+меня|делать|сделать|по\s+)|какие\s+(задачи|сроки|проекты)|кто\s+(отвечает|исполнитель|назначен)|на\s+(сегодня|завтра|неделе)|мои\s+(задачи|проекты|дела)|покажи\s+(задачи|проекты|сроки)|найди\s+(задачу|проект|файл))/i;
+
+const GREETING_OR_CAPABILITY_RE =
+  /^(привет|здравствуй|здравствуйте|добрый\s+(день|вечер|утро)|hi|hello|помоги|help|что\s+ты\s+умеешь|чем\s+ты\s+можешь\s+помочь)[\s.!?]*$/i;
 
 const SYSTEM_PROMPT_RULES = [
   "Ты — ИИ Руководитель проекта, ассистент внутри системы управления задачами.",
+  "Отвечай только в рамках ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
+  `Если вопрос не относится к ProjectMan или проектам организации — ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
   "Отвечай коротко и по делу: 1-3 тезиса по умолчанию, простым не техническим языком.",
   "Ты знаешь все задачи, сроки и статусы всей организации, а не только открытый экран — не проси открыть раздел или выбрать проект, если данные уже есть ниже.",
   "Если факта нет в данных — прямо скажи, что этого пока нет в системе. Не выдумывай.",
@@ -50,6 +66,10 @@ export default async function handler(request, response) {
   const message = String(body.message || "").trim().slice(0, MAX_MESSAGE_CHARS);
   if (!message) return response.status(400).json({ error: "message is required" });
   const history = normalizeHistory(body.history);
+
+  if (!isProgramScopedMessage(message, history)) {
+    return response.status(200).json({ ok: true, answer: OFF_TOPIC_RESPONSE, model: "scope-guard" });
+  }
 
   const db = adminDb();
   let organizationId;
@@ -412,6 +432,32 @@ function cleanAnswer(text) {
     .trim();
 }
 
+function isProgramScopedMessage(message, history = []) {
+  const text = String(message || "").trim();
+  if (!text) return false;
+  if (GREETING_OR_CAPABILITY_RE.test(text)) return true;
+  if (PROJECT_SCOPE_RE.test(text)) return true;
+  if (WORK_REQUEST_RE.test(text)) return true;
+
+  // Integration/support questions are in scope only when they are framed as
+  // app behavior, not as general encyclopedia questions about Telegram,
+  // Firebase, OpenRouter, etc.
+  if (APP_SCOPE_RE.test(text) && /(projectman|проект|задач|приложени|программа|система|вход|логин|авторизац|не приходит|не работает|ошибка|настро|уведомлен|бот|агент)/i.test(text)) {
+    return true;
+  }
+
+  // Allow very short follow-ups only when the current phrase is anaphoric and
+  // the immediately previous chat was already about ProjectMan. Stand-alone
+  // knowledge questions like "когда отменили крепостное право" intentionally
+  // do not match this path.
+  if (text.length <= 120 && /^(а\s+)?(покажи|расскажи|подробнее|еще|ещё|давай|почему|как именно|что с этим|и что|а это|по нему|по ней|по ним|там|тут|это)(\s|$)/i.test(text)) {
+    const recentHistory = Array.isArray(history) ? history.slice(-4).map((turn) => turn.content).join(" ") : "";
+    return PROJECT_SCOPE_RE.test(recentHistory) || APP_SCOPE_RE.test(recentHistory);
+  }
+
+  return false;
+}
+
 async function parseJsonBody(request) {
   if (request.body && typeof request.body === "object") return request.body;
   if (typeof request.body === "string") return JSON.parse(request.body || "{}");
@@ -421,4 +467,4 @@ async function parseJsonBody(request) {
   return text ? JSON.parse(text) : {};
 }
 
-export { cleanAnswer, normalizeHistory, compactContext };
+export { cleanAnswer, normalizeHistory, compactContext, isProgramScopedMessage, OFF_TOPIC_RESPONSE };
