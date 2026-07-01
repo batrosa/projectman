@@ -845,6 +845,9 @@
                     <p id="project-desc">или создайте новый, чтобы начать работу</p>
                 </div>
                 <div class="actions">
+                    <button id="project-files-btn" class="secondary-btn" style="display: none;" title="Файлы проекта">
+                        <i class="fa-solid fa-folder-open"></i> <span>Файлы проекта</span>
+                    </button>
                     <button id="help-btn" class="secondary-btn" title="Помощь">
                         <i class="fa-solid fa-circle-question"></i>
                     </button>
@@ -1597,6 +1600,31 @@
             </div>
             <div id="files-modal-list" class="files-modal-list">
                 <!-- Files will be listed here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Files Modal: project-level documents (distinct from per-task attachments above).
+         Uploaded here are stored under projects/{projectId}/files in Firestore and get
+         background text extraction so a later AI agent can read them. -->
+    <div id="project-files-modal" class="modal">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-folder-open"></i> Файлы проекта</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div style="padding: 1rem 1.5rem 0;">
+                <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
+                    Загрузите документы проекта (.md, .xlsx, .xlsm, .pdf, .docx, до 10 МБ). Текст файла будет
+                    автоматически извлечён для последующего анализа.
+                </p>
+                <input type="file" id="project-file-input" accept=".md,.xlsx,.xlsm,.pdf,.docx" style="display: none;">
+                <button type="button" id="add-project-file-btn" class="add-attachment-btn">
+                    <i class="fa-solid fa-upload"></i> Загрузить файл
+                </button>
+            </div>
+            <div id="project-files-list" class="files-modal-list" style="padding: 1rem 1.5rem 1.5rem;">
+                <!-- Project files will be listed here via Firestore listener -->
             </div>
         </div>
     </div>

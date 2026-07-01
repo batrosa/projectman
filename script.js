@@ -1416,6 +1416,8 @@ let firebaseInitAttempts = 0;
 let isFirebaseInitialized = false;
 let taskListenerUnsubscribe = null; // To manage real-time listener for tasks
 let myTasksListenerUnsubscribe = null; // To manage real-time listener for my tasks count
+let projectFilesListenerUnsubscribe = null; // To manage real-time listener for project files
+let projectFiles = []; // Files for the currently selected project (projects/{projectId}/files)
 
 function initFirebase() {
     if (isFirebaseInitialized) return; // Prevent double init
@@ -1521,6 +1523,11 @@ const elements = {
     projectModal: document.getElementById('project-modal'),
     taskModal: document.getElementById('task-modal'),
     helpModal: document.getElementById('help-modal'),
+    projectFilesModal: document.getElementById('project-files-modal'),
+    projectFilesBtn: document.getElementById('project-files-btn'),
+    projectFilesList: document.getElementById('project-files-list'),
+    projectFileInput: document.getElementById('project-file-input'),
+    addProjectFileBtn: document.getElementById('add-project-file-btn'),
 
 
 
@@ -1777,6 +1784,12 @@ function setupRealtimeListeners() {
                 taskListenerUnsubscribe = null;
             }
             state.tasks = [];
+            // Also unsubscribe from project files if project is gone
+            if (projectFilesListenerUnsubscribe) {
+                projectFilesListenerUnsubscribe();
+                projectFilesListenerUnsubscribe = null;
+            }
+            projectFiles = [];
         }
 
         renderProjects();
@@ -1838,6 +1851,7 @@ function selectProject(id) {
     state.boardView = 'assigned'; // Always open "Assigned" first
     renderProjects(); // To update active class
     subscribeToProjectTasks(id); // Fetch tasks for this project only
+    subscribeToProjectFiles(id); // Fetch project-level files (distinct from task attachments)
 
     // Close sidebar on mobile
     if (window.innerWidth <= 768) {
@@ -1878,6 +1892,209 @@ function subscribeToProjectTasks(projectId) {
             if (elements.listReview) elements.listReview.innerHTML = '';
             elements.listDone.innerHTML = '';
         });
+}
+
+// ========== PROJECT FILES (distinct from per-task attachments above) ==========
+// Live Firestore listener on projects/{projectId}/files, matching the pattern
+// used for tasks/users elsewhere in this file (setupRealtimeListeners,
+// subscribeToProjectTasks).
+function subscribeToProjectFiles(projectId) {
+    if (projectFilesListenerUnsubscribe) {
+        projectFilesListenerUnsubscribe();
+        projectFilesListenerUnsubscribe = null;
+    }
+
+    projectFilesListenerUnsubscribe = db.collection('projects').doc(projectId).collection('files')
+        .orderBy('uploadedAt', 'desc')
+        .onSnapshot(snapshot => {
+            projectFiles = [];
+            snapshot.forEach(doc => {
+                projectFiles.push({ id: doc.id, ...doc.data() });
+            });
+            renderProjectFilesList();
+        }, error => {
+            console.error("Error listening to project files:", error);
+            if (elements.projectFilesList) {
+                elements.projectFilesList.textContent = 'Ошибка загрузки файлов проекта';
+            }
+        });
+}
+
+function extractionStatusLabel(status) {
+    if (status === 'done') return { text: 'Готово', className: 'done' };
+    if (status === 'error') return { text: 'Ошибка', className: 'error' };
+    return { text: 'Обработка...', className: 'pending' };
+}
+
+// Builds each file row via safe DOM methods (textContent) rather than
+// innerHTML, since filename/status come from Firestore and should not be
+// interpolated into HTML strings.
+function renderProjectFilesList() {
+    const list = elements.projectFilesList;
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!projectFiles.length) {
+        const empty = document.createElement('p');
+        empty.style.cssText = 'color: var(--text-secondary); text-align: center; padding: 1rem 0;';
+        empty.textContent = 'Файлы проекта ещё не загружены';
+        list.appendChild(empty);
+        return;
+    }
+
+    projectFiles.forEach(file => {
+        const fileType = getFileType(file.filename || '');
+        const iconClass = getFileIcon(fileType);
+        const status = extractionStatusLabel(file.extractionStatus);
+
+        const item = document.createElement('div');
+        item.className = 'file-list-item';
+        if (file.url) {
+            item.style.cursor = 'pointer';
+            item.onclick = () => window.open(file.url, '_blank');
+        }
+
+        const iconWrap = document.createElement('div');
+        iconWrap.className = `attachment-icon ${fileType}`;
+        const icon = document.createElement('i');
+        icon.className = `fa-solid ${iconClass}`;
+        iconWrap.appendChild(icon);
+
+        const info = document.createElement('div');
+        info.className = 'attachment-info';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'attachment-name';
+        nameEl.textContent = file.filename || 'Файл';
+
+        const sizeEl = document.createElement('div');
+        sizeEl.className = 'attachment-size';
+        sizeEl.textContent = `${formatFileSize(file.sizeBytes || 0)} · `;
+        const statusEl = document.createElement('span');
+        statusEl.className = `extraction-status extraction-status-${status.className}`;
+        statusEl.textContent = status.text;
+        sizeEl.appendChild(statusEl);
+
+        info.appendChild(nameEl);
+        info.appendChild(sizeEl);
+
+        item.appendChild(iconWrap);
+        item.appendChild(info);
+        list.appendChild(item);
+    });
+}
+
+// Upload a project-level document to Cloudinary as a raw resource (not the
+// per-task attachment picker), then register it via POST /api/project-files
+// so the server can create the Firestore doc and run background text
+// extraction. Kept separate from uploadToCloudinary()/handleFileSelect()
+// (which power task attachments) since project files use resource_type=raw
+// and a different set of allowed extensions.
+const PROJECT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+const PROJECT_FILE_ALLOWED_EXTENSIONS = ['md', 'xlsx', 'xlsm', 'pdf', 'docx'];
+
+async function uploadProjectFileToCloudinary(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    try {
+        const response = await fetch(
+            `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/raw/upload`,
+            {
+                method: 'POST',
+                body: formData,
+                mode: 'cors',
+                signal: controller.signal
+            }
+        );
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            let errorMsg = response.statusText;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.error?.message || response.statusText;
+            } catch (e) { /* ignore parse failure */ }
+            throw new Error(errorMsg);
+        }
+
+        return await response.json();
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('Загрузка слишком долгая. Проверьте интернет или попробуйте файл меньшего размера');
+        }
+        if (error.message === 'Failed to fetch' || error.message === 'Load failed') {
+            throw new Error('Ошибка сети. Проверьте подключение к интернету');
+        }
+        throw error;
+    }
+}
+
+async function handleProjectFileSelect(event) {
+    const file = event.target.files[0];
+    event.target.value = ''; // Reset input so selecting the same file again re-triggers change
+    if (!file) return;
+
+    const projectId = state.activeProjectId;
+    if (!projectId) {
+        alert('Сначала выберите проект');
+        return;
+    }
+
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (!PROJECT_FILE_ALLOWED_EXTENSIONS.includes(ext)) {
+        alert(`Неподдерживаемый тип файла: .${ext}. Разрешены: ${PROJECT_FILE_ALLOWED_EXTENSIONS.join(', ')}`);
+        return;
+    }
+    if (file.size > PROJECT_FILE_MAX_BYTES) {
+        alert(`Файл слишком большой. Максимум ${formatFileSize(PROJECT_FILE_MAX_BYTES)}`);
+        return;
+    }
+
+    const btn = elements.addProjectFileBtn;
+    const originalHtml = btn ? btn.innerHTML : null;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
+    }
+
+    try {
+        const uploadResult = await uploadProjectFileToCloudinary(file);
+
+        const response = await fetch('/api/project-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectId,
+                filename: file.name,
+                url: uploadResult.secure_url,
+                mimeType: file.type || null,
+                sizeBytes: file.size,
+                uploadedBy: state.currentUser?.uid || null,
+            }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || 'Не удалось сохранить файл');
+        }
+
+        playClickSound();
+    } catch (error) {
+        console.error('Project file upload error:', error);
+        alert('Ошибка при загрузке файла: ' + error.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
 }
 
 function deleteTask(id) {
@@ -2022,6 +2239,7 @@ function renderBoard() {
         elements.projectDesc.textContent = 'или создайте новый';
         elements.addTaskBtn.disabled = true;
         elements.deleteProjectBtn.style.display = 'none';
+        if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'none';
         return;
     }
 
@@ -2064,6 +2282,7 @@ function renderBoard() {
         playClickSound();
         deleteProject(activeProject.id);
     };
+    if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'inline-flex';
 
     // Clear lists
     if (elements.listAssigned) elements.listAssigned.innerHTML = '';
@@ -3686,6 +3905,23 @@ function setupEventListeners() {
         playClickSound();
         elements.helpModal.classList.add('active');
     });
+
+    // Project files button — opens the "Файлы проекта" modal (project-level
+    // documents, distinct from per-task attachments)
+    if (elements.projectFilesBtn && elements.projectFilesModal) {
+        elements.projectFilesBtn.addEventListener('click', () => {
+            playClickSound();
+            renderProjectFilesList();
+            elements.projectFilesModal.classList.add('active');
+        });
+    }
+    if (elements.addProjectFileBtn && elements.projectFileInput) {
+        elements.addProjectFileBtn.addEventListener('click', () => {
+            playClickSound();
+            elements.projectFileInput.click();
+        });
+        elements.projectFileInput.addEventListener('change', handleProjectFileSelect);
+    }
 
     // Close dropdowns when clicking outside
     window.addEventListener('click', () => {

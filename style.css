@@ -3202,6 +3202,22 @@ body.light-mode .status-option-desc {
     font-size: 0.85rem;
 }
 
+.extraction-status {
+    font-weight: 600;
+}
+
+.extraction-status-pending {
+    color: var(--warning, #f59e0b);
+}
+
+.extraction-status-done {
+    color: var(--success, #22c55e);
+}
+
+.extraction-status-error {
+    color: var(--danger, #ef4444);
+}
+
 .file-actions .action-btn {
     color: var(--text-secondary);
     cursor: pointer;
