@@ -88,3 +88,24 @@ describe("project visibility helpers", () => {
     expect(projects.map((project) => project.id)).toEqual(["p1"]);
   });
 });
+
+describe("role permission helpers", () => {
+  it.each([
+    ["owner", true, true, true],
+    ["admin", true, true, true],
+    ["moderator", false, true, false],
+    ["employee", false, false, false],
+    ["reader", false, false, false],
+  ])("maps %s to project/task/admin permissions", (role, canProjects, canTasks, canAdmin) => {
+    vm.runInContext(`state.orgRole = '${role}';`, ctx);
+
+    expect(getFn("canManageProjects")()).toBe(canProjects);
+    expect(getFn("canManageTasks")()).toBe(canTasks);
+    expect(getFn("canAccessAdmin")()).toBe(canAdmin);
+  });
+
+  it("uses the reader-facing label for the existing employee role value", () => {
+    expect(getFn("getRoleName")("employee")).toBe("Читатель");
+    expect(getFn("getRoleName")("reader")).toBe("Читатель");
+  });
+});

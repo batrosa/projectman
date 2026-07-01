@@ -121,4 +121,64 @@ describe("project and task organization permissions", () => {
       })
     );
   });
+
+  it("allows a moderator to edit and delete tasks in their org project even when the task misses organizationId", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await seedOrgUser(ctx, "moderator1", { organizationId: "org-1", orgRole: "moderator" });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "Own", organizationId: "org-1" });
+      await ctx.firestore().collection("tasks").doc("t1").set({
+        projectId: "p1",
+        title: "Legacy task without org",
+        status: "in-progress",
+        subStatus: "assigned",
+      });
+    });
+
+    const moderator = testEnv.authenticatedContext("moderator1").firestore();
+    await assertSucceeds(moderator.collection("tasks").doc("t1").update({ title: "Edited" }));
+    await assertSucceeds(moderator.collection("tasks").doc("t1").delete());
+  });
+
+  it("blocks a reader from deleting tasks but allows moving an accessible task to work/completed states", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("reader1").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "employee",
+        allowedProjects: ["p1"],
+      });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "Own", organizationId: "org-1" });
+      await ctx.firestore().collection("tasks").doc("t1").set({
+        projectId: "p1",
+        organizationId: "org-1",
+        title: "Reader task",
+        status: "in-progress",
+        subStatus: "assigned",
+        assigneeCompleted: false,
+      });
+    });
+
+    const reader = testEnv.authenticatedContext("reader1").firestore();
+    await assertFails(reader.collection("tasks").doc("t1").delete());
+    await assertSucceeds(reader.collection("tasks").doc("t1").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T00:00:00.000Z",
+      takenToWorkBy: "Reader",
+    }));
+    await assertSucceeds(reader.collection("tasks").doc("t1").update({
+      status: "in-progress",
+      subStatus: "completed",
+      assigneeCompleted: true,
+      completedAt: "2026-07-02T01:00:00.000Z",
+      completedBy: "Reader",
+      completionComment: "Done",
+      completionProof: null,
+      completionProofs: [],
+      revisionReason: null,
+      revisionReturnedBy: null,
+      revisionReturnedAt: null,
+    }));
+  });
 });

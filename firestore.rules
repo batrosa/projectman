@@ -75,6 +75,36 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == orgId;
     }
 
+    function hasProjectOrgRole(projectId, roles) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null
+        && userData.orgRole in roles
+        && projectBelongsToOrg(projectId, userData.organizationId);
+    }
+
+    function isOrgUserManagerUpdate() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      let managerData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null
+        && changedKeys.hasOnly(['orgRole', 'allowedProjects', 'organizationId'])
+        && managerData.organizationId != null
+        && resource.data.organizationId == managerData.organizationId
+        && managerData.orgRole in ['owner', 'admin']
+        && (request.resource.data.organizationId == resource.data.organizationId || request.resource.data.organizationId == null)
+        && request.resource.data.orgRole in ['admin', 'moderator', 'employee', 'reader', null]
+        && (managerData.orgRole == 'owner' || (resource.data.orgRole != 'owner' && request.resource.data.orgRole != 'owner'));
+    }
+
+    function isOrgUserStatsUpdate() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      let managerData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null
+        && changedKeys.hasOnly(['totalXP', 'level', 'completedTasksCount', 'onTimeTasksCount', 'noRevisionTasksCount'])
+        && managerData.organizationId != null
+        && resource.data.organizationId == managerData.organizationId
+        && managerData.orgRole in ['owner', 'admin', 'moderator'];
+    }
+
     // Коллекция Users
     match /users/{userId} {
       // Читать могут все авторизованные (нужно для списков assignee), 
@@ -95,6 +125,8 @@ service cloud.firestore {
       // Обновлять: Владелец (но БЕЗ смены роли/оргполей, кроме явных сценариев join/leave/create) ИЛИ Админ (все поля)
       allow update: if (request.auth != null && request.auth.uid == userId
                          && (notUpdatingRestrictedFields() || isSelfServiceOrgJoin() || isSelfServiceOrgLeave() || isSelfServiceOrgCreate()))
+                    || isOrgUserManagerUpdate()
+                    || isOrgUserStatsUpdate()
                     || isAdmin();
 
       // Удалять: Только Админ
@@ -126,10 +158,10 @@ service cloud.firestore {
         isOrgOwnerOrAdmin(orgId) ||
         isMemberCountStep()
       );
-      // Удалять: только владелец организации ИЛИ пользователь с orgRole owner/admin
+      // Удалять: только владелец организации. Admin может управлять организацией, но не удалять её.
       allow delete: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||
-        isOrgOwnerOrAdmin(orgId)
+        hasOrgRole(orgId, ['owner'])
       );
     }
 
@@ -151,6 +183,7 @@ service cloud.firestore {
       // но мы проверим через поле projectId в самой задаче)
       allow read: if isAdmin()
         || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
+        || hasProjectOrgRole(resource.data.projectId, ['owner', 'admin', 'moderator'])
         || (request.auth != null && canViewProject(resource.data.projectId));
       
       // Запись: 
@@ -160,20 +193,48 @@ service cloud.firestore {
       allow create: if isAdmin()
         || (hasOrgRole(request.resource.data.organizationId, ['owner', 'admin', 'moderator'])
             && projectBelongsToOrg(request.resource.data.projectId, request.resource.data.organizationId));
-      allow delete: if isAdmin() || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator']);
+      allow delete: if isAdmin()
+        || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
+        || hasProjectOrgRole(resource.data.projectId, ['owner', 'admin', 'moderator']);
       allow update: if isAdmin()
         || (hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
             && request.resource.data.organizationId == resource.data.organizationId
             && request.resource.data.projectId == resource.data.projectId)
+        || (hasProjectOrgRole(resource.data.projectId, ['owner', 'admin', 'moderator'])
+            && request.resource.data.projectId == resource.data.projectId
+            && (!('organizationId' in resource.data) || request.resource.data.organizationId == resource.data.organizationId))
         || (request.auth != null
             && canViewProject(resource.data.projectId)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assigneeCompleted', 'reminderSent', 'subStatus', 'attachments']));
+            && request.resource.data.projectId == resource.data.projectId
+            && request.resource.data.status == 'in-progress'
+            && request.resource.data.subStatus in ['in_work', 'completed']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'assigneeCompleted',
+              'reminderSent',
+              'subStatus',
+              'attachments',
+              'takenToWorkAt',
+              'takenToWorkBy',
+              'completedAt',
+              'completionComment',
+              'completionProof',
+              'completionProofs',
+              'completedBy',
+              'revisionReason',
+              'revisionReturnedBy',
+              'revisionReturnedAt',
+              'archivedAt',
+              'archivedBy'
+            ]));
     }
 
     // Коллекция Project Files (подколлекция файлов проекта)
     // Все записи выполняются только сервером через Admin SDK (в обход правил) — клиент может только читать.
     match /projects/{projectId}/files/{fileId} {
-      allow read: if isAdmin() || (request.auth != null && canViewProject(projectId));
+      allow read: if isAdmin()
+        || hasProjectOrgRole(projectId, ['owner', 'admin', 'moderator'])
+        || (request.auth != null && canViewProject(projectId));
       allow write: if false;
     }
 

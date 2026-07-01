@@ -160,5 +160,19 @@ describe("organizations privilege escalation", () => {
         joiner2.collection("organizations").doc("some-org").update({ membersCount: 2, name: "Renamed" })
       );
     });
+
+    it("allows owner but blocks admin from deleting the organization", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("owner1").set({ role: "reader", organizationId: "org-owned", orgRole: "owner" });
+        await ctx.firestore().collection("users").doc("admin1").set({ role: "reader", organizationId: "org-admin", orgRole: "admin" });
+        await ctx.firestore().collection("organizations").doc("org-owned").set({ ownerId: "owner1", name: "Owned Org" });
+        await ctx.firestore().collection("organizations").doc("org-admin").set({ ownerId: "owner2", name: "Admin Org" });
+      });
+
+      const owner = testEnv.authenticatedContext("owner1").firestore();
+      const admin = testEnv.authenticatedContext("admin1").firestore();
+      await assertSucceeds(owner.collection("organizations").doc("org-owned").delete());
+      await assertFails(admin.collection("organizations").doc("org-admin").delete());
+    });
   });
 });

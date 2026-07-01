@@ -1271,16 +1271,17 @@ function getRoleName(role) {
         owner: 'Владелец',
         admin: 'Администратор',
         moderator: 'Модератор',
-        employee: 'Сотрудник'
+        employee: 'Читатель',
+        reader: 'Читатель'
     };
-    return names[role] || 'Сотрудник';
+    return names[role] || 'Читатель';
 }
 
 // Permission system
 // Owner: can do everything
 // Admin: everything except delete org and change owner's role
 // Moderator: create/edit/delete/assign tasks only
-// Employee: view and complete own tasks only
+// Reader/employee: view, accept assigned tasks, and submit them for review
 
 function hasPermission(permission) {
     const role = state.orgRole || 'employee';
@@ -1311,6 +1312,10 @@ function hasPermission(permission) {
         employee: [
             'view',               // View projects and tasks
             'complete_own_tasks'  // Complete only assigned tasks
+        ],
+        reader: [
+            'view',
+            'complete_own_tasks'
         ]
     };
 
@@ -1353,7 +1358,7 @@ function canChangeUserRole(targetRole) {
     }
     // Admin can ONLY change employee ↔ moderator (NOT admin roles)
     if (state.orgRole === 'admin') {
-        return ['employee', 'moderator'].includes(targetRole);
+        return ['employee', 'reader', 'moderator'].includes(targetRole);
     }
     return false;
 }
@@ -1365,7 +1370,7 @@ function canRemoveUserFromOrg(targetRole) {
     }
     // Admin can only remove employees and moderators (NOT other admins)
     if (state.orgRole === 'admin') {
-        return ['employee', 'moderator'].includes(targetRole);
+        return ['employee', 'reader', 'moderator'].includes(targetRole);
     }
     return false;
 }
@@ -1396,13 +1401,13 @@ function applyRoleRestrictions() {
     const role = state.orgRole || 'employee';
 
     // Remove all role classes first
-    document.body.classList.remove('read-only', 'role-owner', 'role-admin', 'role-moderator', 'role-employee');
+    document.body.classList.remove('read-only', 'role-owner', 'role-admin', 'role-moderator', 'role-employee', 'role-reader');
 
     // Add current role class
     document.body.classList.add(`role-${role}`);
 
     // read-only for employees (can only view and complete own tasks)
-    if (role === 'employee') {
+    if (role === 'employee' || role === 'reader') {
         document.body.classList.add('read-only');
     }
 
@@ -1714,7 +1719,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.8'; // FIX PROJECT CREATION VISIBILITY AND AGENT EMPTY TEXT
+    const CURRENT_VERSION = '5.9'; // FIX ORG ROLE PERMISSIONS FOR PROJECTS AND TASKS
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2136,44 +2141,64 @@ async function handleProjectFileSelect(event) {
     }
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
     // Check permission - owner, admin, or moderator can delete tasks
-    if (!canManageTasks()) return;
+    if (!canManageTasks()) {
+        alert('Недостаточно прав для удаления задачи');
+        return;
+    }
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
-    db.collection('tasks').doc(id).delete();
+    try {
+        await db.collection('tasks').doc(id).delete();
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        alert('Ошибка при удалении задачи: ' + error.message);
+    }
 }
 
-function deleteProject(id) {
+async function deleteProject(id) {
     // Check permission - only owner or admin can delete projects
-    if (!canManageProjects()) return;
+    if (!canManageProjects()) {
+        alert('Недостаточно прав для удаления проекта');
+        return;
+    }
 
     if (!confirm('Вы уверены? Все задачи этого проекта будут удалены.')) return;
 
-    // Delete project
-    db.collection('projects').doc(id).delete();
+    try {
+        // Delete project tasks first while the project still exists for org-role rule checks.
+        const tasksSnapshot = await db.collection('tasks').where('projectId', '==', id).get();
+        const batch = db.batch();
+        tasksSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        batch.delete(db.collection('projects').doc(id));
+        await batch.commit();
 
-    // Delete associated tasks
-    const projectTasks = state.tasks.filter(t => t.projectId === id);
-    projectTasks.forEach(t => {
-        db.collection('tasks').doc(t.id).delete();
-    });
-
-    if (state.activeProjectId === id) {
-        state.activeProjectId = null;
-        renderBoard();
+        if (state.activeProjectId === id) {
+            state.activeProjectId = null;
+            state.tasks = [];
+            renderBoard();
+        }
+    } catch (error) {
+        console.error('Error deleting project:', error);
+        alert('Ошибка при удалении проекта: ' + error.message);
     }
 }
 
 function updateTask(id, data) {
     // Check permission - owner, admin, or moderator can update tasks
-    if (!canManageTasks()) return;
+    if (!canManageTasks()) {
+        alert('Недостаточно прав для редактирования задачи');
+        return Promise.resolve();
+    }
 
     // Show loading state (button may be outside form)
     const submitBtn = document.querySelector('button[form="task-form"]') ||
         elements.taskForm.querySelector('button[type="submit"]');
     if (submitBtn) setButtonLoading(submitBtn, true, 'Сохранить');
 
-    db.collection('tasks').doc(id).update(data)
+    return db.collection('tasks').doc(id).update(data)
         .then(() => {
             console.log("✅ Задача успешно обновлена!");
             elements.taskModal.classList.remove('active');
@@ -2315,12 +2340,12 @@ function renderBoard() {
         elements.projectDesc.textContent = descText;
     }
 
-    elements.addTaskBtn.disabled = false;
-    elements.deleteProjectBtn.style.display = 'flex';
-    elements.deleteProjectBtn.onclick = () => {
+    elements.addTaskBtn.disabled = !canManageTasks();
+    elements.deleteProjectBtn.style.display = canManageProjects() ? 'flex' : 'none';
+    elements.deleteProjectBtn.onclick = canManageProjects() ? () => {
         playClickSound();
         deleteProject(activeProject.id);
-    };
+    } : null;
     if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'inline-flex';
 
     // Clear lists
@@ -2966,12 +2991,12 @@ function createTaskCard(task) {
         toolbarLeft.appendChild(attachBadge);
     }
 
-    // Right side: Edit & Delete buttons (admin only)
+    // Right side: Edit & Delete buttons (owner/admin/moderator)
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'toolbar-right';
 
 
-    if (state.role === 'admin') {
+    if (canManageTasks()) {
         toolbarRight.appendChild(editBtn);
         toolbarRight.appendChild(deleteBtn);
     }
@@ -4112,8 +4137,19 @@ function setupEventListeners() {
 
     async function createTask(title, assignee, deadline, status, assigneeEmail, description) {
         // Check permission: owner, admin, or moderator can create tasks
-        if (!canManageTasks()) return;
-        if (!state.activeProjectId) return;
+        if (!canManageTasks()) {
+            alert('❌ Недостаточно прав для создания задачи');
+            return;
+        }
+        if (!state.activeProjectId) {
+            alert('❌ Сначала выберите проект');
+            return;
+        }
+        const organizationId = getCurrentOrganizationId();
+        if (!organizationId) {
+            alert('❌ Организация ещё не загружена. Обновите страницу и попробуйте снова.');
+            return;
+        }
 
         // Show loading state on button (may be outside form)
         const submitBtn = document.querySelector('button[form="task-form"]') ||
@@ -4132,11 +4168,12 @@ function setupEventListeners() {
 
             await db.collection('tasks').add({
                 projectId: state.activeProjectId,
-                organizationId: state.organization?.id || null,
+                organizationId,
                 title,
                 description: description || '',
                 assignee: assignee || 'Не назначен',
                 assigneeEmail: assigneeEmail || '',
+                assigneeIds: selectedAssignees.map(a => a.id).filter(Boolean),
                 deadline,
                 status,
                 subStatus: 'assigned', // Default status for new system
@@ -4176,7 +4213,7 @@ function setupEventListeners() {
 
     // Event Listeners
     // ...
-    elements.taskForm.addEventListener('submit', (e) => {
+    elements.taskForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         playClickSound();
 
@@ -4199,17 +4236,18 @@ function setupEventListeners() {
             const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
 
             // Update existing task
-            updateTask(taskId, {
+            await updateTask(taskId, {
                 title,
                 description,
                 assignee,
                 assigneeEmail,
+                assigneeIds: selectedAssignees.map(a => a.id).filter(Boolean),
                 deadline,
                 attachments // Include attachments when updating
             });
         } else {
             // Create new task
-            createTask(title, assignee, deadline, status, assigneeEmail, description);
+            await createTask(title, assignee, deadline, status, assigneeEmail, description);
         }
     });
 
@@ -4787,7 +4825,7 @@ function renderUsersList() {
 
     // Sort: owner first, then by name
     const sortedUsers = [...state.users].sort((a, b) => {
-        const roleOrder = { owner: 0, admin: 1, moderator: 2, employee: 3 };
+        const roleOrder = { owner: 0, admin: 1, moderator: 2, employee: 3, reader: 3 };
         const aOrder = roleOrder[a.orgRole] ?? 3;
         const bOrder = roleOrder[b.orgRole] ?? 3;
         if (aOrder !== bOrder) return aOrder - bOrder;
@@ -4831,13 +4869,15 @@ function renderUsersList() {
             owner: '<i class="fa-solid fa-crown"></i>',
             admin: '<i class="fa-solid fa-user-shield"></i>',
             moderator: '<i class="fa-solid fa-user-pen"></i>',
-            employee: '<i class="fa-solid fa-user"></i>'
+            employee: '<i class="fa-solid fa-user"></i>',
+            reader: '<i class="fa-solid fa-user"></i>'
         };
         const roleNames = {
             owner: 'Владелец',
             admin: 'Админ',
             moderator: 'Модератор',
-            employee: 'Сотрудник'
+            employee: 'Читатель',
+            reader: 'Читатель'
         };
 
         // Role selector - only show if user can change this role
@@ -4850,7 +4890,7 @@ function renderUsersList() {
                 <select class="role-select" data-user-id="${user.id}" data-current-role="${userRole}">
                     ${isOwner ? `<option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>` : ''}
                     <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
-                    <option value="employee" ${userRole === 'employee' ? 'selected' : ''}>Сотрудник</option>
+                    <option value="employee" ${userRole === 'employee' || userRole === 'reader' ? 'selected' : ''}>Читатель</option>
                 </select>
             `;
         } else {
@@ -5300,6 +5340,7 @@ function addAssignee(user) {
     if (selectedAssignees.some(a => a.email === user.email)) return;
 
     selectedAssignees.push({
+        id: user.id,
         email: user.email,
         name: fullName
     });
@@ -5362,7 +5403,9 @@ function setSelectedAssignees(emails, names) {
     const nameList = names.split(',').map(n => n.trim()).filter(n => n);
 
     emailList.forEach((email, index) => {
+        const user = state.users.find(u => (u.email || '').toLowerCase() === email.toLowerCase());
         selectedAssignees.push({
+            id: user?.id || null,
             email: email,
             name: nameList[index] || email
         });
