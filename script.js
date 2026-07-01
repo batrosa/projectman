@@ -4042,26 +4042,39 @@ function setupEventListeners() {
     }
 
     // Forms
-    elements.projectForm.addEventListener('submit', (e) => {
+    elements.projectForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         playClickSound();
         const name = document.getElementById('p-name').value;
         const desc = document.getElementById('p-desc').value;
         const hasDeadline = document.getElementById('p-has-deadline').checked;
         const deadline = hasDeadline ? document.getElementById('p-deadline').value : null;
+        const submitBtn = elements.projectForm.querySelector('button[type="submit"]');
 
-        createProject(name, desc, deadline);
+        if (submitBtn) setButtonLoading(submitBtn, true, 'Создать проект');
 
-        // Reset form
-        elements.projectModal.classList.remove('active');
-        document.getElementById('p-has-deadline').checked = false;
-        document.getElementById('p-deadline-group').classList.remove('active');
+        try {
+            await createProject(name, desc, deadline);
+
+            // Reset form only after Firestore accepts the write.
+            elements.projectModal.classList.remove('active');
+            elements.projectForm.reset();
+            document.getElementById('p-has-deadline').checked = false;
+            document.getElementById('p-deadline-group').classList.remove('active');
+        } catch (error) {
+            console.error("Error creating project:", error);
+            alert("❌ Ошибка при создании проекта:\n\n" + (error.message || error));
+        } finally {
+            if (submitBtn) setButtonLoading(submitBtn, false, 'Создать проект');
+        }
     });
 
     // Logic
     function createProject(name, description, deadline = null) {
         // Check permission: only owner or admin can create projects
-        if (!canManageProjects()) return;
+        if (!canManageProjects()) {
+            return Promise.reject(new Error('Недостаточно прав для создания проекта'));
+        }
 
         const projectData = {
             name,
@@ -4074,7 +4087,7 @@ function setupEventListeners() {
             projectData.deadline = deadline;
         }
 
-        db.collection('projects').add(projectData).then((docRef) => {
+        return db.collection('projects').add(projectData).then((docRef) => {
             selectProject(docRef.id);
             closeSidebarOnMobile();
         });

@@ -59,6 +59,22 @@ service cloud.firestore {
       return userData.allowedProjects == null || userData.allowedProjects.size() == 0 || projectId in userData.allowedProjects;
     }
 
+    // Функция: Проверка роли пользователя именно в указанной организации
+    function hasOrgRole(orgId, roles) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null
+        && orgId != null
+        && userData.organizationId == orgId
+        && userData.orgRole in roles;
+    }
+
+    function projectBelongsToOrg(projectId, orgId) {
+      return projectId != null
+        && orgId != null
+        && exists(/databases/$(database)/documents/projects/$(projectId))
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == orgId;
+    }
+
     // Коллекция Users
     match /users/{userId} {
       // Читать могут все авторизованные (нужно для списков assignee), 
@@ -95,7 +111,7 @@ service cloud.firestore {
 
     // Функция: Пользователь — владелец организации (по своему orgRole) или админ организации
     function isOrgOwnerOrAdmin(orgId) {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin'];
+      return hasOrgRole(orgId, ['owner', 'admin']);
     }
 
     // Коллекция Organizations
@@ -120,7 +136,11 @@ service cloud.firestore {
     // Коллекция Projects
     match /projects/{projectId} {
       allow read: if isAdmin() || (request.auth != null && canViewProject(projectId));
-      allow write: if isAdmin(); // Создание/Редактирование/Удаление только Админ
+      allow create: if isAdmin() || hasOrgRole(request.resource.data.organizationId, ['owner', 'admin']);
+      allow update: if isAdmin()
+        || (hasOrgRole(resource.data.organizationId, ['owner', 'admin'])
+            && request.resource.data.organizationId == resource.data.organizationId);
+      allow delete: if isAdmin() || hasOrgRole(resource.data.organizationId, ['owner', 'admin']);
     }
 
     // Коллекция Tasks
@@ -133,8 +153,14 @@ service cloud.firestore {
       // 1. Админ может всё.
       // 2. Обычный пользователь (Reader) может только ОБНОВЛЯТЬ статус задачи (drag & drop) 
       // и ставить галочку "assigneeCompleted", но НЕ менять название/дедлайн/удалять.
-      allow create, delete: if isAdmin();
+      allow create: if isAdmin()
+        || (hasOrgRole(request.resource.data.organizationId, ['owner', 'admin', 'moderator'])
+            && projectBelongsToOrg(request.resource.data.projectId, request.resource.data.organizationId));
+      allow delete: if isAdmin() || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator']);
       allow update: if isAdmin()
+        || (hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
+            && request.resource.data.organizationId == resource.data.organizationId
+            && request.resource.data.projectId == resource.data.projectId)
         || (request.auth != null
             && canViewProject(resource.data.projectId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assigneeCompleted', 'reminderSent', 'subStatus', 'attachments']));
