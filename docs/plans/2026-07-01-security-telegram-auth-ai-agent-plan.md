@@ -432,11 +432,80 @@ First, check whether the Firestore emulator can actually run in this environment
 - **If Java is available**: `npm run test:rules` — expect PASS on all 8 tests (the original 3, plus the 3 create/leave tests, plus the 2 membersCount tests added above).
 - **If Java is NOT available**: attempt to install one before giving up, since this task is security-critical and worth the effort — e.g. `brew install openjdk` if Homebrew is present (`brew --version`), then retry. If installation isn't feasible in your environment either, fall back to careful manual/static tracing of the rules logic against every test case (as documented in this plan's corrected Step 4), and say so explicitly and honestly in your report — do not claim tests passed if they were never executed.
 
+**Step 5b: Third correction — the `create` rule is a full bypass of everything above (found by code-quality review, confirmed via a live emulator probe, not theoretical)**
+
+Code-quality review found and empirically confirmed (via their own throwaway emulator test using the exact shipped rules) that `users/{userId}`'s existing `allow create` rule was never touched by this task and only constrains `role`:
+
+```
+allow create: if request.auth != null && request.auth.uid == userId 
+  && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader');
+```
+
+Since Firestore evaluates a `.set(..., {merge:true})` call as a **`create`** (not `update`) whenever the target document doesn't yet exist, and `createOrganization()` in `script.js:598` explicitly does exactly this ("use set with merge to handle missing docs"), an attacker whose own `users/{uid}` doc doesn't yet exist (e.g. a freshly-registered account, before normal registration's own doc-creation write lands, or any doc that was ever deleted) can call:
+
+```js
+db.collection('users').doc(myUid).set({ role: 'reader', organizationId: 'victim-org', orgRole: 'owner' })
+```
+
+and it succeeds — full self-escalation, no ownership check, via a different write shape than everything fixed so far. This must be closed before any deploy.
+
+**Fix:** extend the `create` rule with the same rigor as the `update` fix — a narrow, `get()`-verified carve-out for the real `createOrganization()`-on-a-missing-doc shape, otherwise forbid `organizationId`/`orgRole` entirely at creation time (matching what real registration actually writes today: just `role: 'reader'` plus basic profile fields, never org fields).
+
+```
+function isSelfServiceOrgCreateAtDocCreation() {
+  return request.resource.data.keys().hasOnly(['organizationId', 'orgRole', 'email', 'displayName', 'role'])
+    && (!('role' in request.resource.data) || request.resource.data.role == 'reader')
+    && request.resource.data.orgRole == 'owner'
+    && exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
+    && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerId == request.auth.uid;
+}
+
+allow create: if request.auth != null && request.auth.uid == userId && (
+  (!request.resource.data.keys().hasAny(['organizationId', 'orgRole'])
+    && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader'))
+  || isSelfServiceOrgCreateAtDocCreation()
+);
+```
+
+This mirrors `isSelfServiceOrgCreate()`'s ownership tie exactly, just adapted for the create path (no `wasNotYetInOrg()` guard needed here — there's no prior document state to check against when creating one from nothing).
+
+Add these test cases to `firestore-tests/organizations.rules.test.js` (a 9th and 10th, plus consider splitting the file into nested `describe` blocks per code-quality review's suggestion — e.g. `describe("users create path")` / `describe("users update path")` / `describe("organizations doc")` — now that it's growing):
+
+```js
+it("blocks self-granting orgRole:'owner' via create() when the user doc doesn't exist yet (the bypass code-quality review found)", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("organizations").doc("victim-org").set({ ownerId: "victim", name: "Victim Org" });
+  });
+
+  const attacker = testEnv.authenticatedContext("attacker-no-doc").firestore();
+  await assertFails(
+    attacker.collection("users").doc("attacker-no-doc").set({
+      role: "reader", organizationId: "victim-org", orgRole: "owner",
+    })
+  );
+});
+
+it("allows the real createOrganization() write shape via create() when the caller actually owns the referenced org and their user doc doesn't exist yet", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("organizations").doc("new-org-2").set({ ownerId: "founder2", name: "New Org 2" });
+  });
+
+  const founder2 = testEnv.authenticatedContext("founder2").firestore();
+  await assertSucceeds(
+    founder2.collection("users").doc("founder2").set({
+      organizationId: "new-org-2", orgRole: "owner", email: "founder2@example.com", displayName: "Founder 2",
+    })
+  );
+});
+```
+
+Run `npm run test:rules` again (same Java/Homebrew approach as Step 5) — expect all 10 tests to pass. Do not consider this task done until this passes.
+
 **Step 6: Deploy and commit**
 
 1. Confirm Firebase project access is working (`projectman-96d3c` visible via MCP/CLI). If not yet available, skip the deploy sub-step and flag it as still needed — do not skip committing the code/rules/tests themselves.
-2. `firebase deploy --only firestore:rules` (from `/Users/teko/Desktop/projectman`, with the correct project selected) — once access is confirmed.
-3. `git add firestore.rules firestore-tests/ package.json firebase.json && git commit -m "fix: close organizations privilege-escalation gap in Firestore rules"`
+2. `firebase deploy --only firestore:rules` (from `/Users/teko/Desktop/projectman`, with the correct project selected) — once access is confirmed. **Do not deploy until Step 5b's fix is committed and all 10 tests pass** — deploying only the update-path fix would leave the create-path escalation live in production.
+3. `git add firestore.rules firestore-tests/ package.json firebase.json && git commit -m "fix: close organizations privilege-escalation gap in Firestore rules"` (if committing Step 5b separately: `git commit -m "fix: close create-path bypass of organizations privilege-escalation fix"`)
 
 ---
 
