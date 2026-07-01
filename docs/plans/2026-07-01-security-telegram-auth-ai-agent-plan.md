@@ -1140,6 +1140,27 @@ Note: unlike `~/Desktop/12`, there's no `waitUntil` import here — Vercel's Nod
 
 ---
 
+## Task 13b: Fix stored XSS in attachment/file-list rendering (found during Task 13, out of original scope)
+
+While implementing Task 13, a real stored-XSS vulnerability was found in **existing, unrelated code**: several functions in `script.js` render attachment filenames and URLs via `innerHTML` template-literal interpolation with zero escaping. Task 13's own new code deliberately used safe `textContent`/DOM-construction instead, which is what surfaced the contrast.
+
+**Confirmed vulnerable locations** (verify current line numbers before editing — they will have shifted after Task 13's edits):
+
+1. `showNoPreview(container, attachment)` (~line 448) — `attachment.url` in an `href`, `attachment.name` in a `download` attribute, both inside an `innerHTML` template literal. **Real cross-user risk**: `attachment` here comes from a task's already-persisted `attachments`/`completionProofs` array in Firestore — any authenticated user who can attach a file to a task controls this filename, and it renders in whichever other user later previews that attachment.
+2. `openFilesListModal(attachments)` (~line 464-533) — same pattern, `attachment.name` and `downloadUrl`/`attachment.url` interpolated into `item.innerHTML`. **Real cross-user risk**, same reasoning — this is the main "view a task's attached files" modal, seen by any teammate with access to that task.
+3. `renderAttachmentsList()` (~line 349) — `attachment.name` in `item.innerHTML`. Lower severity: this renders `pendingAttachments`, the CURRENT user's own not-yet-submitted upload queue (self-XSS only, since nobody else sees this state) — but fix for consistency and defense-in-depth, since these files do get promoted into the persisted `attachments` array on submit.
+4. The completion-proof equivalent of #3 (~line 3169, function rendering `completionProofAttachments`) — same self-XSS-only pattern as #3, same reasoning to fix anyway.
+
+**Do a full sweep, don't just patch these four**: `grep -n "attachment\.\(name\|url\)\|proof\.\(name\|url\)" script.js` and check every `innerHTML =`/`innerHTML +=` assignment in the file for any other place a Firestore-sourced filename, URL, comment, or user-supplied string gets interpolated without escaping. Also check `completionComment`, `revisionReason`, and any other free-text field that gets rendered — these are less obviously "filenames" but are equally attacker-controlled free text if they ever hit `innerHTML` unescaped.
+
+**Fix approach**: follow the exact pattern Task 13's own new code already established — replace `innerHTML` template-literal interpolation of any Firestore-sourced/user-controlled value with either (a) `document.createElement` + `.textContent` for the dynamic parts (keep static structural HTML via `innerHTML` only for the parts that contain zero interpolated data), or (b) a small shared `escapeHtml(str)` helper (`.replace` chain for `&`, `<`, `>`, `"`, `'`) applied to every interpolated value if rewriting to full DOM construction is too invasive for a given function. Prefer (a) for consistency with the rest of the codebase's existing safe patterns (e.g., the XSS-safe `el(tag, {className, text})`-style helpers used elsewhere in this session's other project) — but use your judgment per function; some of these functions build fairly complex nested markup where a full rewrite might be riskier than a targeted `escapeHtml()` call on just the 2-3 interpolated fields. Do NOT change the visual output/styling — this is a security fix, not a redesign.
+
+**Verification**: after fixing, manually construct a test case — create a task, attach/simulate an attachment with `name: '<img src=x onerror=alert(1)>.pdf'` (via direct Firestore write in a test, bypassing the actual upload UI, since Cloudinary itself may also sanitize/reject certain filenames — the point is to verify the RENDERING code is safe regardless of what upstream validation does), then verify it renders as inert, literal text (visible as the raw string, not executed) when displayed through each fixed function. This mirrors the XSS verification methodology already used earlier in this project's sibling engine work (inserting a literal payload and confirming inert rendering).
+
+**Commit:** `git commit -m "fix: escape user-controlled attachment names/URLs before innerHTML rendering (stored XSS)"`
+
+---
+
 ## Task 14: Global AI agent chat endpoint
 
 **Files:**
