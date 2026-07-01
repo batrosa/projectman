@@ -1562,6 +1562,7 @@ const elements = {
     authScreen: document.getElementById('auth-screen'),
     roleScreen: document.getElementById('role-screen'),
     loginError: document.getElementById('login-error'),
+    telegramBotLoginBtn: document.getElementById('telegram-bot-login-btn'),
     userEmailDisplay: document.getElementById('user-email-display'),
 
     // Mobile
@@ -3885,6 +3886,12 @@ function setupEventListeners() {
             window.startTelegramLogin();
         });
     }
+    if (elements.telegramBotLoginBtn) {
+        elements.telegramBotLoginBtn.addEventListener('click', () => {
+            playClickSound();
+            window.startTelegramBotLogin();
+        });
+    }
 
     // Modals
     elements.addProjectBtn.addEventListener('click', () => {
@@ -4383,6 +4390,20 @@ function setupEventListeners() {
 
 // Authentication Functions
 
+let telegramBotLoginAttempt = 0;
+
+function setLoginErrorMessage(message) {
+    if (elements.loginError) elements.loginError.textContent = message || '';
+}
+
+function setTelegramBotLoginBusy(isBusy) {
+    if (elements.telegramBotLoginBtn) elements.telegramBotLoginBtn.disabled = isBusy;
+}
+
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Telegram Login Widget callback (see index.html data-onauth="onTelegramAuth(user)").
 // Sends the widget's signed payload to the server for verification, then signs
 // in with the resulting Firebase custom token. onAuthStateChanged takes it from there.
@@ -4435,6 +4456,74 @@ window.startTelegramLogin = function startTelegramLogin() {
         window.onTelegramAuth(user);
     });
 };
+
+window.startTelegramBotLogin = async function startTelegramBotLogin() {
+    const attemptId = ++telegramBotLoginAttempt;
+    let botWindow = null;
+
+    try {
+        setTelegramBotLoginBusy(true);
+        setLoginErrorMessage('Открываю Telegram-бота...');
+
+        // Open synchronously from the click handler path; opening after await is
+        // commonly blocked by browsers as a non-user-initiated popup.
+        botWindow = window.open('', '_blank');
+        if (botWindow) {
+            botWindow.opener = null;
+            botWindow.document.title = 'ProjectMan Telegram';
+        }
+
+        const res = await fetch('/api/telegram-bot-login-start', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok || !data.code || !data.botUrl) {
+            throw new Error(data.error || 'Не удалось начать вход через бота.');
+        }
+
+        if (botWindow) {
+            botWindow.location.href = data.botUrl;
+            setLoginErrorMessage('Нажмите Start в Telegram-боте. После подтверждения вход завершится автоматически.');
+        } else {
+            setLoginErrorMessage(`Откройте Telegram-бота вручную: ${data.botUrl}`);
+        }
+
+        await pollTelegramBotLogin(data.code, data.expiresAt, attemptId);
+    } catch (error) {
+        if (botWindow && !botWindow.closed) botWindow.close();
+        console.error('Telegram bot login failed', error);
+        if (attemptId === telegramBotLoginAttempt) {
+            setLoginErrorMessage(error.message || 'Не удалось войти через Telegram-бота.');
+        }
+    } finally {
+        if (attemptId === telegramBotLoginAttempt) {
+            setTelegramBotLoginBusy(false);
+        }
+    }
+};
+
+async function pollTelegramBotLogin(code, expiresAt, attemptId) {
+    const expiresAtMs = Date.parse(expiresAt || '');
+    const deadlineMs = Number.isFinite(expiresAtMs) ? expiresAtMs : Date.now() + 5 * 60 * 1000;
+
+    while (attemptId === telegramBotLoginAttempt && Date.now() < deadlineMs) {
+        await wait(2000);
+        const res = await fetch('/api/telegram-bot-login-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (data.status === 'pending') continue;
+        if (res.ok && data.ok && data.status === 'confirmed' && data.token) {
+            setLoginErrorMessage('');
+            await firebase.auth().signInWithCustomToken(data.token);
+            return;
+        }
+        throw new Error(data.error || 'Telegram-бот не подтвердил вход.');
+    }
+
+    throw new Error('Ссылка для входа устарела. Нажмите «Войти через бота» ещё раз.');
+}
 
 function onAuthStateChanged(user) {
     if (user) {
@@ -7625,6 +7714,3 @@ function initAgentChat() {
 }
 
 // ========== END GLOBAL AI AGENT CHAT ==========
-
-
-

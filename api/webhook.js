@@ -1,3 +1,9 @@
+import { adminDb } from "../lib/firebase-admin.js";
+import {
+    TELEGRAM_LOGIN_SESSION_COLLECTION,
+    isValidTelegramLoginCode,
+} from "../lib/telegram-bot-login.js";
+
 // Firebase Admin for serverless
 const FIREBASE_PROJECT_ID = 'projectman-96d3c';
 
@@ -67,14 +73,25 @@ export default async function handler(req, res) {
             }
 
             const chatId = message.chat.id;
-            const text = (message.text || '').trim().toUpperCase();
+            const rawText = (message.text || '').trim();
+            const text = rawText.toUpperCase();
             const firstName = message.from?.first_name || 'друг';
             const username = message.from?.username || null;
+            const botLoginMatch = rawText.match(/^\/start(?:@[A-Za-z0-9_]+)?\s+login_([A-Za-z0-9_-]{16,64})$/i);
 
             let replyText = '';
 
-            if (text === '/START') {
-                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectMan. После входа разрешите боту отправлять сообщения — так будут работать уведомления о задачах.\n\nЕсли на сайте видно «Bot domain invalid», попросите администратора добавить домен приложения в @BotFather → Bot Settings → Web Login для @projectman_notify_bot.`;
+            if (botLoginMatch) {
+                const loginResult = await confirmBotLoginSession(botLoginMatch[1], message);
+                if (loginResult.ok) {
+                    replyText = `✅ Вход подтвержден.\n\nВернитесь в ProjectMan — окно входа завершится автоматически.`;
+                } else {
+                    replyText = loginResult.reason === 'server'
+                        ? `❌ Не удалось подтвердить вход: сервер временно недоступен. Попробуйте ещё раз.`
+                        : `❌ Ссылка для входа устарела или уже использована.\n\nВернитесь в ProjectMan и нажмите «Войти через бота» ещё раз.`;
+                }
+            } else if (text === '/START') {
+                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectMan. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
             } else if (/^[A-Z0-9]{6}$/.test(text)) {
                 if (!firebaseApiKey) {
                     replyText = `❌ Подключение по коду сейчас недоступно: сервер не настроен. Используйте вход через кнопку Telegram на сайте ProjectMan.`;
@@ -129,4 +146,44 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).send('Bot is running');
+}
+
+async function confirmBotLoginSession(code, message) {
+    if (!isValidTelegramLoginCode(code)) return { ok: false, reason: 'invalid' };
+
+    const from = message.from || {};
+    const telegramId = from.id ? String(from.id) : '';
+    const chatId = message.chat?.id ? String(message.chat.id) : telegramId;
+    if (!telegramId) return { ok: false, reason: 'missing_user' };
+
+    try {
+        const ref = adminDb().collection(TELEGRAM_LOGIN_SESSION_COLLECTION).doc(code);
+        const doc = await ref.get();
+        if (!doc.exists) return { ok: false, reason: 'missing' };
+
+        const session = doc.data() || {};
+        const expiresAtMs = Date.parse(session.expiresAt || '');
+        if (session.status !== 'pending') return { ok: false, reason: session.status || 'used' };
+        if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+            await ref.set({ status: 'expired', expiredAt: new Date().toISOString() }, { merge: true });
+            return { ok: false, reason: 'expired' };
+        }
+
+        await ref.set(
+            {
+                status: 'confirmed',
+                telegramId,
+                telegramChatId: chatId,
+                telegramUsername: from.username || null,
+                firstName: from.first_name || null,
+                lastName: from.last_name || null,
+                confirmedAt: new Date().toISOString(),
+            },
+            { merge: true }
+        );
+        return { ok: true };
+    } catch (error) {
+        console.error('webhook: bot login confirmation failed:', error);
+        return { ok: false, reason: 'server' };
+    }
 }
