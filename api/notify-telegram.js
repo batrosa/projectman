@@ -36,16 +36,9 @@ export default async function handler(request, response) {
         return response.status(401).json({ error: 'Unauthorized' });
     }
 
-    let callerOrgId;
     try {
         const userDoc = await adminDb().collection('users').doc(decoded.uid).get();
         if (!userDoc.exists) return response.status(403).json({ error: 'Unknown caller' });
-        // organizationId may legitimately be null/undefined: a large share of
-        // real accounts predate the multi-tenant org feature and were never
-        // migrated into an organization. Treat "no org" as its own tenant
-        // (null) rather than rejecting outright — the recipient check below
-        // still scopes the send to same-tenant users only.
-        callerOrgId = userDoc.data().organizationId ?? null;
     } catch (error) {
         console.error('notify-telegram: failed to load caller user doc', error);
         return response.status(500).json({ ok: false, error: 'Failed to verify caller' });
@@ -64,14 +57,15 @@ export default async function handler(request, response) {
         return response.status(400).json({ error: 'chatId and text are required' });
     }
 
-    // Open-relay guard: the caller may only message a Telegram chatId that
-    // belongs to a user in their own tenant. Without this, any authenticated
-    // user (of any org) could relay arbitrary text to any chatId that happens
-    // to exist in the users collection — this endpoint was previously
-    // reachable with no auth at all, so this check plus the idToken
-    // requirement above together close that hole. "Tenant" includes the
-    // legacy no-org case (organizationId null/undefined on both sides), so
-    // pre-org accounts can still notify each other, e.g. self-assignment.
+    // Anti-open-relay guard: the caller (already authenticated + confirmed to be
+    // a real ProjectMan user above) may only message a Telegram chatId that
+    // belongs to a *registered* ProjectMan user. We deliberately do NOT require
+    // the recipient to share the caller's organizationId. In production the vast
+    // majority of real team members were never migrated into an organization
+    // (organizationId is null on their accounts) while the owner logs in under a
+    // Telegram account tied to a different org id — so an org-equality check
+    // silently 403'd every task/status notification. Requiring a known
+    // recipient still prevents relaying arbitrary text to unknown chat ids.
     let recipientSnap;
     try {
         recipientSnap = await adminDb()
@@ -83,10 +77,8 @@ export default async function handler(request, response) {
         console.error('notify-telegram: failed to look up recipient', error);
         return response.status(500).json({ ok: false, error: 'Failed to verify recipient' });
     }
-    const recipientDoc = recipientSnap.empty ? null : recipientSnap.docs[0];
-    const recipientOrgId = recipientDoc ? (recipientDoc.data().organizationId ?? null) : undefined;
-    if (!recipientDoc || recipientOrgId !== callerOrgId) {
-        return response.status(403).json({ ok: false, error: 'Recipient not in your organization' });
+    if (recipientSnap.empty) {
+        return response.status(403).json({ ok: false, error: 'Unknown recipient' });
     }
 
     const parseMode = body.parseMode ? String(body.parseMode) : undefined;

@@ -2820,49 +2820,56 @@ body.light-mode .project-checkbox-item:hover {
     background: rgba(0, 0, 0, 0.02);
 }
 
-/* New Status Badges System */
+/* New Status Badges System — solid, high-contrast chips with distinct colours
+   per status. The previous tinted style used two near-identical oranges for
+   "назначено" and "в работе", so the status was hard to read at a glance. */
 :root {
-    --status-assigned: #e67e22;
-    --status-in-work: #f39c12;
-    --status-completed: #27ae60;
+    --status-assigned: #e67e22;  /* orange */
+    --status-in-work: #3b82f6;   /* blue   */
+    --status-completed: #16a34a; /* green  */
 }
 
 .status-badge {
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 6px;
     transition: all 0.2s;
     user-select: none;
-    border: 1px solid transparent;
+    border: none;
+    color: #fff;
     width: fit-content;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .status-badge:hover {
     transform: translateY(-1px);
-    filter: brightness(1.1);
+    filter: brightness(1.08);
+}
+
+.status-badge i {
+    color: #fff;
 }
 
 .status-assigned {
-    background: rgba(230, 126, 34, 0.15);
-    color: #e67e22;
-    border-color: rgba(230, 126, 34, 0.3);
+    background: var(--status-assigned);
+    color: #fff;
 }
 
 .status-in-work {
-    background: rgba(243, 156, 18, 0.15);
-    color: #f39c12;
-    border-color: rgba(243, 156, 18, 0.3);
+    background: var(--status-in-work);
+    color: #fff;
 }
 
 .status-completed {
-    background: rgba(46, 204, 113, 0.15);
-    color: #2ecc71;
-    border-color: rgba(46, 204, 113, 0.3);
+    background: var(--status-completed);
+    color: #fff;
 }
 
 /* ========== STATUS DROPDOWN ========== */

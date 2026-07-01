@@ -3187,14 +3187,26 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                 const taskDoc = await db.collection('tasks').doc(taskId).get();
                 if (taskDoc.exists) {
                     const taskData = taskDoc.data();
-                    const creatorEmail = taskData.createdByEmail;
-                    if (creatorEmail) {
+                    // Resolve the creator's Telegram chat id by uid first (the
+                    // creator may be a Telegram-login user with no email), email
+                    // as fallback.
+                    const chatId = resolveAssigneeChatId({
+                        id: taskData.createdByUid,
+                        email: taskData.createdByEmail
+                    });
+                    if (chatId) {
                         const project = state.projects.find(p => p.id === taskData.projectId);
                         const projectName = project?.name || 'Проект';
-                        await sendTelegramCompletionNotification(creatorEmail, taskData.title, projectName, completedByName);
-                        console.log('Completion notification sent to:', creatorEmail);
+                        const message = `✅ <b>Задача выполнена!</b>
+
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Задача:</b> ${escapeHtmlForTelegram(taskData.title)}
+<b>Исполнитель:</b> ${escapeHtmlForTelegram(completedByName)}
+
+Пожалуйста, проверьте выполнение задачи.`;
+                        await sendTelegramNotification(chatId, message);
                     } else {
-                        console.log('No createdByEmail for task, notification not sent');
+                        console.log('Creator has no linked Telegram, completion notification skipped');
                     }
                 }
             } catch (err) {
@@ -4248,7 +4260,8 @@ function setupEventListeners() {
                 attachments: attachments, // Add attachments array
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 createdBy: createdBy,
-                createdByEmail: state.currentUser?.email || ''
+                createdByEmail: state.currentUser?.email || '',
+                createdByUid: state.currentUser?.uid || null
             });
 
             // Notify every assignee by uid (email fallback) so self-assignment
