@@ -199,6 +199,28 @@ describe("Telegram bot login flow", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("sets the Telegram webhook through the protected setup path", async () => {
+    const res = mockResponse();
+    await webhookHandler({
+      method: "POST",
+      query: { setup: "telegram" },
+      headers: { "x-setup-secret": "test-webhook-secret" },
+      body: {},
+    }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true });
+    expect(fetch).toHaveBeenCalledWith("https://api.telegram.org/bottest-token/setWebhook", expect.objectContaining({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }));
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+      url: "https://projectmanteko.vercel.app/api/webhook",
+      secret_token: "test-webhook-secret",
+      allowed_updates: ["message"],
+    });
+  });
+
   it("mints a Firebase custom token after webhook confirmation and consumes the session", async () => {
     const code = "abcdefghijklmnop";
     state.db = makeFakeDb({

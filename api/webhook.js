@@ -51,7 +51,7 @@ export default async function handler(req, res) {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Setup-Secret');
     
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
@@ -63,6 +63,11 @@ export default async function handler(req, res) {
     }
 
     const telegramApi = `https://api.telegram.org/bot${token}`;
+
+    if (req.method === 'POST' && getQueryParam(req, 'setup') === 'telegram') {
+        return setupTelegramWebhook(req, res, telegramApi, webhookSecret);
+    }
+
     const requestWebhookSecret = req.headers?.['x-telegram-bot-api-secret-token'];
     const hasVerifiedWebhookSecret = Boolean(webhookSecret) && requestWebhookSecret === webhookSecret;
 
@@ -160,6 +165,41 @@ export default async function handler(req, res) {
     return res.status(200).send('Bot is running');
 }
 
+async function setupTelegramWebhook(req, res, telegramApi, webhookSecret) {
+    const setupSecret = req.headers?.['x-setup-secret'];
+    if (!webhookSecret) {
+        return res.status(503).json({ ok: false, error: 'TELEGRAM_WEBHOOK_SECRET is not configured' });
+    }
+    if (setupSecret !== webhookSecret) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const response = await fetch(`${telegramApi}/setWebhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: 'https://projectmanteko.vercel.app/api/webhook',
+                secret_token: webhookSecret,
+                allowed_updates: ['message'],
+            }),
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body?.ok) {
+            console.error('webhook: setWebhook failed:', {
+                status: response.status,
+                errorCode: body?.error_code || null,
+                description: body?.description || response.statusText,
+            });
+            return res.status(502).json({ ok: false, error: 'Telegram setWebhook failed' });
+        }
+        return res.status(200).json({ ok: true, description: body.description || null });
+    } catch (error) {
+        console.error('webhook: setWebhook request failed:', error);
+        return res.status(502).json({ ok: false, error: 'Telegram setWebhook request failed' });
+    }
+}
+
 async function confirmBotLoginSession(code, message) {
     if (!isValidTelegramLoginCode(code)) return { ok: false, reason: 'invalid' };
 
@@ -197,5 +237,17 @@ async function confirmBotLoginSession(code, message) {
     } catch (error) {
         console.error('webhook: bot login confirmation failed:', error);
         return { ok: false, reason: 'server' };
+    }
+}
+
+function getQueryParam(req, name) {
+    if (req.query && Object.prototype.hasOwnProperty.call(req.query, name)) {
+        return Array.isArray(req.query[name]) ? req.query[name][0] : req.query[name];
+    }
+    try {
+        const url = new URL(req.url || '/', 'https://projectmanteko.vercel.app');
+        return url.searchParams.get(name);
+    } catch {
+        return null;
     }
 }
