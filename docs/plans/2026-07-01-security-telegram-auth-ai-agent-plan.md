@@ -12,7 +12,11 @@ Design doc: `docs/plans/2026-07-01-security-telegram-auth-ai-agent-design.md`
 
 ---
 
-## Task 0: Verify the actual Firestore data model before writing queries
+## Task 0: Verify the actual Firestore data model before writing queries — CONFIRMED
+
+**Resolved (2026-07-01):** queried the live `projectman-96d3c` Firestore directly via the Firebase MCP tools. Both `projects` and `tasks` documents carry `organizationId` directly, confirmed on all sampled documents including the oldest `projects` docs (createdAt 2025-11-24, the earliest in the collection) — the field has been present since before any of this plan's other changes, no backfill needed. Task 14's `db.collection('projects').where('organizationId', '==', organizationId)` / same for `tasks` can proceed exactly as designed.
+
+Original task text below, kept for history:
 
 The AI agent (Task 13) needs to query `projects` and `tasks` by organization. It is **not yet confirmed** whether `projects`/`tasks` documents carry an `organizationId` field today — `readme.md`'s schema predates the `organizations` collection. Do not guess; confirm first.
 
