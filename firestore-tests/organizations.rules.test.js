@@ -16,117 +16,149 @@ afterAll(async () => {
 });
 
 describe("organizations privilege escalation", () => {
-  it("blocks a user from self-granting orgRole=owner on an arbitrary org", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("attacker").set({ role: "reader" });
-      await ctx.firestore().collection("organizations").doc("victim-org").set({ ownerId: "victim", name: "Victim Org" });
-    });
-
-    const attacker = testEnv.authenticatedContext("attacker").firestore();
-    await assertFails(
-      attacker.collection("users").doc("attacker").update({
-        organizationId: "victim-org",
-        orgRole: "owner",
-      })
-    );
-  });
-
-  it("allows a user to self-join an org with orgRole=employee only", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("newbie").set({ role: "reader" });
-      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org" });
-    });
-
-    const newbie = testEnv.authenticatedContext("newbie").firestore();
-    await assertSucceeds(
-      newbie.collection("users").doc("newbie").update({
-        organizationId: "some-org",
-        orgRole: "employee",
-      })
-    );
-  });
-
-  it("blocks reading/writing organizations doc fields by non-owner non-admin", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("bystander").set({ role: "reader", orgRole: "employee", organizationId: "some-org" });
-      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org" });
-    });
-
-    const bystander = testEnv.authenticatedContext("bystander").firestore();
-    await assertFails(
-      bystander.collection("organizations").doc("some-org").update({ name: "Hijacked" })
-    );
-  });
-
-  it("allows the real createOrganization() write shape (organizationId + orgRole:'owner' + email + displayName) when the caller actually owns the referenced org", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("founder").set({ role: "reader" });
-      await ctx.firestore().collection("organizations").doc("new-org").set({ ownerId: "founder", name: "New Org" });
-    });
-
-    const founder = testEnv.authenticatedContext("founder").firestore();
-    await assertSucceeds(
-      founder.collection("users").doc("founder").update({
-        organizationId: "new-org",
-        orgRole: "owner",
-        email: "founder@example.com",
-        displayName: "Founder",
-      })
-    );
-  });
-
-  it("blocks self-granting orgRole:'owner' by pointing organizationId at an org the caller does not own", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("faker").set({ role: "reader" });
-      await ctx.firestore().collection("organizations").doc("real-org").set({ ownerId: "realowner", name: "Real Org" });
-    });
-
-    const faker = testEnv.authenticatedContext("faker").firestore();
-    await assertFails(
-      faker.collection("users").doc("faker").update({
-        organizationId: "real-org",
-        orgRole: "owner",
-      })
-    );
-  });
-
-  it("allows the real leaveOrganization() write shape (organizationId + orgRole both set to null)", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("leaver").set({
-        role: "reader", organizationId: "some-org", orgRole: "employee",
+  describe("users update path", () => {
+    it("blocks a user from self-granting orgRole=owner on an arbitrary org", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("attacker").set({ role: "reader" });
+        await ctx.firestore().collection("organizations").doc("victim-org").set({ ownerId: "victim", name: "Victim Org" });
       });
+
+      const attacker = testEnv.authenticatedContext("attacker").firestore();
+      await assertFails(
+        attacker.collection("users").doc("attacker").update({
+          organizationId: "victim-org",
+          orgRole: "owner",
+        })
+      );
     });
 
-    const leaver = testEnv.authenticatedContext("leaver").firestore();
-    await assertSucceeds(
-      leaver.collection("users").doc("leaver").update({ organizationId: null, orgRole: null })
-    );
+    it("allows a user to self-join an org with orgRole=employee only", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("newbie").set({ role: "reader" });
+        await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org" });
+      });
+
+      const newbie = testEnv.authenticatedContext("newbie").firestore();
+      await assertSucceeds(
+        newbie.collection("users").doc("newbie").update({
+          organizationId: "some-org",
+          orgRole: "employee",
+        })
+      );
+    });
+
+    it("allows the real createOrganization() write shape (organizationId + orgRole:'owner' + email + displayName) when the caller actually owns the referenced org", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("founder").set({ role: "reader" });
+        await ctx.firestore().collection("organizations").doc("new-org").set({ ownerId: "founder", name: "New Org" });
+      });
+
+      const founder = testEnv.authenticatedContext("founder").firestore();
+      await assertSucceeds(
+        founder.collection("users").doc("founder").update({
+          organizationId: "new-org",
+          orgRole: "owner",
+          email: "founder@example.com",
+          displayName: "Founder",
+        })
+      );
+    });
+
+    it("blocks self-granting orgRole:'owner' by pointing organizationId at an org the caller does not own", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("faker").set({ role: "reader" });
+        await ctx.firestore().collection("organizations").doc("real-org").set({ ownerId: "realowner", name: "Real Org" });
+      });
+
+      const faker = testEnv.authenticatedContext("faker").firestore();
+      await assertFails(
+        faker.collection("users").doc("faker").update({
+          organizationId: "real-org",
+          orgRole: "owner",
+        })
+      );
+    });
+
+    it("allows the real leaveOrganization() write shape (organizationId + orgRole both set to null)", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("leaver").set({
+          role: "reader", organizationId: "some-org", orgRole: "employee",
+        });
+      });
+
+      const leaver = testEnv.authenticatedContext("leaver").firestore();
+      await assertSucceeds(
+        leaver.collection("users").doc("leaver").update({ organizationId: null, orgRole: null })
+      );
+    });
   });
 
-  it("allows a plain employee to bump membersCount by exactly 1 on the org they just joined (real joinOrganization() follow-up write)", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("joiner").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
-      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+  describe("users create path", () => {
+    it("blocks self-granting orgRole:'owner' via create() when the user doc doesn't exist yet (the bypass code-quality review found)", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("organizations").doc("victim-org").set({ ownerId: "victim", name: "Victim Org" });
+      });
+
+      const attacker = testEnv.authenticatedContext("attacker-no-doc").firestore();
+      await assertFails(
+        attacker.collection("users").doc("attacker-no-doc").set({
+          role: "reader", organizationId: "victim-org", orgRole: "owner",
+        })
+      );
     });
 
-    const joiner = testEnv.authenticatedContext("joiner").firestore();
-    await assertSucceeds(
-      joiner.collection("organizations").doc("some-org").update({ membersCount: 2 })
-    );
+    it("allows the real createOrganization() write shape via create() when the caller actually owns the referenced org and their user doc doesn't exist yet", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("organizations").doc("new-org-2").set({ ownerId: "founder2", name: "New Org 2" });
+      });
+
+      const founder2 = testEnv.authenticatedContext("founder2").firestore();
+      await assertSucceeds(
+        founder2.collection("users").doc("founder2").set({
+          organizationId: "new-org-2", orgRole: "owner", email: "founder2@example.com", displayName: "Founder 2",
+        })
+      );
+    });
   });
 
-  it("blocks a plain employee from changing membersCount by more than 1 or touching other org fields", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("joiner2").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
-      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+  describe("organizations doc", () => {
+    it("blocks reading/writing organizations doc fields by non-owner non-admin", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("bystander").set({ role: "reader", orgRole: "employee", organizationId: "some-org" });
+        await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org" });
+      });
+
+      const bystander = testEnv.authenticatedContext("bystander").firestore();
+      await assertFails(
+        bystander.collection("organizations").doc("some-org").update({ name: "Hijacked" })
+      );
     });
 
-    const joiner2 = testEnv.authenticatedContext("joiner2").firestore();
-    await assertFails(
-      joiner2.collection("organizations").doc("some-org").update({ membersCount: 5 })
-    );
-    await assertFails(
-      joiner2.collection("organizations").doc("some-org").update({ membersCount: 2, name: "Renamed" })
-    );
+    it("allows a plain employee to bump membersCount by exactly 1 on the org they just joined (real joinOrganization() follow-up write)", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("joiner").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
+        await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+      });
+
+      const joiner = testEnv.authenticatedContext("joiner").firestore();
+      await assertSucceeds(
+        joiner.collection("organizations").doc("some-org").update({ membersCount: 2 })
+      );
+    });
+
+    it("blocks a plain employee from changing membersCount by more than 1 or touching other org fields", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("joiner2").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
+        await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+      });
+
+      const joiner2 = testEnv.authenticatedContext("joiner2").firestore();
+      await assertFails(
+        joiner2.collection("organizations").doc("some-org").update({ membersCount: 5 })
+      );
+      await assertFails(
+        joiner2.collection("organizations").doc("some-org").update({ membersCount: 2, name: "Renamed" })
+      );
+    });
   });
 });
