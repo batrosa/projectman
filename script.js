@@ -4386,6 +4386,15 @@ window.onTelegramAuth = async function onTelegramAuth(telegramUser) {
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || 'Telegram auth failed');
+        if (data.telegramMessage && data.telegramMessage.ok === false) {
+            const detail = data.telegramMessage.description || data.telegramMessage.error || 'неизвестная ошибка Telegram';
+            console.warn('Telegram login message was not delivered:', data.telegramMessage);
+            if (elements.loginError) {
+                elements.loginError.textContent = `Вход выполнен, но сообщение в Telegram не отправлено: ${detail}`;
+            }
+        } else if (elements.loginError) {
+            elements.loginError.textContent = '';
+        }
         await firebase.auth().signInWithCustomToken(data.token);
     } catch (error) {
         console.error('Telegram login failed', error);
@@ -7582,7 +7591,6 @@ function initAgentChat() {
 }
 
 // ========== END GLOBAL AI AGENT CHAT ==========
-
 
 
 

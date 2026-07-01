@@ -29,6 +29,7 @@ export default async function handler(request, response) {
 
   let customToken;
   let isNewUser;
+  let telegramMessage;
   try {
     const db = adminDb();
     const usersRef = db.collection("users");
@@ -73,12 +74,49 @@ export default async function handler(request, response) {
     }
 
     customToken = await adminAuth().createCustomToken(uid);
+    telegramMessage = await sendLoginConfirmation(botToken, telegramId);
   } catch (error) {
     console.error("Telegram auth: Firestore/Admin SDK failure:", error);
     return response.status(500).json({ error: "Internal error during authentication" });
   }
 
-  return response.status(200).json({ ok: true, token: customToken, isNewUser });
+  return response.status(200).json({ ok: true, token: customToken, isNewUser, telegramMessage });
+}
+
+async function sendLoginConfirmation(botToken, telegramId) {
+  try {
+    const telegramResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: telegramId,
+        text: "✅ Вход в ProjectMan выполнен. Telegram-уведомления подключены.",
+      }),
+    });
+
+    let telegramBody = null;
+    try {
+      telegramBody = await telegramResponse.json();
+    } catch {
+      telegramBody = null;
+    }
+
+    if (!telegramResponse.ok || !telegramBody?.ok) {
+      const result = {
+        ok: false,
+        errorCode: telegramBody?.error_code || telegramResponse.status,
+        description: telegramBody?.description || telegramResponse.statusText || "Unknown Telegram error",
+      };
+      console.error("Telegram auth: login confirmation failed:", result);
+      return result;
+    }
+
+    return { ok: true, messageId: telegramBody.result?.message_id || null };
+  } catch (error) {
+    const result = { ok: false, error: "Failed to reach Telegram", description: String(error.message || error) };
+    console.error("Telegram auth: login confirmation failed:", result);
+    return result;
+  }
 }
 
 async function parseJsonBody(request) {

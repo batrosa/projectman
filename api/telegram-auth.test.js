@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import crypto from "node:crypto";
 
 const BOT_TOKEN = "test-bot-token";
@@ -86,6 +86,15 @@ describe("POST /api/telegram-auth", () => {
     process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
     state.db = makeFakeDb();
     state.createCustomToken = vi.fn(async (uid) => `custom-token-for-${uid}`);
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 42 } }),
+    })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("rejects non-POST methods", async () => {
@@ -124,7 +133,16 @@ describe("POST /api/telegram-auth", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.isNewUser).toBe(true);
     expect(res.body.token).toBe("custom-token-for-tg_222");
+    expect(res.body.telegramMessage).toEqual({ ok: true, messageId: 42 });
     expect(state.createCustomToken).toHaveBeenCalledWith("tg_222");
+    expect(fetch).toHaveBeenCalledWith(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, expect.objectContaining({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }));
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+      chat_id: "222",
+      text: "✅ Вход в ProjectMan выполнен. Telegram-уведомления подключены.",
+    });
 
     const created = state.db.users.get("tg_222");
     expect(created.role).toBe("reader");
@@ -192,6 +210,35 @@ describe("POST /api/telegram-auth", () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.body).toEqual({ error: "Internal error during authentication" });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("keeps login successful but returns details when the Telegram confirmation message fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      json: async () => ({
+        ok: false,
+        error_code: 403,
+        description: "Forbidden: bot can't initiate conversation with a user",
+      }),
+    })));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const payload = signPayload({ id: 666, first_name: "Ivan", auth_date: Math.floor(Date.now() / 1000) });
+    const res = mockResponse();
+    await handler({ method: "POST", body: payload }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.token).toBe("custom-token-for-tg_666");
+    expect(res.body.telegramMessage).toMatchObject({
+      ok: false,
+      errorCode: 403,
+      description: "Forbidden: bot can't initiate conversation with a user",
+    });
 
     consoleErrorSpy.mockRestore();
   });
