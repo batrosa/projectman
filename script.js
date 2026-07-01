@@ -1537,10 +1537,7 @@ const elements = {
     authOverlay: document.getElementById('auth-overlay'),
     authScreen: document.getElementById('auth-screen'),
     roleScreen: document.getElementById('role-screen'),
-    loginForm: document.getElementById('login-form'),
-    registerForm: document.getElementById('register-form'),
     loginError: document.getElementById('login-error'),
-    registerError: document.getElementById('register-error'),
     userEmailDisplay: document.getElementById('user-email-display'),
 
     // Mobile
@@ -3912,94 +3909,6 @@ function setupEventListeners() {
         });
     }
 
-    // Auth - Login/Register toggle
-    document.getElementById('show-register').addEventListener('click', (e) => {
-        playClickSound();
-        e.preventDefault();
-        elements.loginForm.style.display = 'none';
-        elements.registerForm.style.display = 'flex';
-        document.getElementById('auth-title').textContent = 'Регистрация';
-        document.getElementById('auth-subtitle').textContent = 'Создайте новый аккаунт';
-    });
-
-    document.getElementById('show-login').addEventListener('click', (e) => {
-        playClickSound();
-        e.preventDefault();
-        elements.registerForm.style.display = 'none';
-        elements.loginForm.style.display = 'flex';
-        document.getElementById('auth-title').textContent = 'Вход в систему';
-        document.getElementById('auth-subtitle').textContent = 'Войдите в свой аккаунт для продолжения';
-    });
-
-    // Login form
-    elements.loginForm.addEventListener('submit', async (e) => {
-        playClickSound();
-        e.preventDefault();
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
-        const submitBtn = elements.loginForm.querySelector('button[type="submit"]');
-
-        // Show loading state
-        setButtonLoading(submitBtn, true, 'Войти');
-
-        try {
-            await auth.signInWithEmailAndPassword(email, password);
-            elements.loginError.style.display = 'none';
-        } catch (error) {
-            elements.loginError.textContent = getAuthErrorMessage(error.code);
-            elements.loginError.style.display = 'block';
-            setButtonLoading(submitBtn, false, 'Войти');
-        }
-    });
-
-    // Register form
-    elements.registerForm.addEventListener('submit', async (e) => {
-        playClickSound();
-        e.preventDefault();
-        const firstName = document.getElementById('register-first-name').value.trim();
-        const lastName = document.getElementById('register-last-name').value.trim();
-        const email = document.getElementById('register-email').value;
-        const password = document.getElementById('register-password').value;
-        const confirmPassword = document.getElementById('register-password-confirm').value;
-        const submitBtn = elements.registerForm.querySelector('button[type="submit"]');
-
-        if (password !== confirmPassword) {
-            elements.registerError.textContent = 'Пароли не совпадают';
-            elements.registerError.style.display = 'block';
-            return;
-        }
-
-        if (password.length < 6) {
-            elements.registerError.textContent = 'Пароль должен содержать минимум 6 символов';
-            elements.registerError.style.display = 'block';
-            return;
-        }
-
-        // Show loading state
-        setButtonLoading(submitBtn, true, 'Зарегистрироваться');
-
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-
-            // Save user profile to Firestore
-            await db.collection('users').doc(userCredential.user.uid).set({
-                email: email,
-                firstName: firstName,
-                lastName: lastName,
-                role: 'reader', // Force role to reader
-                allowedProjects: [], // Empty means access to all projects
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-
-            elements.registerError.style.display = 'none';
-            // User will be automatically signed in, onAuthStateChanged will handle the rest
-        } catch (error) {
-            elements.registerError.textContent = getAuthErrorMessage(error.code);
-            elements.registerError.style.display = 'block';
-            setButtonLoading(submitBtn, false, 'Зарегистрироваться');
-        }
-    });
-
     // Role selection listeners removed (deprecated)
 
 
@@ -4185,6 +4094,26 @@ function setupEventListeners() {
 
 
 // Authentication Functions
+
+// Telegram Login Widget callback (see index.html data-onauth="onTelegramAuth(user)").
+// Sends the widget's signed payload to the server for verification, then signs
+// in with the resulting Firebase custom token. onAuthStateChanged takes it from there.
+window.onTelegramAuth = async function onTelegramAuth(telegramUser) {
+    try {
+        const res = await fetch('/api/telegram-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(telegramUser),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Telegram auth failed');
+        await firebase.auth().signInWithCustomToken(data.token);
+    } catch (error) {
+        console.error('Telegram login failed', error);
+        alert('Не удалось войти через Telegram. Попробуйте ещё раз.');
+    }
+};
+
 function onAuthStateChanged(user) {
     if (user) {
         // User is signed in
@@ -4276,10 +4205,6 @@ async function loadUserRole(user) {
 
     // User has organization, proceed to app
     finishAuth(state.currentUser.role);
-
-    // Update Telegram status and start listener after user data loaded
-    window.updateTelegramStatus && window.updateTelegramStatus();
-    window.startTelegramListener && window.startTelegramListener();
 }
 
 function finishAuth(role) {
@@ -4350,25 +4275,6 @@ async function logout() {
         console.error('Error signing out:', error);
         // Force reload even on error
         window.location.reload();
-    }
-}
-
-function getAuthErrorMessage(errorCode) {
-    switch (errorCode) {
-        case 'auth/email-already-in-use':
-            return 'Этот email уже используется';
-        case 'auth/invalid-email':
-            return 'Неверный формат email';
-        case 'auth/weak-password':
-            return 'Слишком слабый пароль';
-        case 'auth/user-not-found':
-            return 'Пользователь не найден';
-        case 'auth/wrong-password':
-            return 'Неверный пароль';
-        case 'auth/too-many-requests':
-            return 'Слишком много попыток. Попробуйте позже';
-        default:
-            return 'Ошибка аутентификации. Попробуйте снова';
     }
 }
 
@@ -5111,16 +5017,6 @@ async function awardXP(userId, taskId, wasOnTime, wasReturned) {
 
 // ========== TELEGRAM NOTIFICATIONS ==========
 
-// Generate random code for Telegram verification
-function generateTelegramCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-}
-
 // Send Telegram notification via server-side endpoint (bot token stays server-only)
 async function sendTelegramNotification(chatId, message) {
     if (!chatId) return;
@@ -5258,171 +5154,6 @@ function escapeHtmlForTelegram(text) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-}
-
-// Save Telegram code to Firestore for bot verification
-async function saveTelegramCode(code) {
-    if (!state.currentUser?.uid) return;
-
-    try {
-        await db.collection('telegramCodes').doc(code).set({
-            userId: state.currentUser.uid,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    } catch (error) {
-        console.error('Error saving Telegram code:', error);
-    }
-}
-
-// Initialize Telegram connection UI (called on DOMContentLoaded)
-function initTelegramConnection() {
-    const connectBtn = document.getElementById('telegram-connect-btn');
-    const modal = document.getElementById('telegram-modal');
-    const codeEl = document.getElementById('telegram-code');
-    const copyBtn = document.getElementById('copy-telegram-code');
-    const disconnectBtn = document.getElementById('disconnect-telegram-btn');
-    const connectScreen = document.getElementById('telegram-connect-screen');
-    const connectedScreen = document.getElementById('telegram-connected-screen');
-    const userInfoEl = document.getElementById('telegram-user-info');
-
-    let currentCode = '';
-
-    // Open modal
-    if (connectBtn) {
-        connectBtn.addEventListener('click', () => {
-            playClickSound();
-
-            // Open modal immediately
-            modal.classList.add('active');
-
-            // Check if already connected
-            if (state.currentUser?.telegramChatId) {
-                connectScreen.style.display = 'none';
-                connectedScreen.style.display = 'block';
-                userInfoEl.textContent = state.currentUser.telegramUsername ?
-                    `@${state.currentUser.telegramUsername}` : 'Telegram подключен';
-            } else {
-                connectScreen.style.display = 'block';
-                connectedScreen.style.display = 'none';
-                // Generate new code
-                currentCode = generateTelegramCode();
-                codeEl.textContent = currentCode;
-                // Save to Firestore in background (don't wait)
-                saveTelegramCode(currentCode);
-            }
-        });
-    }
-
-    // Copy code
-    if (copyBtn) {
-        copyBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(currentCode).then(() => {
-                copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Скопировано!';
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                    copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Копировать';
-                    copyBtn.classList.remove('copied');
-                }, 2000);
-            });
-        });
-    }
-
-    // Verify connection
-    const verifyBtn = document.getElementById('verify-telegram-btn');
-    const errorEl = document.getElementById('telegram-error');
-
-    if (verifyBtn) {
-        verifyBtn.addEventListener('click', async () => {
-            // NOTE: this manual "Verify connection" check used to poll Telegram's
-            // getUpdates/deleteWebhook/setWebhook directly from the browser with the
-            // bot token, which is a bigger security hole than the sendMessage leak
-            // (it could rip out the production webhook). Disabled here as an interim
-            // safety fix. The bot itself already completes the connection server-side
-            // via api/webhook.js as soon as the user sends it the code — this button
-            // is a redundant manual re-check, not the only path to connecting.
-            // This whole "connect Telegram" screen is planned for removal once the
-            // Telegram Login Widget becomes the sole sign-in method.
-            if (errorEl) {
-                errorEl.textContent = 'Проверка временно недоступна — вход через Telegram скоро заменит эту настройку. Если вы отправили код боту, подключение произойдёт автоматически.';
-                errorEl.style.display = 'block';
-            }
-        });
-    }
-
-    // Disconnect
-    if (disconnectBtn) {
-        disconnectBtn.addEventListener('click', async () => {
-            if (!confirm('Отключить Telegram уведомления?')) return;
-
-            try {
-                await db.collection('users').doc(state.currentUser.uid).update({
-                    telegramChatId: null,
-                    telegramUsername: null
-                });
-
-                state.currentUser.telegramChatId = null;
-                state.currentUser.telegramUsername = null;
-
-                modal.classList.remove('active');
-                window.updateTelegramStatus && window.updateTelegramStatus();
-                playClickSound();
-            } catch (error) {
-                console.error('Error disconnecting Telegram:', error);
-                alert('Ошибка при отключении');
-            }
-        });
-    }
-
-    // Global function to update status
-    window.updateTelegramStatus = function () {
-        const statusEl = document.getElementById('telegram-status');
-        if (!statusEl) return;
-
-        if (state.currentUser?.telegramChatId) {
-            statusEl.textContent = 'Подключен ✓';
-            statusEl.style.color = 'var(--success)';
-        } else {
-            statusEl.textContent = 'Не подключен';
-            statusEl.style.color = '';
-        }
-    };
-
-    // Global function to start listening for Telegram changes (called after auth)
-    window.startTelegramListener = function () {
-        if (!state.currentUser?.uid) return;
-
-        db.collection('users').doc(state.currentUser.uid).onSnapshot((doc) => {
-            if (doc.exists) {
-                const data = doc.data();
-                const wasConnected = state.currentUser.telegramChatId;
-                const isConnected = data.telegramChatId;
-
-                // Update local state
-                state.currentUser.telegramChatId = data.telegramChatId || null;
-                state.currentUser.telegramUsername = data.telegramUsername || null;
-
-                // If just connected, update UI
-                if (isConnected && !wasConnected) {
-                    const modal = document.getElementById('telegram-modal');
-                    const connectScreen = document.getElementById('telegram-connect-screen');
-                    const connectedScreen = document.getElementById('telegram-connected-screen');
-                    const userInfoEl = document.getElementById('telegram-user-info');
-
-                    if (modal?.classList.contains('active')) {
-                        connectScreen.style.display = 'none';
-                        connectedScreen.style.display = 'block';
-                        if (userInfoEl) {
-                            userInfoEl.textContent = data.telegramUsername ?
-                                `@${data.telegramUsername}` : 'Telegram подключен';
-                        }
-                    }
-                }
-
-                // Always update status button
-                window.updateTelegramStatus && window.updateTelegramStatus();
-            }
-        });
-    };
 }
 
 function checkReminders(tasks) {
@@ -6301,7 +6032,6 @@ function openFocusedTaskInfo() {
 document.addEventListener('DOMContentLoaded', () => {
     init();
     initKeyboardNavigation();
-    initTelegramConnection();
     initProfileAndLeaderboard();
     initCalendarModule();
 

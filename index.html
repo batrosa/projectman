@@ -640,87 +640,26 @@
             </div>
             <h1 class="auth-brand">ProjectMan</h1>
             <h2 id="auth-title" class="auth-title">Вход в систему</h2>
-            <p id="auth-subtitle" class="auth-subtitle">Войдите в свой аккаунт для продолжения</p>
+            <p id="auth-subtitle" class="auth-subtitle">Войдите через Telegram, чтобы продолжить</p>
 
-            <!-- Login Form -->
-            <form id="login-form" class="auth-form" style="display: flex;">
-                <div class="auth-form-group">
-                    <label for="login-email">
-                        <i class="fa-solid fa-envelope"></i>
-                        Email
-                    </label>
-                    <input type="email" id="login-email" required placeholder="your@email.com" autocomplete="email">
-                </div>
-                <div class="auth-form-group">
-                    <label for="login-password">
-                        <i class="fa-solid fa-lock"></i>
-                        Пароль
-                    </label>
-                    <input type="password" id="login-password" required placeholder="Введите пароль"
-                        autocomplete="current-password">
-                </div>
-                <p id="login-error" class="auth-error"></p>
-                <button type="submit" class="auth-submit-btn">
-                    <i class="fa-solid fa-right-to-bracket"></i>
-                    Войти
-                </button>
-                <p class="auth-switch">
-                    Нет аккаунта? <a href="#" id="show-register">Зарегистрироваться</a>
-                </p>
-            </form>
-
-            <!-- Registration Form -->
-            <form id="register-form" class="auth-form" style="display: none; flex-direction: column;">
-                <div class="auth-form-row">
-                    <div class="auth-form-group">
-                        <label for="register-first-name">
-                            <i class="fa-solid fa-user"></i>
-                            Имя
-                        </label>
-                        <input type="text" id="register-first-name" required placeholder="Иван"
-                            autocomplete="given-name">
-                    </div>
-                    <div class="auth-form-group">
-                        <label for="register-last-name">
-                            <i class="fa-solid fa-user"></i>
-                            Фамилия
-                        </label>
-                        <input type="text" id="register-last-name" required placeholder="Иванов"
-                            autocomplete="family-name">
-                    </div>
-                </div>
-                <div class="auth-form-group">
-                    <label for="register-email">
-                        <i class="fa-solid fa-envelope"></i>
-                        Email
-                    </label>
-                    <input type="email" id="register-email" required placeholder="your@email.com" autocomplete="email">
-                </div>
-                <div class="auth-form-group">
-                    <label for="register-password">
-                        <i class="fa-solid fa-lock"></i>
-                        Пароль
-                    </label>
-                    <input type="password" id="register-password" required placeholder="Минимум 6 символов"
-                        autocomplete="new-password">
-                </div>
-                <div class="auth-form-group">
-                    <label for="register-password-confirm">
-                        <i class="fa-solid fa-shield-halved"></i>
-                        Подтвердите пароль
-                    </label>
-                    <input type="password" id="register-password-confirm" required placeholder="Повторите пароль"
-                        autocomplete="new-password">
-                </div>
-                <p id="register-error" class="auth-error"></p>
-                <button type="submit" class="auth-submit-btn">
-                    <i class="fa-solid fa-user-plus"></i>
-                    Создать аккаунт
-                </button>
-                <p class="auth-switch">
-                    Уже есть аккаунт? <a href="#" id="show-login">Войти</a>
-                </p>
-            </form>
+            <!-- Telegram Login Widget -->
+            <div id="telegram-login-container" class="auth-form" style="display: flex; justify-content: center; padding: 1.5rem 0;">
+                <!--
+                    IMPORTANT (deploy blocker): REPLACE_WITH_BOT_USERNAME below must be
+                    replaced with the real bot username (no leading "@") before this ships.
+                    The widget will not render/authenticate until:
+                      1) data-telegram-login is set to the real bot username, and
+                      2) that bot's domain is registered via @BotFather's /setdomain
+                         command for both this production domain and any local/tunnel
+                         dev domain used for testing.
+                -->
+                <script async src="https://telegram.org/js/telegram-widget.js?22"
+                    data-telegram-login="REPLACE_WITH_BOT_USERNAME"
+                    data-size="large"
+                    data-onauth="onTelegramAuth(user)"
+                    data-request-access="write"></script>
+            </div>
+            <p id="login-error" class="auth-error"></p>
         </div>
     </div>
 
@@ -1097,17 +1036,6 @@
                     </label>
                 </button>
 
-                <button id="telegram-connect-btn" class="settings-option">
-                    <div class="settings-option-icon telegram">
-                        <i class="fa-brands fa-telegram"></i>
-                    </div>
-                    <div class="settings-option-info">
-                        <span class="settings-option-title">Telegram уведомления</span>
-                        <span class="settings-option-desc" id="telegram-status">Не подключен</span>
-                    </div>
-                    <i class="fa-solid fa-chevron-right" id="telegram-chevron"></i>
-                </button>
-
                 <button id="profile-btn" class="settings-option">
                     <div class="settings-option-icon profile">
                         <i class="fa-solid fa-user"></i>
@@ -1142,70 +1070,6 @@
 
 
 
-            </div>
-        </div>
-    </div>
-
-    <!-- Telegram Connect Modal -->
-    <div id="telegram-modal" class="modal">
-        <div class="modal-content" style="max-width: 450px;">
-            <div class="modal-header">
-                <h2><i class="fa-brands fa-telegram"></i> Подключить Telegram</h2>
-                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div id="telegram-connect-screen" style="padding: 1.5rem;">
-                <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-                    Получайте уведомления о новых задачах и возвратах прямо в Telegram!
-                </p>
-
-                <div class="telegram-steps">
-                    <div class="telegram-step">
-                        <span class="step-number">1</span>
-                        <div class="step-content">
-                            <p>Откройте бота в Telegram:</p>
-                            <a href="https://t.me/projectman_notify_bot" target="_blank" class="telegram-bot-link">
-                                <i class="fa-brands fa-telegram"></i> @projectman_notify_bot
-                            </a>
-                        </div>
-                    </div>
-                    <div class="telegram-step">
-                        <span class="step-number">2</span>
-                        <div class="step-content">
-                            <p>Отправьте боту этот код:</p>
-                            <div class="telegram-code" id="telegram-code">------</div>
-                            <button type="button" class="copy-code-btn" id="copy-telegram-code">
-                                <i class="fa-solid fa-copy"></i> Копировать
-                            </button>
-                        </div>
-                    </div>
-                    <div class="telegram-step">
-                        <span class="step-number">3</span>
-                        <div class="step-content">
-                            <p>Нажмите для проверки:</p>
-                            <button type="button" class="primary-btn" id="verify-telegram-btn" style="width: 100%;">
-                                <i class="fa-solid fa-check"></i> Проверить подключение
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="telegram-error"
-                    style="display: none; color: var(--danger); margin-top: 1rem; text-align: center;"></div>
-            </div>
-
-            <div id="telegram-connected-screen" style="padding: 1.5rem; display: none;">
-                <div style="text-align: center;">
-                    <div
-                        style="width: 80px; height: 80px; background: linear-gradient(135deg, #0088cc, #00a2e8); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
-                        <i class="fa-brands fa-telegram" style="font-size: 2.5rem; color: white;"></i>
-                    </div>
-                    <h3 style="color: var(--success); margin-bottom: 0.5rem;">Telegram подключен!</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;" id="telegram-user-info">@username
-                    </p>
-                    <button type="button" class="danger-btn" id="disconnect-telegram-btn" style="width: 100%;">
-                        <i class="fa-solid fa-unlink"></i> Отключить Telegram
-                    </button>
-                </div>
             </div>
         </div>
     </div>
