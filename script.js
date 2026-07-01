@@ -1624,6 +1624,14 @@ const elements = {
     orgDeleteBtn: document.getElementById('org-delete-btn'),
     orgRegenerateCode: document.getElementById('org-regenerate-code'),
     brandLogo: document.getElementById('brand-logo'),
+
+    // Global AI agent chat
+    agentChatBtn: document.getElementById('agent-chat-btn'),
+    agentChatModal: document.getElementById('agent-chat-modal'),
+    agentChatMessages: document.getElementById('agent-chat-messages'),
+    agentChatForm: document.getElementById('agent-chat-form'),
+    agentChatInput: document.getElementById('agent-chat-input'),
+    agentChatSendBtn: document.getElementById('agent-chat-send-btn'),
 };
 
 // Init
@@ -6291,6 +6299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initKeyboardNavigation();
     initProfileAndLeaderboard();
     initCalendarModule();
+    initAgentChat();
 
 });
 
@@ -7244,6 +7253,285 @@ async function notifyCalendarParticipants(evt) {
         }
     });
 }
+
+// ========== GLOBAL AI AGENT CHAT (Task 15) ==========
+//
+// Client for POST /api/agent-chat (Task 14). That endpoint deliberately reads
+// ALL projects/tasks/files for the caller's organization via the Admin SDK,
+// bypassing the per-user `allowedProjects` restriction — "everyone in the org
+// sees everything via the agent" is an explicit design decision, so this UI
+// does not scope the chat to the currently open project, and the client-side
+// history is intentionally NOT reset when the user switches projects (see
+// agentChatState below — nothing here reads state.activeProjectId).
+//
+// Response shape actually returned by api/agent-chat.js (verified by reading
+// the file directly, not assumed from the plan text):
+//   - 200 { ok: true, answer, model }                          success
+//   - 200 { ok: true, answer: "<фраза на русском>" }            LLM/context
+//         (no `model` field on the "org not found"/"no org"/    fallback —
+//          "failed to load"/"OpenRouter not configured" paths)  still ok:true
+//   - 401 { error: "Unauthorized" }                             missing/invalid
+//                                                                 Firebase ID token
+//   - 400 { error: "Invalid JSON body" | "message is required" } validation
+//   - 405 { error: "Method not allowed" }                       wrong HTTP verb
+// Every failure mode the server can hit for itself (Firestore errors, missing
+// OpenRouter key, all models failing) is normalized to HTTP 200 with a
+// Russian-language `answer` string — so the client only needs its own
+// error-handling path for network failures and the auth/validation 4xx cases,
+// not for "the LLM had a bad day".
+
+const AGENT_CHAT_MAX_HISTORY_TURNS = 8; // mirrors MAX_HISTORY_TURNS in api/agent-chat.js
+
+const agentChatState = {
+    // { role: 'user' | 'assistant', content: string }[] — capped to the last
+    // AGENT_CHAT_MAX_HISTORY_TURNS entries before every send. Deliberately a
+    // plain in-memory array, not persisted to localStorage/Firestore: a fresh
+    // chat on page reload is a reasonable, simple default per the plan, and
+    // avoids having to think about retention/PII-in-localStorage questions
+    // for LLM chat transcripts that were never asked for.
+    history: [],
+    // Incremented on every send; the closure created by a given send()
+    // captures its own `generation` value and checks it still matches
+    // agentChatState.generation before touching the DOM once the network
+    // response resolves. This guards the exact class of bug this session
+    // already hardened once (a stale async response mutating UI/state that
+    // has since moved on): if the modal is closed and reopened, or a second
+    // message is queued, or (for logout specifically — see below) the page
+    // has already started tearing down, a late-arriving response becomes a
+    // harmless no-op instead of appending a reply to the wrong turn or
+    // re-enabling an input that no longer represents the current chat.
+    //
+    // Note on logout specifically: logout() (search this file) calls
+    // `window.location.reload()` on sign-out, which destroys the whole JS
+    // context — so a genuinely in-flight fetch can't corrupt state.* after
+    // reload; the reload itself is the strongest guard. This counter mainly
+    // protects the *pre-reload* window (the moment between clicking "Выйти"
+    // and the reload actually happening) and the more likely case of the
+    // user closing the chat panel or firing a second message while the first
+    // is still pending.
+    generation: 0,
+};
+
+function truncateAgentChatHistory(history) {
+    if (!Array.isArray(history)) return [];
+    return history.slice(-AGENT_CHAT_MAX_HISTORY_TURNS);
+}
+
+// Renders one line of the agent's answer as safe DOM nodes: text via
+// `.textContent` (never innerHTML), newlines via one `<br>`-per-line-break
+// element. This is the ENTIRE extent of the "markdown-like formatting" this
+// UI applies (per the plan's manual-verification note #2) — no markdown
+// parsing, no HTML tag interpretation of any kind, because the source text is
+// LLM output that could be influenced by data inside the org's own
+// tasks/files (indirect prompt injection: a task title or uploaded document
+// could contain text designed to look like an instruction to the model, and
+// while the system prompt constrains the model's behavior, the model's
+// *output* is not a trusted input to the DOM). Splitting on "\n" and using
+// textContent per segment means there is no code path here that ever
+// interprets attacker-influenced text as markup, no matter what characters
+// (<, >, &, backticks, asterisks, etc.) appear in it.
+function renderAgentChatText(container, text) {
+    const lines = String(text ?? '').split('\n');
+    lines.forEach((line, index) => {
+        container.appendChild(document.createTextNode(line));
+        if (index < lines.length - 1) container.appendChild(document.createElement('br'));
+    });
+}
+
+function appendAgentChatMessage(role, text) {
+    if (!elements.agentChatMessages) return null;
+    const emptyState = elements.agentChatMessages.querySelector('.agent-chat-empty');
+    if (emptyState) emptyState.remove();
+
+    const bubble = document.createElement('div');
+    bubble.className = `agent-chat-message agent-chat-message-${role}`;
+    renderAgentChatText(bubble, text);
+    elements.agentChatMessages.appendChild(bubble);
+    elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
+    return bubble;
+}
+
+function renderAgentChatEmptyState() {
+    if (!elements.agentChatMessages) return;
+    elements.agentChatMessages.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'agent-chat-empty';
+    empty.textContent = 'Спросите про сроки, статусы, задачи или проекты организации — агент видит все проекты, а не только ваши.';
+    elements.agentChatMessages.appendChild(empty);
+}
+
+function setAgentChatInputDisabled(disabled) {
+    if (elements.agentChatInput) elements.agentChatInput.disabled = disabled;
+    if (elements.agentChatSendBtn) elements.agentChatSendBtn.disabled = disabled;
+}
+
+// Sends one message to the global agent endpoint. Attaches the current
+// Firebase ID token fresh on every call (getIdToken() returns a cached token
+// and silently refreshes it in the background when needed, so this is cheap
+// and always current — no manual expiry tracking required).
+async function sendAgentMessage(message, history) {
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) {
+        // Distinct from a 401 from the server: we never even attempt the
+        // request if there's no signed-in user locally (e.g. auth state
+        // flipped to signed-out while the chat panel was open).
+        const err = new Error('not-authenticated');
+        err.code = 'not-authenticated';
+        throw err;
+    }
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch('/api/agent-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ message, history }),
+    });
+    let data = null;
+    try {
+        data = await res.json();
+    } catch {
+        // Non-JSON body (e.g. an upstream proxy error page) — treat as a
+        // generic failure below rather than throwing a confusing parse error.
+        data = null;
+    }
+    return { status: res.status, data };
+}
+
+async function handleAgentChatSubmit(event) {
+    event.preventDefault();
+    if (!elements.agentChatInput) return;
+
+    // Re-entrancy guard: setAgentChatInputDisabled(true) below disables the
+    // textarea/button while a request is in flight, which stops real user
+    // interaction (clicks, typed Enter) from re-triggering submit — but
+    // form.requestSubmit() (used by the Enter-key handler) can still fire
+    // programmatically regardless of the disabled attribute, so check
+    // explicitly rather than relying on the DOM disabled state alone.
+    if (elements.agentChatInput.disabled) return;
+
+    const message = elements.agentChatInput.value.trim();
+    if (!message) return;
+
+    // Bump the generation counter for this send. Any previously in-flight
+    // send's callback will see its captured generation is now stale and bail
+    // out before touching the DOM/state below.
+    agentChatState.generation += 1;
+    const myGeneration = agentChatState.generation;
+
+    appendAgentChatMessage('user', message);
+    agentChatState.history.push({ role: 'user', content: message });
+    agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+
+    elements.agentChatInput.value = '';
+    autoResizeAgentChatInput();
+    setAgentChatInputDisabled(true);
+    const pendingBubble = appendAgentChatMessage('pending', 'Агент печатает…');
+
+    // History sent to the server is everything BEFORE this user turn (the
+    // server appends the current `message` itself) — matches the shape
+    // api/agent-chat.js expects: `messages = [system, ...history, user]`.
+    const historyForRequest = truncateAgentChatHistory(agentChatState.history.slice(0, -1));
+
+    try {
+        const { status, data } = await sendAgentMessage(message, historyForRequest);
+
+        // Staleness guard: if a newer send has started (or the chat was
+        // reset/closed) since this request went out, drop the result. Do NOT
+        // re-enable the input here either — the newer send already owns that.
+        if (myGeneration !== agentChatState.generation) return;
+
+        if (pendingBubble) pendingBubble.remove();
+
+        if (status === 200 && data && data.ok) {
+            const answer = typeof data.answer === 'string' && data.answer.trim()
+                ? data.answer
+                : 'Агент не смог сформировать ответ. Попробуйте переформулировать вопрос.';
+            appendAgentChatMessage('assistant', answer);
+            agentChatState.history.push({ role: 'assistant', content: answer });
+            agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+        } else if (status === 401) {
+            // Token expired/invalid server-side — a generic error message
+            // would be misleading here since retrying with the same (stale)
+            // client-side auth state will just 401 again. Prompt re-login
+            // explicitly instead.
+            appendAgentChatMessage('error', 'Сессия истекла. Пожалуйста, войдите заново, чтобы продолжить общение с агентом.');
+            // Drop the user's turn from history since the server never
+            // actually processed it — resending it later as prior "history"
+            // context would misrepresent what the agent has seen.
+            agentChatState.history.pop();
+        } else if (status === 400) {
+            // Validation error from a well-formed client call "shouldn't"
+            // happen, but defend anyway (e.g. a future server-side change
+            // tightens validation in a way this client hasn't caught up to).
+            const detail = data && typeof data.error === 'string' ? data.error : null;
+            appendAgentChatMessage('error', detail
+                ? `Не удалось отправить сообщение: ${detail}`
+                : 'Не удалось отправить сообщение. Попробуйте ещё раз.');
+            agentChatState.history.pop();
+        } else {
+            appendAgentChatMessage('error', 'Не удалось получить ответ от агента. Попробуйте ещё раз.');
+            agentChatState.history.pop();
+        }
+    } catch (error) {
+        if (myGeneration !== agentChatState.generation) return;
+        if (pendingBubble) pendingBubble.remove();
+
+        if (error && error.code === 'not-authenticated') {
+            appendAgentChatMessage('error', 'Вы вышли из аккаунта. Войдите заново, чтобы продолжить общение с агентом.');
+        } else {
+            // fetch() itself rejected — network failure (offline, DNS, CORS,
+            // timeout before headers, etc.), not a server-returned status.
+            console.error('agent-chat: network error', error);
+            appendAgentChatMessage('error', 'Ошибка сети. Проверьте подключение к интернету и попробуйте ещё раз.');
+        }
+        agentChatState.history.pop();
+    } finally {
+        // Only the send that "owns" the current generation re-enables input —
+        // if a newer generation has already started, it's already managing
+        // its own disabled/enabled lifecycle and this stale call must not
+        // interfere (e.g. flipping the input back to enabled mid-way through
+        // a newer, still-in-flight request).
+        if (myGeneration === agentChatState.generation) {
+            setAgentChatInputDisabled(false);
+            elements.agentChatInput?.focus();
+        }
+    }
+}
+
+function autoResizeAgentChatInput() {
+    const input = elements.agentChatInput;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+}
+
+function initAgentChat() {
+    if (!elements.agentChatBtn || !elements.agentChatModal) return;
+
+    renderAgentChatEmptyState();
+
+    elements.agentChatBtn.addEventListener('click', () => {
+        playClickSound();
+        elements.agentChatModal.classList.add('active');
+        elements.agentChatInput?.focus();
+    });
+
+    if (elements.agentChatForm) {
+        elements.agentChatForm.addEventListener('submit', handleAgentChatSubmit);
+    }
+
+    if (elements.agentChatInput) {
+        elements.agentChatInput.addEventListener('input', autoResizeAgentChatInput);
+        // Enter sends, Shift+Enter inserts a newline (standard chat-input convention).
+        elements.agentChatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                elements.agentChatForm?.requestSubmit();
+            }
+        });
+    }
+}
+
+// ========== END GLOBAL AI AGENT CHAT ==========
 
 
 

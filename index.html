@@ -825,6 +825,13 @@
                     <i class="fa-solid fa-list-check"></i> <span>Мои задачи</span>
                     <span id="my-tasks-count" class="my-tasks-count" style="display: none;">0</span>
                 </button>
+                <!-- Global AI agent entry point: visible to every authenticated user
+                     regardless of role/orgRole, per the "everyone in the org can access
+                     the agent" design decision from Task 14 (api/agent-chat.js) — this
+                     footer block is not touched by applyRoleRestrictions(). -->
+                <button id="agent-chat-btn" class="secondary-btn" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-robot"></i> <span>ИИ-агент</span>
+                </button>
                 <button id="settings-btn" class="secondary-btn" style="width: 100%; justify-content: center;">
                     <i class="fa-solid fa-sliders"></i> <span>Панель управления</span>
                 </button>
@@ -1566,6 +1573,31 @@
                     </ul>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Global AI Agent Chat Modal — calls POST /api/agent-chat (Task 14).
+         Org-wide agent: visible to all roles, sees ALL projects/tasks/files in
+         the organization (not scoped to the current user's allowedProjects or
+         the currently open project). History is intentionally independent of
+         project switching — see agent chat init in script.js. -->
+    <div id="agent-chat-modal" class="modal">
+        <div class="modal-content agent-chat-modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-robot"></i> ИИ-агент</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="agent-chat-messages" class="agent-chat-messages" aria-live="polite">
+                <!-- Chat turns are rendered here via safe DOM construction (textContent only) -->
+            </div>
+            <form id="agent-chat-form" class="agent-chat-form">
+                <textarea id="agent-chat-input" class="agent-chat-input" rows="1"
+                    placeholder="Спросите про задачи, сроки, проекты организации..." maxlength="4000"
+                    autocomplete="off"></textarea>
+                <button type="submit" id="agent-chat-send-btn" class="primary-btn agent-chat-send-btn">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
         </div>
     </div>
 
