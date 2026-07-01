@@ -2019,8 +2019,61 @@ function renderProjectFilesList() {
 
         item.appendChild(iconWrap);
         item.appendChild(info);
+
+        // Delete button — lets the user remove a file uploaded by mistake so the
+        // AI agent no longer reads its (wrong) content. stopPropagation keeps the
+        // row's open-in-new-tab onclick from firing when the button is clicked.
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'file-delete-btn';
+        deleteBtn.title = 'Удалить файл';
+        deleteBtn.setAttribute('aria-label', `Удалить файл ${file.filename || ''}`);
+        const trashIcon = document.createElement('i');
+        trashIcon.className = 'fa-solid fa-trash';
+        deleteBtn.appendChild(trashIcon);
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteProjectFile(file.id, file.filename || 'Файл');
+        };
+        item.appendChild(deleteBtn);
+
         list.appendChild(item);
     });
+}
+
+// Deletes a project file via the server (DELETE /api/project-files). The server
+// removes the Firestore doc under projects/{projectId}/files/{fileId}; the live
+// onSnapshot listener then refreshes the list automatically.
+async function deleteProjectFile(fileId, filename) {
+    if (!fileId) return;
+    const projectId = state.activeProjectId;
+    if (!projectId) return;
+
+    if (!confirm(`Удалить файл «${filename}»? Агент перестанет использовать его содержимое.`)) {
+        return;
+    }
+
+    try {
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('Вы не авторизованы');
+        const idToken = await currentUser.getIdToken();
+
+        const response = await fetch('/api/project-files', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ projectId, fileId }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || 'Не удалось удалить файл');
+        }
+
+        playClickSound();
+    } catch (error) {
+        console.error('Project file delete error:', error);
+        alert('Ошибка при удалении файла: ' + error.message);
+    }
 }
 
 // Upload a project-level document to Cloudinary as a raw resource (not the

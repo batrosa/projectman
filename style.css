@@ -3420,6 +3420,28 @@ body.light-mode .status-option-desc {
     font-size: 0.85rem;
 }
 
+.file-delete-btn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.file-delete-btn:hover {
+    color: #fff;
+    background: var(--danger, #ef4444);
+    border-color: var(--danger, #ef4444);
+}
+
 .extraction-status {
     font-weight: 600;
 }

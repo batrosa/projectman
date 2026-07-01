@@ -58,8 +58,8 @@ export function extensionOf(filename) {
 }
 
 export default async function handler(request, response) {
-  if (request.method !== "POST") {
-    response.setHeader("Allow", "POST");
+  if (request.method !== "POST" && request.method !== "DELETE") {
+    response.setHeader("Allow", "POST, DELETE");
     return response.status(405).json({ error: "Method not allowed" });
   }
 
@@ -93,6 +93,41 @@ export default async function handler(request, response) {
     body = await parseJsonBody(request);
   } catch {
     return response.status(400).json({ error: "Invalid JSON body" });
+  }
+
+  // DELETE removes a project file's Firestore doc (which is what the AI agent
+  // reads and what the UI lists). We intentionally do not delete the underlying
+  // Cloudinary raw asset: unsigned uploads give us no api_secret to sign a
+  // destroy call, and the orphaned blob is unreferenced/harmless once its
+  // Firestore doc is gone. Same org-scope bar as upload — any member of the
+  // project's organization may remove a file (e.g. to fix a wrong upload).
+  if (request.method === "DELETE") {
+    const { projectId, fileId } = body;
+    if (!projectId || !fileId) {
+      return response.status(400).json({ error: "projectId and fileId are required" });
+    }
+
+    let db;
+    let projectDoc;
+    try {
+      db = adminDb();
+      projectDoc = await db.collection("projects").doc(projectId).get();
+    } catch (error) {
+      console.error("project-files: failed to load project doc (delete)", error);
+      return response.status(500).json({ error: "Failed to verify project" });
+    }
+    if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
+      return response.status(403).json({ error: "Forbidden" });
+    }
+
+    try {
+      await db.collection("projects").doc(projectId).collection("files").doc(fileId).delete();
+    } catch (error) {
+      console.error("project-files: failed to delete file doc", error);
+      return response.status(500).json({ error: "Failed to delete file" });
+    }
+
+    return response.status(200).json({ ok: true });
   }
 
   const { projectId, filename, url, mimeType, sizeBytes, uploadedBy } = body;
