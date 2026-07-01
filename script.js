@@ -3625,12 +3625,16 @@ function openTaskDetailsModal(task) {
     modal.classList.add('active');
 }
 
-// Helper function to escape HTML
+// Helper function to escape HTML (safe for both text-node content and quoted
+// HTML attribute values, e.g. href="${escapeHtml(...)}")
 function escapeHtml(text) {
     if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function formatDate(dateString) {
