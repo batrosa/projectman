@@ -1205,3 +1205,10 @@ This is optional; the bulk of this file's value can only be verified end-to-end 
 6. Post-deploy smoke test: Telegram login, file upload + extraction, agent chat — the same manual checks from Tasks 12-15, run against the real production URL.
 
 **Commit:** none (deploy step, not a code change) — if any last-minute fixes come up during smoke testing, commit those individually with their own descriptive messages.
+
+---
+
+## Known gaps / tracked follow-ups (recorded during execution, not blocking)
+
+- **`api/notify-telegram.js` (Task 2) is an open relay**: no auth/authorization check — any client can POST an arbitrary `chatId`+`text` and it will relay through the bot token. Code-quality review confirmed this mirrors the plan's own original sample and the pre-existing client-side behavior (not a regression introduced by this task), so it wasn't blocked on, but it should be fixed properly once Task 10 (`lib/firebase-admin.js`) exists: restrict `chatId` to values found in `users.telegramChatId`, or add rate limiting.
+- **Module system mismatch**: `api/webhook.js` and `api/notify-telegram.js` (Task 2) are CommonJS (`module.exports`), matching the repo's current no-`package.json` state. Task 7 introduces `package.json` with `"type": "module"` and Tasks 8-14's sample code uses ESM `import`/`export default`. When executing Task 7, also convert `api/webhook.js` and `api/notify-telegram.js` to ESM syntax so the whole `api/`/`lib/` tree is consistent — do this as a small addition to Task 7, verified with `node --check` on both files after conversion.
