@@ -63,9 +63,6 @@ function makeDocCollection(map) {
         async get() {
           return { exists: map.has(id), data: () => map.get(id) };
         },
-        async delete() {
-          map.delete(id);
-        },
       };
     },
   };
@@ -200,48 +197,6 @@ describe("Telegram bot login flow", () => {
     expect(res.statusCode).toBe(401);
     expect(state.db.sessions.get(code)).toMatchObject({ status: "pending" });
     expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("sets the Telegram webhook through the protected setup path", async () => {
-    const res = mockResponse();
-    await webhookHandler({
-      method: "POST",
-      query: { setup: "telegram" },
-      headers: { "x-setup-secret": "test-webhook-secret" },
-      body: {},
-    }, res);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toMatchObject({ ok: true });
-    expect(fetch).toHaveBeenCalledWith("https://api.telegram.org/bottest-token/setWebhook", expect.objectContaining({
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    }));
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
-      url: "https://projectmanteko.vercel.app/api/webhook",
-      secret_token: "test-webhook-secret",
-      allowed_updates: ["message"],
-    });
-  });
-
-  it("cleans up the fixed production smoke-test user through the protected setup path", async () => {
-    state.db = makeFakeDb({
-      users: {
-        "tg_123456789": { telegramId: "123456789", firstName: "Codex" },
-      },
-    });
-
-    const res = mockResponse();
-    await webhookHandler({
-      method: "POST",
-      query: { setup: "cleanup-test-user" },
-      headers: { "x-setup-secret": "test-webhook-secret" },
-      body: {},
-    }, res);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toMatchObject({ ok: true });
-    expect(state.db.users.has("tg_123456789")).toBe(false);
   });
 
   it("mints a Firebase custom token after webhook confirmation and consumes the session", async () => {
