@@ -134,10 +134,17 @@ service cloud.firestore {
       // 2. Обычный пользователь (Reader) может только ОБНОВЛЯТЬ статус задачи (drag & drop) 
       // и ставить галочку "assigneeCompleted", но НЕ менять название/дедлайн/удалять.
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() 
-        || (request.auth != null 
-            && canViewProject(resource.data.projectId) 
+      allow update: if isAdmin()
+        || (request.auth != null
+            && canViewProject(resource.data.projectId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assigneeCompleted', 'reminderSent', 'subStatus', 'attachments']));
+    }
+
+    // Коллекция Project Files (подколлекция файлов проекта)
+    // Все записи выполняются только сервером через Admin SDK (в обход правил) — клиент может только читать.
+    match /projects/{projectId}/files/{fileId} {
+      allow read: if isAdmin() || (request.auth != null && canViewProject(projectId));
+      allow write: if false;
     }
 
     // Коллекция Calendar Events (Новый календарь)
