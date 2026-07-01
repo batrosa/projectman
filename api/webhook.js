@@ -46,6 +46,7 @@ async function firestoreDelete(collection, docId, apiKey) {
 export default async function handler(req, res) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const firebaseApiKey = process.env.FIREBASE_WEB_API_KEY;
+    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
 
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -62,6 +63,13 @@ export default async function handler(req, res) {
     }
 
     const telegramApi = `https://api.telegram.org/bot${token}`;
+    const requestWebhookSecret = req.headers?.['x-telegram-bot-api-secret-token'];
+    const hasVerifiedWebhookSecret = Boolean(webhookSecret) && requestWebhookSecret === webhookSecret;
+
+    if (webhookSecret && !hasVerifiedWebhookSecret) {
+        console.error('webhook: invalid Telegram webhook secret');
+        return res.status(401).send('Unauthorized');
+    }
 
     // POST request - webhook from Telegram
     if (req.method === 'POST') {
@@ -82,12 +90,16 @@ export default async function handler(req, res) {
             let replyText = '';
 
             if (botLoginMatch) {
-                const loginResult = await confirmBotLoginSession(botLoginMatch[1], message);
+                const loginResult = hasVerifiedWebhookSecret
+                    ? await confirmBotLoginSession(botLoginMatch[1], message)
+                    : { ok: false, reason: 'webhook_secret_missing' };
                 if (loginResult.ok) {
                     replyText = `✅ Вход подтвержден.\n\nВернитесь в ProjectMan — окно входа завершится автоматически.`;
                 } else {
                     replyText = loginResult.reason === 'server'
                         ? `❌ Не удалось подтвердить вход: сервер временно недоступен. Попробуйте ещё раз.`
+                        : loginResult.reason === 'webhook_secret_missing'
+                            ? `❌ Вход через бота ещё не настроен на сервере. Сообщите администратору: нужен Telegram webhook secret.`
                         : `❌ Ссылка для входа устарела или уже использована.\n\nВернитесь в ProjectMan и нажмите «Войти через бота» ещё раз.`;
                 }
             } else if (text === '/START') {

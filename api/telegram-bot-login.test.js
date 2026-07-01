@@ -93,6 +93,7 @@ describe("Telegram bot login flow", () => {
   beforeEach(() => {
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_BOT_USERNAME = "@projectman_notify_bot";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
     state.db = makeFakeDb();
     state.createCustomToken = vi.fn(async (uid) => `custom-token-for-${uid}`);
     vi.stubGlobal("fetch", vi.fn(async () => ({
@@ -106,6 +107,7 @@ describe("Telegram bot login flow", () => {
   afterEach(() => {
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_BOT_USERNAME;
+    delete process.env.TELEGRAM_WEBHOOK_SECRET;
     vi.unstubAllGlobals();
   });
 
@@ -147,6 +149,7 @@ describe("Telegram bot login flow", () => {
     const res = mockResponse();
     await webhookHandler({
       method: "POST",
+      headers: { "x-telegram-bot-api-secret-token": "test-webhook-secret" },
       body: {
         message: {
           text: `/start login_${code}`,
@@ -168,6 +171,32 @@ describe("Telegram bot login flow", () => {
     const telegramMessage = JSON.parse(fetch.mock.calls[0][1].body);
     expect(telegramMessage.chat_id).toBe(777);
     expect(telegramMessage.text).toContain("Вход подтвержден");
+  });
+
+  it("rejects bot-login webhook spoofing when the secret header is missing", async () => {
+    const code = "abcdefghijklmnop";
+    state.db = makeFakeDb({
+      sessions: {
+        [code]: { status: "pending", expiresAt: new Date(Date.now() + 60000).toISOString() },
+      },
+    });
+
+    const res = mockResponse();
+    await webhookHandler({
+      method: "POST",
+      headers: {},
+      body: {
+        message: {
+          text: `/start login_${code}`,
+          chat: { id: 777 },
+          from: { id: 777, username: "ivanov", first_name: "Ivan" },
+        },
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(state.db.sessions.get(code)).toMatchObject({ status: "pending" });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("mints a Firebase custom token after webhook confirmation and consumes the session", async () => {
