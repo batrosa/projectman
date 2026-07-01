@@ -3858,6 +3858,20 @@ function updateThemeUI(isLight) {
     }
 }
 
+// Shared modal-close helper. All three ways a modal can be dismissed
+// (.close-modal button, clicking the dimmed backdrop, pressing Escape — see
+// setupEventListeners() and handleKeyboardNavigation() below) route through
+// here so any modal-specific close side effects stay in one place. Right now
+// the only such side effect is the agent-chat generation-counter bump: see
+// agentChatState.generation for what that guards against.
+function closeModalElement(modal) {
+    if (!modal) return;
+    modal.classList.remove('active');
+    if (elements.agentChatModal && modal === elements.agentChatModal) {
+        agentChatState.generation += 1;
+    }
+}
+
 // Event Listeners
 function setupEventListeners() {
     // Organization event listeners
@@ -3964,7 +3978,7 @@ function setupEventListeners() {
             playClickSound();
             const modal = btn.closest('.modal');
             if (modal) {
-                modal.classList.remove('active');
+                closeModalElement(modal);
             }
         });
     });
@@ -3972,7 +3986,7 @@ function setupEventListeners() {
     // Close on click outside
     window.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) {
-            e.target.classList.remove('active');
+            closeModalElement(e.target);
         }
     });
 
@@ -4387,6 +4401,14 @@ function onAuthStateChanged(user) {
         // User is signed out
         state.currentUser = null;
         state.role = 'guest';
+        // Bump the agent-chat generation counter on every sign-out, however
+        // it was triggered (explicit "Выйти" via logout(), or a forced
+        // auth.signOut() after the agent-chat endpoint returns 401). This is
+        // the single choke point both paths go through, so a stale
+        // agent-chat response that resolves after (or during) sign-out can
+        // never render into a UI/session that no longer belongs to that
+        // user. See agentChatState.generation for the full mechanism.
+        agentChatState.generation += 1;
         showAuthScreen();
     }
 }
@@ -6058,7 +6080,7 @@ function handleKeyboardNavigation(e) {
         const activeModal = document.querySelector('.modal.active');
         if (activeModal) {
             e.preventDefault();
-            activeModal.classList.remove('active');
+            closeModalElement(activeModal);
             playClickSound();
             resetInactivityTimer();
             // Return to tasks mode after closing modal
@@ -7290,25 +7312,43 @@ const agentChatState = {
     // avoids having to think about retention/PII-in-localStorage questions
     // for LLM chat transcripts that were never asked for.
     history: [],
-    // Incremented on every send; the closure created by a given send()
-    // captures its own `generation` value and checks it still matches
-    // agentChatState.generation before touching the DOM once the network
-    // response resolves. This guards the exact class of bug this session
-    // already hardened once (a stale async response mutating UI/state that
-    // has since moved on): if the modal is closed and reopened, or a second
-    // message is queued, or (for logout specifically — see below) the page
-    // has already started tearing down, a late-arriving response becomes a
-    // harmless no-op instead of appending a reply to the wrong turn or
-    // re-enabling an input that no longer represents the current chat.
+    // Incremented by two real triggers (not by handleAgentChatSubmit itself
+    // firing twice — the synchronous `elements.agentChatInput.disabled`
+    // re-entrancy check there already fully serializes sends, so there is no
+    // way to reach a second in-flight send while one is pending):
     //
-    // Note on logout specifically: logout() (search this file) calls
-    // `window.location.reload()` on sign-out, which destroys the whole JS
-    // context — so a genuinely in-flight fetch can't corrupt state.* after
-    // reload; the reload itself is the strongest guard. This counter mainly
-    // protects the *pre-reload* window (the moment between clicking "Выйти"
-    // and the reload actually happening) and the more likely case of the
-    // user closing the chat panel or firing a second message while the first
-    // is still pending.
+    //   1. closeModalElement() (search this file) — bumped whenever the
+    //      agent-chat modal specifically is closed, via any of its three
+    //      close paths (.close-modal button, clicking the backdrop, Escape).
+    //      Closing the modal does NOT clear agentChatState.history or the
+    //      rendered message list (Task 15's plan accepted "in-memory,
+    //      resets on reload" as the simple default — closing and reopening
+    //      the MODAL, as opposed to reloading the page, keeps showing prior
+    //      turns, like a persistent panel). So the race this guards is
+    //      narrower than a full reset: close the modal while a send is still
+    //      in flight, reopen it, send a NEW message — without this counter
+    //      the OLD request's response could still land and either append a
+    //      reply after the new user turn or stomp on the newer send's
+    //      input-disabled/re-enable lifecycle.
+    //   2. onAuthStateChanged()'s signed-out branch (search this file) —
+    //      bumped on every real sign-out, whichever path triggered it:
+    //      logout() calling `auth.signOut()` (which is immediately followed
+    //      by `window.location.reload()`, itself the strongest guard once it
+    //      lands, since it destroys the whole JS context — but there is a
+    //      window between signOut() resolving and the reload actually
+    //      happening), or handleAgentChatSubmit's own 401 handler forcing
+    //      `auth.signOut()` when the server rejects the caller's Firebase ID
+    //      token. Either way, a logged-out user must never see a stale
+    //      agent response render as if it belonged to their (now-ended)
+    //      session.
+    //
+    // The closure created by a given send() captures its own `generation`
+    // value and checks it still matches agentChatState.generation before
+    // touching the DOM once the network response resolves; a mismatch means
+    // one of the two triggers above fired since this send went out, so the
+    // response is dropped as a harmless no-op instead of appending a reply
+    // to the wrong turn or re-enabling an input that no longer represents
+    // the current chat.
     generation: 0,
 };
 
@@ -7451,13 +7491,23 @@ async function handleAgentChatSubmit(event) {
         } else if (status === 401) {
             // Token expired/invalid server-side — a generic error message
             // would be misleading here since retrying with the same (stale)
-            // client-side auth state will just 401 again. Prompt re-login
-            // explicitly instead.
+            // client-side auth state will just 401 again. Show the notice
+            // briefly, then actually sign the user out: a server 401 doesn't
+            // flip local Firebase auth state on its own, so without this the
+            // app UI behind the still-open chat modal would keep rendering
+            // as if fully authenticated with no way to discover how to
+            // re-login now that Task 12 replaced the login form with the
+            // Telegram Login Widget in #auth-overlay. Calling auth.signOut()
+            // (same cached `auth` reference logout() uses, not a fresh
+            // firebase.auth() call) triggers the existing onAuthStateChanged
+            // handler, which calls showAuthScreen() and routes the user back
+            // to the Telegram widget automatically.
             appendAgentChatMessage('error', 'Сессия истекла. Пожалуйста, войдите заново, чтобы продолжить общение с агентом.');
             // Drop the user's turn from history since the server never
             // actually processed it — resending it later as prior "history"
             // context would misrepresent what the agent has seen.
             agentChatState.history.pop();
+            auth.signOut().catch((e) => console.error('agent-chat: signOut after 401 failed', e));
         } else if (status === 400) {
             // Validation error from a well-formed client call "shouldn't"
             // happen, but defend anyway (e.g. a future server-side change
