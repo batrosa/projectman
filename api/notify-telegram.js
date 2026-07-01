@@ -47,10 +47,25 @@ export default async function handler(request, response) {
             })
         });
 
-        const ok = telegramResponse.ok;
-        return response.status(200).json({ ok });
+        let telegramBody = null;
+        try {
+            telegramBody = await telegramResponse.json();
+        } catch {
+            telegramBody = null;
+        }
+
+        if (!telegramResponse.ok || !telegramBody?.ok) {
+            return response.status(telegramResponse.ok ? 502 : telegramResponse.status).json({
+                ok: false,
+                error: 'Telegram send failed',
+                errorCode: telegramBody?.error_code || telegramResponse.status,
+                description: telegramBody?.description || telegramResponse.statusText || 'Unknown Telegram error'
+            });
+        }
+
+        return response.status(200).json({ ok: true, messageId: telegramBody.result?.message_id || null });
     } catch (error) {
         console.error('Telegram send failed:', error);
-        return response.status(502).json({ error: 'Failed to reach Telegram' });
+        return response.status(502).json({ ok: false, error: 'Failed to reach Telegram' });
     }
 }
