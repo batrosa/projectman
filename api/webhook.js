@@ -67,6 +67,9 @@ export default async function handler(req, res) {
     if (req.method === 'POST' && getQueryParam(req, 'setup') === 'telegram') {
         return setupTelegramWebhook(req, res, telegramApi, webhookSecret);
     }
+    if (req.method === 'POST' && getQueryParam(req, 'setup') === 'cleanup-test-user') {
+        return cleanupTelegramTestUser(req, res, webhookSecret);
+    }
 
     const requestWebhookSecret = req.headers?.['x-telegram-bot-api-secret-token'];
     const hasVerifiedWebhookSecret = Boolean(webhookSecret) && requestWebhookSecret === webhookSecret;
@@ -197,6 +200,24 @@ async function setupTelegramWebhook(req, res, telegramApi, webhookSecret) {
     } catch (error) {
         console.error('webhook: setWebhook request failed:', error);
         return res.status(502).json({ ok: false, error: 'Telegram setWebhook request failed' });
+    }
+}
+
+async function cleanupTelegramTestUser(req, res, webhookSecret) {
+    const setupSecret = req.headers?.['x-setup-secret'];
+    if (!webhookSecret) {
+        return res.status(503).json({ ok: false, error: 'TELEGRAM_WEBHOOK_SECRET is not configured' });
+    }
+    if (setupSecret !== webhookSecret) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        await adminDb().collection('users').doc('tg_123456789').delete();
+        return res.status(200).json({ ok: true });
+    } catch (error) {
+        console.error('webhook: cleanup test user failed:', error);
+        return res.status(500).json({ ok: false, error: 'Cleanup failed' });
     }
 }
 
