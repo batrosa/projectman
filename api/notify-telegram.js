@@ -1,6 +1,8 @@
 // Server-side proxy for sending Telegram notifications.
 // Keeps the bot token out of the browser bundle — the client only ever
 // calls this endpoint, never api.telegram.org directly.
+import { adminAuth, adminDb } from "../lib/firebase-admin.js";
+
 async function parseJsonBody(request) {
     if (request.body && typeof request.body === 'object') return request.body;
     if (typeof request.body === 'string') return JSON.parse(request.body || '{}');
@@ -21,6 +23,29 @@ export default async function handler(request, response) {
         return response.status(503).json({ error: 'Telegram is not configured' });
     }
 
+    const idToken = (request.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!idToken) return response.status(401).json({ error: 'Unauthorized' });
+
+    let decoded;
+    try {
+        // Mirrors the auth pattern in api/agent-chat.js: verifyIdToken() with
+        // no options validates signature, issuer/audience and expiry against
+        // this Firebase project's defaults.
+        decoded = await adminAuth().verifyIdToken(idToken);
+    } catch {
+        return response.status(401).json({ error: 'Unauthorized' });
+    }
+
+    let callerOrgId;
+    try {
+        const userDoc = await adminDb().collection('users').doc(decoded.uid).get();
+        callerOrgId = userDoc.exists ? userDoc.data().organizationId : null;
+    } catch (error) {
+        console.error('notify-telegram: failed to load caller user doc', error);
+        return response.status(500).json({ ok: false, error: 'Failed to verify caller' });
+    }
+    if (!callerOrgId) return response.status(403).json({ error: 'No organization' });
+
     let body;
     try {
         body = await parseJsonBody(request);
@@ -32,6 +57,28 @@ export default async function handler(request, response) {
     const text = String(body.text || '').trim();
     if (!chatId || !text) {
         return response.status(400).json({ error: 'chatId and text are required' });
+    }
+
+    // Open-relay guard: the caller may only message a Telegram chatId that
+    // belongs to a user in their own organization. Without this, any
+    // authenticated user (of any org) could relay arbitrary text to any
+    // chatId that happens to exist in the users collection — this endpoint
+    // was previously reachable with no auth at all, so this check plus the
+    // idToken requirement above together close that hole.
+    let recipientSnap;
+    try {
+        recipientSnap = await adminDb()
+            .collection('users')
+            .where('telegramChatId', '==', chatId)
+            .limit(1)
+            .get();
+    } catch (error) {
+        console.error('notify-telegram: failed to look up recipient', error);
+        return response.status(500).json({ ok: false, error: 'Failed to verify recipient' });
+    }
+    const recipientDoc = recipientSnap.empty ? null : recipientSnap.docs[0];
+    if (!recipientDoc || recipientDoc.data().organizationId !== callerOrgId) {
+        return response.status(403).json({ ok: false, error: 'Recipient not in your organization' });
     }
 
     const parseMode = body.parseMode ? String(body.parseMode) : undefined;

@@ -6,11 +6,24 @@
 // and kicks off text extraction in the background via lib/material-parser.js,
 // so a later AI agent task can read the extracted text.
 import { waitUntil } from "@vercel/functions";
-import { adminDb } from "../lib/firebase-admin.js";
+import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { extractMaterialText } from "../lib/material-parser.js";
 
 export const ALLOWED_EXTENSIONS = ["md", "xlsx", "xlsm", "pdf", "docx"];
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+// The app's own Cloudinary cloud — the only origin server-side code is
+// allowed to fetch() from. Without this check, `url` was an attacker-
+// controlled SSRF vector: a caller could pass e.g.
+// http://169.254.169.254/latest/meta-data/... (cloud metadata endpoints) or
+// any internal/private address and have this server fetch it on their
+// behalf. Exported as a pure function so it's unit-testable without mocking
+// Firestore/network.
+const ALLOWED_FILE_URL_PREFIX = "https://res.cloudinary.com/dwoa1lqz1/";
+
+export function isAllowedFileUrl(url) {
+  return typeof url === "string" && url.startsWith(ALLOWED_FILE_URL_PREFIX);
+}
 
 // Pure validation logic, extracted so it can be unit tested without touching
 // Firestore/network. Returns { ok: true } or { ok: false, status, error }.
@@ -50,6 +63,31 @@ export default async function handler(request, response) {
     return response.status(405).json({ error: "Method not allowed" });
   }
 
+  const idToken = (request.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!idToken) return response.status(401).json({ error: "Unauthorized" });
+
+  let decoded;
+  try {
+    decoded = await adminAuth().verifyIdToken(idToken);
+  } catch (error) {
+    // Covers both an invalid/expired token and adminAuth() throwing because
+    // FIREBASE_SERVICE_ACCOUNT_JSON isn't configured — either way the caller
+    // is not authenticated, so 401 is the right response. (A misconfigured
+    // env would also fail every other authenticated endpoint in the app the
+    // same way, so this isn't a silent new failure mode.)
+    return response.status(401).json({ error: "Unauthorized" });
+  }
+
+  let callerOrgId;
+  try {
+    const userDoc = await adminDb().collection("users").doc(decoded.uid).get();
+    callerOrgId = userDoc.exists ? userDoc.data().organizationId : null;
+  } catch (error) {
+    console.error("project-files: failed to load caller user doc", error);
+    return response.status(500).json({ error: "Failed to verify caller" });
+  }
+  if (!callerOrgId) return response.status(403).json({ error: "No organization" });
+
   let body;
   try {
     body = await parseJsonBody(request);
@@ -64,9 +102,25 @@ export default async function handler(request, response) {
     return response.status(validation.status).json({ error: validation.error });
   }
 
+  if (!isAllowedFileUrl(url)) {
+    return response.status(400).json({ error: "Invalid file URL" });
+  }
+
+  let db;
+  let projectDoc;
+  try {
+    db = adminDb();
+    projectDoc = await db.collection("projects").doc(projectId).get();
+  } catch (error) {
+    console.error("project-files: failed to load project doc", error);
+    return response.status(500).json({ error: "Failed to verify project" });
+  }
+  if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
+    return response.status(403).json({ error: "Forbidden" });
+  }
+
   let fileRef;
   try {
-    const db = adminDb();
     fileRef = db.collection("projects").doc(projectId).collection("files").doc();
     await fileRef.set({
       filename,
@@ -112,6 +166,13 @@ export default async function handler(request, response) {
 
 async function extractInBackground(fileRef, { filename, url, mimeType }) {
   try {
+    // Defense in depth: extractInBackground is only ever invoked right after
+    // the request-time isAllowedFileUrl() check below, but re-checking here
+    // means this function is safe to fetch() from even if a future caller
+    // wires it up without going through the handler's guard.
+    if (!isAllowedFileUrl(url)) {
+      throw new Error("Blocked non-Cloudinary file URL");
+    }
     const fileResponse = await fetch(url);
     if (!fileResponse.ok) throw new Error(`Failed to download file: ${fileResponse.status}`);
     const arrayBuffer = await fileResponse.arrayBuffer();

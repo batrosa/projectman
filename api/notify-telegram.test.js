@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import handler from "./notify-telegram.js";
-
 function mockResponse() {
   return {
     statusCode: null,
@@ -21,9 +19,67 @@ function mockResponse() {
   };
 }
 
+// In-memory fake Firestore: only implements what api/notify-telegram.js
+// uses — a doc lookup for the caller's user record, and a
+// where('telegramChatId', '==', ...).limit(1).get() query for the recipient.
+function makeFakeDb(usersById = {}) {
+  const users = new Map(Object.entries(usersById));
+  return {
+    collection(name) {
+      if (name !== "users") throw new Error(`unexpected collection ${name}`);
+      return {
+        doc(id) {
+          return {
+            async get() {
+              return { exists: users.has(id), data: () => users.get(id) };
+            },
+          };
+        },
+        where(field, op, value) {
+          if (field !== "telegramChatId" || op !== "==") throw new Error("unexpected query");
+          return {
+            limit() {
+              return this;
+            },
+            async get() {
+              const match = [...users.entries()].find(([, data]) => data.telegramChatId === value);
+              return {
+                empty: !match,
+                docs: match ? [{ id: match[0], data: () => match[1] }] : [],
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+const state = { db: null, verifyIdToken: null };
+
+vi.mock("../lib/firebase-admin.js", () => ({
+  adminDb: () => state.db,
+  adminAuth: () => ({ verifyIdToken: state.verifyIdToken }),
+}));
+
+const { default: handler } = await import("./notify-telegram.js");
+
+const CALLER_UID = "tg_1001";
+const CALLER_ORG = "org-a";
+const AUTH_HEADERS = { authorization: "Bearer valid-token" };
+
 describe("POST /api/notify-telegram", () => {
   beforeEach(() => {
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
+    state.verifyIdToken = vi.fn(async (token) => {
+      if (token !== "valid-token") throw new Error("invalid token");
+      return { uid: CALLER_UID };
+    });
+    state.db = makeFakeDb({
+      [CALLER_UID]: { organizationId: CALLER_ORG },
+      recipient_in_org: { organizationId: CALLER_ORG, telegramChatId: "123" },
+      recipient_other_org: { organizationId: "org-b", telegramChatId: "999" },
+    });
   });
 
   afterEach(() => {
@@ -33,7 +89,7 @@ describe("POST /api/notify-telegram", () => {
 
   it("rejects non-POST methods", async () => {
     const res = mockResponse();
-    await handler({ method: "GET" }, res);
+    await handler({ method: "GET", headers: {} }, res);
     expect(res.statusCode).toBe(405);
     expect(res.headers.Allow).toBe("POST");
   });
@@ -41,8 +97,30 @@ describe("POST /api/notify-telegram", () => {
   it("returns 503 when TELEGRAM_BOT_TOKEN is not configured", async () => {
     delete process.env.TELEGRAM_BOT_TOKEN;
     const res = mockResponse();
-    await handler({ method: "POST", body: { chatId: "1", text: "hello" } }, res);
+    await handler({ method: "POST", headers: {}, body: { chatId: "1", text: "hello" } }, res);
     expect(res.statusCode).toBe(503);
+  });
+
+  it("returns 401 when no bearer token is provided", async () => {
+    const res = mockResponse();
+    await handler({ method: "POST", headers: {}, body: { chatId: "123", text: "hello" } }, res);
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 401 when the bearer token fails verification", async () => {
+    const res = mockResponse();
+    await handler(
+      { method: "POST", headers: { authorization: "Bearer bad-token" }, body: { chatId: "123", text: "hello" } },
+      res
+    );
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 403 when the caller has no organization", async () => {
+    state.db = makeFakeDb({ [CALLER_UID]: {} });
+    const res = mockResponse();
+    await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "123", text: "hello" } }, res);
+    expect(res.statusCode).toBe(403);
   });
 
   it("validates required fields before calling Telegram", async () => {
@@ -50,9 +128,36 @@ describe("POST /api/notify-telegram", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const res = mockResponse();
-    await handler({ method: "POST", body: { chatId: "", text: "" } }, res);
+    await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "", text: "" } }, res);
 
     expect(res.statusCode).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects (403) when the target chatId does not belong to any known user", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = mockResponse();
+    await handler(
+      { method: "POST", headers: AUTH_HEADERS, body: { chatId: "does-not-exist", text: "hello" } },
+      res
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toMatchObject({ ok: false, error: "Recipient not in your organization" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects (403) when the target chatId belongs to a user in a different organization (closes the open relay)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = mockResponse();
+    await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "999", text: "hello" } }, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toMatchObject({ ok: false, error: "Recipient not in your organization" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -69,7 +174,7 @@ describe("POST /api/notify-telegram", () => {
     })));
 
     const res = mockResponse();
-    await handler({ method: "POST", body: { chatId: "123", text: "hello" } }, res);
+    await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "123", text: "hello" } }, res);
 
     expect(res.statusCode).toBe(403);
     expect(res.body).toMatchObject({
@@ -80,7 +185,7 @@ describe("POST /api/notify-telegram", () => {
     });
   });
 
-  it("returns the Telegram message id on success", async () => {
+  it("returns the Telegram message id on success for a recipient in the caller's org", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -89,7 +194,10 @@ describe("POST /api/notify-telegram", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const res = mockResponse();
-    await handler({ method: "POST", body: { chatId: "123", text: "hello", parseMode: "HTML" } }, res);
+    await handler(
+      { method: "POST", headers: AUTH_HEADERS, body: { chatId: "123", text: "hello", parseMode: "HTML" } },
+      res
+    );
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ ok: true, messageId: 42 });

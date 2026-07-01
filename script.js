@@ -2098,11 +2098,17 @@ async function handleProjectFileSelect(event) {
     }
 
     try {
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) {
+            throw new Error('Вы не авторизованы');
+        }
+        const idToken = await currentUser.getIdToken();
+
         const uploadResult = await uploadProjectFileToCloudinary(file);
 
         const response = await fetch('/api/project-files', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({
                 projectId,
                 filename: file.name,
@@ -5468,10 +5474,17 @@ async function awardXP(userId, taskId, wasOnTime, wasReturned) {
 async function sendTelegramNotification(chatId, message) {
     if (!chatId) return;
 
+    // Fire-and-forget: the endpoint now requires an authenticated, org-scoped
+    // caller. If there's no signed-in user (or getIdToken() fails), just skip
+    // the notification rather than blocking whatever action triggered it.
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) return;
+
     try {
+        const idToken = await currentUser.getIdToken();
         const response = await fetch('/api/notify-telegram', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({
                 chatId,
                 text: message,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateUpload, extensionOf, ALLOWED_EXTENSIONS, MAX_FILE_BYTES } from "./project-files.js";
+import { validateUpload, extensionOf, isAllowedFileUrl, ALLOWED_EXTENSIONS, MAX_FILE_BYTES } from "./project-files.js";
 
 describe("extensionOf", () => {
   it("is case-insensitive", () => {
@@ -97,5 +97,34 @@ describe("validateUpload", () => {
   it("does not reject when sizeBytes is missing (unknown size is allowed through)", () => {
     const result = validateUpload({ ...base, sizeBytes: undefined });
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("isAllowedFileUrl", () => {
+  it("accepts a URL under the app's own Cloudinary cloud", () => {
+    expect(isAllowedFileUrl("https://res.cloudinary.com/dwoa1lqz1/raw/upload/x.pdf")).toBe(true);
+  });
+
+  it("rejects an internal/metadata-service URL (SSRF)", () => {
+    expect(isAllowedFileUrl("http://169.254.169.254/")).toBe(false);
+  });
+
+  it("rejects an arbitrary external URL", () => {
+    expect(isAllowedFileUrl("https://evil.com/x.pdf")).toBe(false);
+  });
+
+  it("rejects a different Cloudinary cloud name", () => {
+    expect(isAllowedFileUrl("https://res.cloudinary.com/OTHERCLOUD/x.pdf")).toBe(false);
+  });
+
+  it("rejects non-string input", () => {
+    expect(isAllowedFileUrl(undefined)).toBe(false);
+    expect(isAllowedFileUrl(null)).toBe(false);
+    expect(isAllowedFileUrl(123)).toBe(false);
+    expect(isAllowedFileUrl({})).toBe(false);
+  });
+
+  it("rejects an http (non-https) URL even on the right host", () => {
+    expect(isAllowedFileUrl("http://res.cloudinary.com/dwoa1lqz1/raw/upload/x.pdf")).toBe(false);
   });
 });
