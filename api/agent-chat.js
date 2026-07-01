@@ -52,13 +52,25 @@ export default async function handler(request, response) {
   const history = normalizeHistory(body.history);
 
   const db = adminDb();
-  const userDoc = await db.collection("users").doc(decoded.uid).get();
-  const organizationId = userDoc.exists ? userDoc.data().organizationId : null;
+  let organizationId;
+  try {
+    const userDoc = await db.collection("users").doc(decoded.uid).get();
+    organizationId = userDoc.exists ? userDoc.data().organizationId : null;
+  } catch (error) {
+    console.error("agent-chat: failed to load user doc", error);
+    return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
+  }
   if (!organizationId) {
     return response.status(200).json({ ok: true, answer: "Вы пока не состоите ни в одной организации — агенту нечего показать." });
   }
 
-  const context = await loadOrganizationContext(db, organizationId);
+  let context;
+  try {
+    context = await loadOrganizationContext(db, organizationId);
+  } catch (error) {
+    console.error("agent-chat: failed to load organization context", error);
+    return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
+  }
   const contextText = compactContext(context);
 
   const openRouterKey = process.env.OPENROUTER_API_KEY;
@@ -123,36 +135,57 @@ async function loadOrganizationContext(db, organizationId) {
   const projects = projectsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const tasks = tasksSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
+  // Parallelized across projects (was a sequential for-await loop, serializing
+  // N Firestore round-trips for N projects). Latency matters here: this
+  // endpoint isn't listed in vercel.json's `functions` block (that only
+  // configures api/webhook.js's maxDuration: 10), so it runs under Vercel's
+  // platform-default function timeout rather than an explicit one — still a
+  // real budget an org with many projects could exhaust serially.
+  const filesSnaps = await Promise.all(
+    projects.map((project) =>
+      db
+        .collection("projects").doc(project.id).collection("files")
+        .where("extractionStatus", "==", "done")
+        .get()
+    )
+  );
+
   const files = [];
-  for (const project of projects) {
-    const filesSnap = await db
-      .collection("projects").doc(project.id).collection("files")
-      .where("extractionStatus", "==", "done")
-      .get();
+  filesSnaps.forEach((filesSnap, index) => {
+    const project = projects[index];
     filesSnap.docs.forEach((doc) => {
       const data = doc.data();
       if (data.extractedText) files.push({ projectId: project.id, filename: data.filename, extractedText: data.extractedText });
     });
-  }
+  });
 
   return { projects, tasks, files };
 }
 
-function compactContext(context) {
-  const structured = JSON.stringify({
-    projects: context.projects.map((p) => ({ id: p.id, name: p.name })),
-    tasks: context.tasks.map((t) => ({
-      id: t.id, projectId: t.projectId, title: t.title, assignee: t.assignee,
-      deadline: t.deadline, status: t.status, subStatus: t.subStatus,
-    })),
-  });
+// Budget split for CONTEXT_CHAR_LIMIT: 70% reserved for structured
+// project/task JSON, 30% for appended file text.
+//
+// Reasoning: structured data (ids/titles/statuses/deadlines/assignees) is
+// dense, high-value signal per character — it's exactly what lets the agent
+// answer "what's overdue" or "who owns X" questions, and losing a task from
+// it silently would make the agent factually wrong. File text is prose
+// (extracted PDF/doc contents) that degrades gracefully when cut mid-sentence
+// and is inherently supplementary. A large org (hundreds/thousands of tasks)
+// will exhaust the structured budget before ever reaching the file-text
+// budget, so 70/30 favors the side that actually breaks correctness when
+// missing, while still guaranteeing some room for file context in the common
+// (smaller-org) case where structured data doesn't come close to its cap.
+const STRUCTURED_BUDGET_RATIO = 0.7;
 
-  // Truncation priority: structured project/task data is always kept intact
-  // (it is small — ids/titles/statuses only — and losing it silently would
-  // make the agent wrong about deadlines/assignees, which is worse than
-  // losing some file text). Only the appended file-text blob is subject to
-  // the character budget, and it is cut at the *file* boundary (never mid
-  // task-list) since `structured` is placed first and whole.
+function compactContext(context) {
+  const structuredBudget = Math.floor(CONTEXT_CHAR_LIMIT * STRUCTURED_BUDGET_RATIO);
+  const { structured, omittedTaskCount } = buildBoundedStructured(context, structuredBudget);
+
+  // Truncation priority: structured project/task data is capped first (see
+  // buildBoundedStructured), then whatever budget remains (CONTEXT_CHAR_LIMIT
+  // minus the *actual* structured length, not the reserved budget — so a
+  // small org that doesn't use its full structured allowance leaves more
+  // room for file text) goes to file text, cut at the file boundary.
   let fileBudget = CONTEXT_CHAR_LIMIT - structured.length - 4; // 4 for the two newlines joining them
   const fileTexts = [];
   let filesTruncated = false;
@@ -173,10 +206,85 @@ function compactContext(context) {
   }
 
   let combined = `${structured}\n\n${fileTexts.join("\n\n")}`;
-  if (filesTruncated) {
-    combined += "\n...[данные обрезаны по объёму — часть файлов могла не попасть в контекст]";
+  const notices = [];
+  if (omittedTaskCount > 0) {
+    notices.push(`...[в контекст не поместилось ${omittedTaskCount} задач(и) — данные по ним не учтены]`);
   }
+  if (filesTruncated) {
+    notices.push("...[данные обрезаны по объёму — часть файлов могла не попасть в контекст]");
+  }
+  if (notices.length) combined += `\n${notices.join("\n")}`;
   return combined;
+}
+
+// Builds the structured projects+tasks JSON incrementally, sorted
+// most-recently-created first (createdAt desc; tasks without a parseable
+// createdAt sort last), stopping once adding the next task would exceed
+// `budget`. This guarantees `structured` itself is bounded regardless of org
+// size — the earlier version serialized the FULL task list unconditionally,
+// which reached ~950KB in a 5,000-task synthetic org despite a 45,000-char
+// CONTEXT_CHAR_LIMIT.
+function buildBoundedStructured(context, budget) {
+  const projects = context.projects.map((p) => ({ id: p.id, name: p.name }));
+  const sortedTasks = [...context.tasks].sort((a, b) => taskRecency(b) - taskRecency(a));
+
+  // Projects are always included whole: there are orders of magnitude fewer
+  // projects than tasks in practice, and losing project names/ids would
+  // break every task's projectId reference.
+  //
+  // Length is tracked incrementally (each task's own serialized length, plus
+  // 1 char for the joining comma) rather than re-stringifying the whole
+  // growing array on every iteration — the latter is O(n^2) and noticeably
+  // slow for orgs with thousands of tasks.
+  const skeleton = JSON.stringify({ projects, tasks: [] });
+  // `{"projects":[...],"tasks":[]}` -> length before/after the empty "[]"
+  // tells us exactly how many characters a non-empty tasks array adds:
+  // one pair of brackets already counted in `skeleton`, plus a comma
+  // between each task once there's more than one.
+  let runningLength = skeleton.length;
+  const includedTasks = [];
+  let omittedTaskCount = 0;
+
+  for (const t of sortedTasks) {
+    const compact = {
+      id: t.id, projectId: t.projectId, title: t.title, assignee: t.assignee,
+      deadline: t.deadline, status: t.status, subStatus: t.subStatus,
+    };
+    const taskJson = JSON.stringify(compact);
+    const addedLength = taskJson.length + (includedTasks.length > 0 ? 1 : 0); // +1 for comma separator
+    if (runningLength + addedLength > budget && includedTasks.length > 0) {
+      omittedTaskCount = sortedTasks.length - includedTasks.length;
+      break;
+    }
+    includedTasks.push(compact);
+    runningLength += addedLength;
+    // Even a single task can't fit (pathological — shouldn't happen with
+    // this schema, but avoid silently exceeding budget on the very first task).
+    if (runningLength > budget && includedTasks.length === 1 && sortedTasks.length > 1) {
+      omittedTaskCount = sortedTasks.length - 1;
+      break;
+    }
+  }
+
+  const structured = JSON.stringify({ projects, tasks: includedTasks });
+  return { structured, omittedTaskCount };
+}
+
+// Extracts a millisecond timestamp from a task's createdAt for recency
+// sorting. Handles Firestore Timestamp objects (`.toDate()`), ISO/date
+// strings, and missing values — mirrors the tolerant parsing already used
+// for this exact field in script.js. Unparseable/missing values sort last
+// (treated as oldest) rather than throwing or defaulting to "now", so a task
+// with bad data doesn't unfairly jump to the front of the kept set.
+function taskRecency(task) {
+  const raw = task && task.createdAt;
+  if (!raw) return -Infinity;
+  if (typeof raw.toDate === "function") {
+    const d = raw.toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d.getTime() : -Infinity;
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? -Infinity : d.getTime();
 }
 
 function normalizeHistory(history) {
