@@ -1,0 +1,13 @@
+{
+  "name": "projectman",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run firestore-tests\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "vitest": "^3.0.0"
+  }
+}

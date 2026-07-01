@@ -7,9 +7,39 @@ service cloud.firestore {
       return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Функция: Проверка, что пользователь не меняет защищенные поля (роль и доступы)
+    // Функция: Проверка, что пользователь не меняет защищенные поля (роль, доступы, организация)
     function notUpdatingRestrictedFields() {
-      return (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects']));
+      return (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects', 'organizationId', 'orgRole']));
+    }
+
+    // Функция: Самостоятельное присоединение к организации (только с ролью employee)
+    function isSelfServiceOrgJoin() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return changedKeys.hasOnly(['organizationId', 'orgRole'])
+        && request.resource.data.orgRole == 'employee';
+    }
+
+    // Функция: Самостоятельный выход из организации
+    function isSelfServiceOrgLeave() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return changedKeys.hasOnly(['organizationId', 'orgRole'])
+        && request.resource.data.organizationId == null
+        && request.resource.data.orgRole == null;
+    }
+
+    // Функция: Проверка, что пользователь ещё не состоит в организации
+    function wasNotYetInOrg() {
+      return !('organizationId' in resource.data) || resource.data.organizationId == null;
+    }
+
+    // Функция: Самостоятельное создание организации (пользователь должен реально быть владельцем целевого документа organizations)
+    function isSelfServiceOrgCreate() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return changedKeys.hasOnly(['organizationId', 'orgRole', 'email', 'displayName'])
+        && request.resource.data.orgRole == 'owner'
+        && wasNotYetInOrg()
+        && exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
+        && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerId == request.auth.uid;
     }
 
     // Функция: Проверка прав на проект
@@ -31,12 +61,26 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == userId 
         && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader');
       
-      // Обновлять: Владелец (но БЕЗ смены роли) ИЛИ Админ (все поля)
-      allow update: if (request.auth != null && request.auth.uid == userId && notUpdatingRestrictedFields()) 
+      // Обновлять: Владелец (но БЕЗ смены роли/оргполей, кроме явных сценариев join/leave/create) ИЛИ Админ (все поля)
+      allow update: if (request.auth != null && request.auth.uid == userId
+                         && (notUpdatingRestrictedFields() || isSelfServiceOrgJoin() || isSelfServiceOrgLeave() || isSelfServiceOrgCreate()))
                     || isAdmin();
-      
+
       // Удалять: Только Админ
       allow delete: if isAdmin();
+    }
+
+    // Коллекция Organizations
+    match /organizations/{orgId} {
+      // Читать могут все авторизованные пользователи
+      allow read: if request.auth != null;
+      // Создать может только тот, кто указывает себя владельцем
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      // Обновлять/удалять: владелец организации ИЛИ пользователь с orgRole owner/admin
+      allow update, delete: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin']
+      );
     }
 
     // Коллекция Projects
