@@ -41,7 +41,7 @@ async function firestoreDelete(collection, docId) {
     await fetch(url, { method: 'DELETE' });
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -115,4 +115,4 @@ module.exports = async (req, res) => {
     }
 
     return res.status(200).send('Bot is running');
-};
+}

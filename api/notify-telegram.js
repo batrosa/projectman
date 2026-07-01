@@ -10,7 +10,7 @@ async function parseJsonBody(request) {
     return text ? JSON.parse(text) : {};
 }
 
-module.exports = async (request, response) => {
+export default async function handler(request, response) {
     if (request.method !== 'POST') {
         response.setHeader('Allow', 'POST');
         return response.status(405).json({ error: 'Method not allowed' });
@@ -53,4 +53,4 @@ module.exports = async (request, response) => {
         console.error('Telegram send failed:', error);
         return response.status(502).json({ error: 'Failed to reach Telegram' });
     }
-};
+}
