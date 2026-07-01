@@ -1537,12 +1537,10 @@ const elements = {
     authOverlay: document.getElementById('auth-overlay'),
     authScreen: document.getElementById('auth-screen'),
     roleScreen: document.getElementById('role-screen'),
-    adminVerifyScreen: document.getElementById('admin-verify-screen'),
     loginForm: document.getElementById('login-form'),
     registerForm: document.getElementById('register-form'),
     loginError: document.getElementById('login-error'),
     registerError: document.getElementById('register-error'),
-    adminVerifyError: document.getElementById('admin-verify-error'),
     userEmailDisplay: document.getElementById('user-email-display'),
 
     // Mobile
@@ -4320,7 +4318,6 @@ function showAuthScreen() {
     elements.authOverlay.style.display = 'flex';
     elements.authScreen.style.display = 'block';
     if (elements.roleScreen) elements.roleScreen.style.display = 'none';
-    if (elements.adminVerifyScreen) elements.adminVerifyScreen.style.display = 'none';
 }
 
 // showRoleSelection removed as it's no longer used
