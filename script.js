@@ -214,6 +214,19 @@ function formatFileSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// Guard against attacker-controlled attachment URLs (e.g. a Firestore-sourced
+// attachment.url set to "javascript:alert(1)") being used as an href/window.open
+// target. Only allow http(s) and known-safe Cloudinary-style protocol-relative
+// paths; anything else (javascript:, data:, vbscript:, etc.) is neutralized.
+function sanitizeAttachmentUrl(url) {
+    if (typeof url !== 'string') return '#';
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (trimmed.startsWith('//')) return trimmed;
+    if (trimmed.startsWith('/')) return trimmed;
+    return '#';
+}
+
 // Upload file to Cloudinary
 async function uploadToCloudinary(file) {
     const formData = new FormData();
@@ -363,7 +376,7 @@ function renderAttachmentsList() {
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
+                <div class="attachment-name">${escapeHtml(attachment.name)}</div>
                 <div class="attachment-size">${attachment.uploading ? 'Загрузка...' : formatFileSize(attachment.size)}</div>
             </div>
             ${!attachment.uploading ? `
@@ -417,11 +430,13 @@ function openFilePreview(attachment) {
     console.log('File type:', fileType);
     console.log('File URL:', attachment.url);
 
+    const safeUrl = sanitizeAttachmentUrl(attachment.url);
+
     // 1. OFFICE DOCUMENTS (Word, Excel) -> Download directly (most reliable)
     if (['word', 'excel'].includes(fileType)) {
         // Create download link
         const link = document.createElement('a');
-        link.href = attachment.url;
+        link.href = safeUrl;
         link.download = attachment.name || 'file';
         link.target = '_blank';
         document.body.appendChild(link);
@@ -435,7 +450,7 @@ function openFilePreview(attachment) {
     // 3. ARCHIVES/OTHERS -> Direct (will trigger download)
 
     // Try opening directly
-    const newWindow = window.open(attachment.url, '_blank');
+    const newWindow = window.open(safeUrl, '_blank');
 
     if (!newWindow) {
         alert('Не удалось открыть файл. Возможно, заблокировано всплывающее окно.');
@@ -448,12 +463,13 @@ function openFilePreview(attachment) {
 function showNoPreview(container, attachment) {
     const fileType = attachment.type || getFileType(attachment.name);
     const iconClass = getFileIcon(fileType);
+    const safeUrl = sanitizeAttachmentUrl(attachment.url);
 
     container.innerHTML = `
         <div class="no-preview">
             <i class="fa-solid ${iconClass}"></i>
             <p>Предпросмотр недоступен для этого типа файла</p>
-            <a href="${attachment.url}" download="${attachment.name}" class="primary-btn">
+            <a href="${escapeHtml(safeUrl)}" download="${escapeHtml(attachment.name)}" class="primary-btn">
                 <i class="fa-solid fa-download"></i> Скачать файл
             </a>
         </div>
@@ -485,15 +501,16 @@ function openFilesListModal(attachments) {
 
         const item = document.createElement('div');
         item.className = 'file-list-item';
-        // Force download URL (clean)
-        let downloadUrl = attachment.url;
+        // Force download URL (clean), guarding against non-http(s) schemes
+        // (e.g. javascript:) in a Firestore-sourced attachment.url.
+        let downloadUrl = sanitizeAttachmentUrl(attachment.url);
 
         // Google Docs Viewer URL for Office files
-        let viewUrl = attachment.url;
+        let viewUrl = downloadUrl;
         let isViewable = true;
 
         if (['word', 'excel', 'ppt'].includes(fileType)) {
-            viewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=false`;
+            viewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(downloadUrl)}&embedded=false`;
         } else if (!['pdf', 'image'].includes(fileType)) {
             // For archives etc, view acts same as download
             isViewable = false;
@@ -504,7 +521,7 @@ function openFilesListModal(attachments) {
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
+                <div class="attachment-name">${escapeHtml(attachment.name)}</div>
                 <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
             </div>
             <div class="file-actions" style="display: flex; gap: 10px; align-items: center;">
@@ -512,7 +529,7 @@ function openFilesListModal(attachments) {
                 <div class="action-btn view-btn" title="Просмотреть">
                     <i class="fa-solid fa-eye"></i>
                 </div>` : ''}
-                <a href="${downloadUrl}" target="_blank" download="${attachment.name}" class="action-btn download-link" title="Скачать">
+                <a href="${escapeHtml(downloadUrl)}" target="_blank" download="${escapeHtml(attachment.name)}" class="action-btn download-link" title="Скачать">
                     <i class="fa-solid fa-download"></i>
                 </a>
             </div>
@@ -1416,6 +1433,8 @@ let firebaseInitAttempts = 0;
 let isFirebaseInitialized = false;
 let taskListenerUnsubscribe = null; // To manage real-time listener for tasks
 let myTasksListenerUnsubscribe = null; // To manage real-time listener for my tasks count
+let projectFilesListenerUnsubscribe = null; // To manage real-time listener for project files
+let projectFiles = []; // Files for the currently selected project (projects/{projectId}/files)
 
 function initFirebase() {
     if (isFirebaseInitialized) return; // Prevent double init
@@ -1521,6 +1540,11 @@ const elements = {
     projectModal: document.getElementById('project-modal'),
     taskModal: document.getElementById('task-modal'),
     helpModal: document.getElementById('help-modal'),
+    projectFilesModal: document.getElementById('project-files-modal'),
+    projectFilesBtn: document.getElementById('project-files-btn'),
+    projectFilesList: document.getElementById('project-files-list'),
+    projectFileInput: document.getElementById('project-file-input'),
+    addProjectFileBtn: document.getElementById('add-project-file-btn'),
 
 
 
@@ -1537,12 +1561,7 @@ const elements = {
     authOverlay: document.getElementById('auth-overlay'),
     authScreen: document.getElementById('auth-screen'),
     roleScreen: document.getElementById('role-screen'),
-    adminVerifyScreen: document.getElementById('admin-verify-screen'),
-    loginForm: document.getElementById('login-form'),
-    registerForm: document.getElementById('register-form'),
     loginError: document.getElementById('login-error'),
-    registerError: document.getElementById('register-error'),
-    adminVerifyError: document.getElementById('admin-verify-error'),
     userEmailDisplay: document.getElementById('user-email-display'),
 
     // Mobile
@@ -1605,6 +1624,14 @@ const elements = {
     orgDeleteBtn: document.getElementById('org-delete-btn'),
     orgRegenerateCode: document.getElementById('org-regenerate-code'),
     brandLogo: document.getElementById('brand-logo'),
+
+    // Global AI agent chat
+    agentChatBtn: document.getElementById('agent-chat-btn'),
+    agentChatModal: document.getElementById('agent-chat-modal'),
+    agentChatMessages: document.getElementById('agent-chat-messages'),
+    agentChatForm: document.getElementById('agent-chat-form'),
+    agentChatInput: document.getElementById('agent-chat-input'),
+    agentChatSendBtn: document.getElementById('agent-chat-send-btn'),
 };
 
 // Init
@@ -1782,6 +1809,12 @@ function setupRealtimeListeners() {
                 taskListenerUnsubscribe = null;
             }
             state.tasks = [];
+            // Also unsubscribe from project files if project is gone
+            if (projectFilesListenerUnsubscribe) {
+                projectFilesListenerUnsubscribe();
+                projectFilesListenerUnsubscribe = null;
+            }
+            projectFiles = [];
         }
 
         renderProjects();
@@ -1843,6 +1876,7 @@ function selectProject(id) {
     state.boardView = 'assigned'; // Always open "Assigned" first
     renderProjects(); // To update active class
     subscribeToProjectTasks(id); // Fetch tasks for this project only
+    subscribeToProjectFiles(id); // Fetch project-level files (distinct from task attachments)
 
     // Close sidebar on mobile
     if (window.innerWidth <= 768) {
@@ -1883,6 +1917,209 @@ function subscribeToProjectTasks(projectId) {
             if (elements.listReview) elements.listReview.innerHTML = '';
             elements.listDone.innerHTML = '';
         });
+}
+
+// ========== PROJECT FILES (distinct from per-task attachments above) ==========
+// Live Firestore listener on projects/{projectId}/files, matching the pattern
+// used for tasks/users elsewhere in this file (setupRealtimeListeners,
+// subscribeToProjectTasks).
+function subscribeToProjectFiles(projectId) {
+    if (projectFilesListenerUnsubscribe) {
+        projectFilesListenerUnsubscribe();
+        projectFilesListenerUnsubscribe = null;
+    }
+
+    projectFilesListenerUnsubscribe = db.collection('projects').doc(projectId).collection('files')
+        .orderBy('uploadedAt', 'desc')
+        .onSnapshot(snapshot => {
+            projectFiles = [];
+            snapshot.forEach(doc => {
+                projectFiles.push({ id: doc.id, ...doc.data() });
+            });
+            renderProjectFilesList();
+        }, error => {
+            console.error("Error listening to project files:", error);
+            if (elements.projectFilesList) {
+                elements.projectFilesList.textContent = 'Ошибка загрузки файлов проекта';
+            }
+        });
+}
+
+function extractionStatusLabel(status) {
+    if (status === 'done') return { text: 'Готово', className: 'done' };
+    if (status === 'error') return { text: 'Ошибка', className: 'error' };
+    return { text: 'Обработка...', className: 'pending' };
+}
+
+// Builds each file row via safe DOM methods (textContent) rather than
+// innerHTML, since filename/status come from Firestore and should not be
+// interpolated into HTML strings.
+function renderProjectFilesList() {
+    const list = elements.projectFilesList;
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!projectFiles.length) {
+        const empty = document.createElement('p');
+        empty.style.cssText = 'color: var(--text-secondary); text-align: center; padding: 1rem 0;';
+        empty.textContent = 'Файлы проекта ещё не загружены';
+        list.appendChild(empty);
+        return;
+    }
+
+    projectFiles.forEach(file => {
+        const fileType = getFileType(file.filename || '');
+        const iconClass = getFileIcon(fileType);
+        const status = extractionStatusLabel(file.extractionStatus);
+
+        const item = document.createElement('div');
+        item.className = 'file-list-item';
+        if (file.url) {
+            item.style.cursor = 'pointer';
+            item.onclick = () => window.open(file.url, '_blank');
+        }
+
+        const iconWrap = document.createElement('div');
+        iconWrap.className = `attachment-icon ${fileType}`;
+        const icon = document.createElement('i');
+        icon.className = `fa-solid ${iconClass}`;
+        iconWrap.appendChild(icon);
+
+        const info = document.createElement('div');
+        info.className = 'attachment-info';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'attachment-name';
+        nameEl.textContent = file.filename || 'Файл';
+
+        const sizeEl = document.createElement('div');
+        sizeEl.className = 'attachment-size';
+        sizeEl.textContent = `${formatFileSize(file.sizeBytes || 0)} · `;
+        const statusEl = document.createElement('span');
+        statusEl.className = `extraction-status extraction-status-${status.className}`;
+        statusEl.textContent = status.text;
+        sizeEl.appendChild(statusEl);
+
+        info.appendChild(nameEl);
+        info.appendChild(sizeEl);
+
+        item.appendChild(iconWrap);
+        item.appendChild(info);
+        list.appendChild(item);
+    });
+}
+
+// Upload a project-level document to Cloudinary as a raw resource (not the
+// per-task attachment picker), then register it via POST /api/project-files
+// so the server can create the Firestore doc and run background text
+// extraction. Kept separate from uploadToCloudinary()/handleFileSelect()
+// (which power task attachments) since project files use resource_type=raw
+// and a different set of allowed extensions.
+const PROJECT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+const PROJECT_FILE_ALLOWED_EXTENSIONS = ['md', 'xlsx', 'xlsm', 'pdf', 'docx'];
+
+async function uploadProjectFileToCloudinary(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    try {
+        const response = await fetch(
+            `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/raw/upload`,
+            {
+                method: 'POST',
+                body: formData,
+                mode: 'cors',
+                signal: controller.signal
+            }
+        );
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            let errorMsg = response.statusText;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.error?.message || response.statusText;
+            } catch (e) { /* ignore parse failure */ }
+            throw new Error(errorMsg);
+        }
+
+        return await response.json();
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('Загрузка слишком долгая. Проверьте интернет или попробуйте файл меньшего размера');
+        }
+        if (error.message === 'Failed to fetch' || error.message === 'Load failed') {
+            throw new Error('Ошибка сети. Проверьте подключение к интернету');
+        }
+        throw error;
+    }
+}
+
+async function handleProjectFileSelect(event) {
+    const file = event.target.files[0];
+    event.target.value = ''; // Reset input so selecting the same file again re-triggers change
+    if (!file) return;
+
+    const projectId = state.activeProjectId;
+    if (!projectId) {
+        alert('Сначала выберите проект');
+        return;
+    }
+
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (!PROJECT_FILE_ALLOWED_EXTENSIONS.includes(ext)) {
+        alert(`Неподдерживаемый тип файла: .${ext}. Разрешены: ${PROJECT_FILE_ALLOWED_EXTENSIONS.join(', ')}`);
+        return;
+    }
+    if (file.size > PROJECT_FILE_MAX_BYTES) {
+        alert(`Файл слишком большой. Максимум ${formatFileSize(PROJECT_FILE_MAX_BYTES)}`);
+        return;
+    }
+
+    const btn = elements.addProjectFileBtn;
+    const originalHtml = btn ? btn.innerHTML : null;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
+    }
+
+    try {
+        const uploadResult = await uploadProjectFileToCloudinary(file);
+
+        const response = await fetch('/api/project-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectId,
+                filename: file.name,
+                url: uploadResult.secure_url,
+                mimeType: file.type || null,
+                sizeBytes: file.size,
+                uploadedBy: state.currentUser?.uid || null,
+            }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || 'Не удалось сохранить файл');
+        }
+
+        playClickSound();
+    } catch (error) {
+        console.error('Project file upload error:', error);
+        alert('Ошибка при загрузке файла: ' + error.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
 }
 
 function deleteTask(id) {
@@ -2027,6 +2264,7 @@ function renderBoard() {
         elements.projectDesc.textContent = 'или создайте новый';
         elements.addTaskBtn.disabled = true;
         elements.deleteProjectBtn.style.display = 'none';
+        if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'none';
         return;
     }
 
@@ -2069,6 +2307,7 @@ function renderBoard() {
         playClickSound();
         deleteProject(activeProject.id);
     };
+    if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'inline-flex';
 
     // Clear lists
     if (elements.listAssigned) elements.listAssigned.innerHTML = '';
@@ -2585,7 +2824,7 @@ function createTaskCard(task) {
 
         if (assigneeUser?.profilePhotoUrl) {
             avatar.style.overflow = 'hidden';
-            avatar.innerHTML = `<img src="${assigneeUser.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+            avatar.innerHTML = `<img src="${escapeHtml(sanitizeAttachmentUrl(assigneeUser.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
         } else {
             avatar.textContent = initials;
         }
@@ -2969,7 +3208,7 @@ function renderCompletionAttachments() {
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
+                <div class="attachment-name">${escapeHtml(attachment.name)}</div>
                 <div class="attachment-size">${attachment.uploading ? 'Загрузка...' : formatFileSize(attachment.size)}</div>
             </div>
             ${!attachment.uploading ? `
@@ -3394,12 +3633,16 @@ function openTaskDetailsModal(task) {
     modal.classList.add('active');
 }
 
-// Helper function to escape HTML
+// Helper function to escape HTML (safe for both text-node content and quoted
+// HTML attribute values, e.g. href="${escapeHtml(...)}")
 function escapeHtml(text) {
     if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function formatDate(dateString) {
@@ -3615,6 +3858,20 @@ function updateThemeUI(isLight) {
     }
 }
 
+// Shared modal-close helper. All three ways a modal can be dismissed
+// (.close-modal button, clicking the dimmed backdrop, pressing Escape — see
+// setupEventListeners() and handleKeyboardNavigation() below) route through
+// here so any modal-specific close side effects stay in one place. Right now
+// the only such side effect is the agent-chat generation-counter bump: see
+// agentChatState.generation for what that guards against.
+function closeModalElement(modal) {
+    if (!modal) return;
+    modal.classList.remove('active');
+    if (elements.agentChatModal && modal === elements.agentChatModal) {
+        agentChatState.generation += 1;
+    }
+}
+
 // Event Listeners
 function setupEventListeners() {
     // Organization event listeners
@@ -3692,6 +3949,23 @@ function setupEventListeners() {
         elements.helpModal.classList.add('active');
     });
 
+    // Project files button — opens the "Файлы проекта" modal (project-level
+    // documents, distinct from per-task attachments)
+    if (elements.projectFilesBtn && elements.projectFilesModal) {
+        elements.projectFilesBtn.addEventListener('click', () => {
+            playClickSound();
+            renderProjectFilesList();
+            elements.projectFilesModal.classList.add('active');
+        });
+    }
+    if (elements.addProjectFileBtn && elements.projectFileInput) {
+        elements.addProjectFileBtn.addEventListener('click', () => {
+            playClickSound();
+            elements.projectFileInput.click();
+        });
+        elements.projectFileInput.addEventListener('change', handleProjectFileSelect);
+    }
+
     // Close dropdowns when clicking outside
     window.addEventListener('click', () => {
         document.querySelectorAll('.status-dropdown.active').forEach(d => {
@@ -3704,7 +3978,7 @@ function setupEventListeners() {
             playClickSound();
             const modal = btn.closest('.modal');
             if (modal) {
-                modal.classList.remove('active');
+                closeModalElement(modal);
             }
         });
     });
@@ -3712,7 +3986,7 @@ function setupEventListeners() {
     // Close on click outside
     window.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) {
-            e.target.classList.remove('active');
+            closeModalElement(e.target);
         }
     });
 
@@ -3914,94 +4188,6 @@ function setupEventListeners() {
         });
     }
 
-    // Auth - Login/Register toggle
-    document.getElementById('show-register').addEventListener('click', (e) => {
-        playClickSound();
-        e.preventDefault();
-        elements.loginForm.style.display = 'none';
-        elements.registerForm.style.display = 'flex';
-        document.getElementById('auth-title').textContent = 'Регистрация';
-        document.getElementById('auth-subtitle').textContent = 'Создайте новый аккаунт';
-    });
-
-    document.getElementById('show-login').addEventListener('click', (e) => {
-        playClickSound();
-        e.preventDefault();
-        elements.registerForm.style.display = 'none';
-        elements.loginForm.style.display = 'flex';
-        document.getElementById('auth-title').textContent = 'Вход в систему';
-        document.getElementById('auth-subtitle').textContent = 'Войдите в свой аккаунт для продолжения';
-    });
-
-    // Login form
-    elements.loginForm.addEventListener('submit', async (e) => {
-        playClickSound();
-        e.preventDefault();
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
-        const submitBtn = elements.loginForm.querySelector('button[type="submit"]');
-
-        // Show loading state
-        setButtonLoading(submitBtn, true, 'Войти');
-
-        try {
-            await auth.signInWithEmailAndPassword(email, password);
-            elements.loginError.style.display = 'none';
-        } catch (error) {
-            elements.loginError.textContent = getAuthErrorMessage(error.code);
-            elements.loginError.style.display = 'block';
-            setButtonLoading(submitBtn, false, 'Войти');
-        }
-    });
-
-    // Register form
-    elements.registerForm.addEventListener('submit', async (e) => {
-        playClickSound();
-        e.preventDefault();
-        const firstName = document.getElementById('register-first-name').value.trim();
-        const lastName = document.getElementById('register-last-name').value.trim();
-        const email = document.getElementById('register-email').value;
-        const password = document.getElementById('register-password').value;
-        const confirmPassword = document.getElementById('register-password-confirm').value;
-        const submitBtn = elements.registerForm.querySelector('button[type="submit"]');
-
-        if (password !== confirmPassword) {
-            elements.registerError.textContent = 'Пароли не совпадают';
-            elements.registerError.style.display = 'block';
-            return;
-        }
-
-        if (password.length < 6) {
-            elements.registerError.textContent = 'Пароль должен содержать минимум 6 символов';
-            elements.registerError.style.display = 'block';
-            return;
-        }
-
-        // Show loading state
-        setButtonLoading(submitBtn, true, 'Зарегистрироваться');
-
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-
-            // Save user profile to Firestore
-            await db.collection('users').doc(userCredential.user.uid).set({
-                email: email,
-                firstName: firstName,
-                lastName: lastName,
-                role: 'reader', // Force role to reader
-                allowedProjects: [], // Empty means access to all projects
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-
-            elements.registerError.style.display = 'none';
-            // User will be automatically signed in, onAuthStateChanged will handle the rest
-        } catch (error) {
-            elements.registerError.textContent = getAuthErrorMessage(error.code);
-            elements.registerError.style.display = 'block';
-            setButtonLoading(submitBtn, false, 'Зарегистрироваться');
-        }
-    });
-
     // Role selection listeners removed (deprecated)
 
 
@@ -4139,7 +4325,7 @@ function setupEventListeners() {
 
                     const avatarEl = document.getElementById('selected-user-avatar');
                     if (user.profilePhotoUrl) {
-                        avatarEl.innerHTML = `<img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+                        avatarEl.innerHTML = `<img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
                         avatarEl.style.overflow = 'hidden';
                     } else {
                         avatarEl.textContent = initials.toUpperCase() || 'U';
@@ -4187,6 +4373,26 @@ function setupEventListeners() {
 
 
 // Authentication Functions
+
+// Telegram Login Widget callback (see index.html data-onauth="onTelegramAuth(user)").
+// Sends the widget's signed payload to the server for verification, then signs
+// in with the resulting Firebase custom token. onAuthStateChanged takes it from there.
+window.onTelegramAuth = async function onTelegramAuth(telegramUser) {
+    try {
+        const res = await fetch('/api/telegram-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(telegramUser),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Telegram auth failed');
+        await firebase.auth().signInWithCustomToken(data.token);
+    } catch (error) {
+        console.error('Telegram login failed', error);
+        alert('Не удалось войти через Telegram. Попробуйте ещё раз.');
+    }
+};
+
 function onAuthStateChanged(user) {
     if (user) {
         // User is signed in
@@ -4195,6 +4401,14 @@ function onAuthStateChanged(user) {
         // User is signed out
         state.currentUser = null;
         state.role = 'guest';
+        // Bump the agent-chat generation counter on every sign-out, however
+        // it was triggered (explicit "Выйти" via logout(), or a forced
+        // auth.signOut() after the agent-chat endpoint returns 401). This is
+        // the single choke point both paths go through, so a stale
+        // agent-chat response that resolves after (or during) sign-out can
+        // never render into a UI/session that no longer belongs to that
+        // user. See agentChatState.generation for the full mechanism.
+        agentChatState.generation += 1;
         showAuthScreen();
     }
 }
@@ -4278,10 +4492,6 @@ async function loadUserRole(user) {
 
     // User has organization, proceed to app
     finishAuth(state.currentUser.role);
-
-    // Update Telegram status and start listener after user data loaded
-    window.updateTelegramStatus && window.updateTelegramStatus();
-    window.startTelegramListener && window.startTelegramListener();
 }
 
 function finishAuth(role) {
@@ -4320,7 +4530,6 @@ function showAuthScreen() {
     elements.authOverlay.style.display = 'flex';
     elements.authScreen.style.display = 'block';
     if (elements.roleScreen) elements.roleScreen.style.display = 'none';
-    if (elements.adminVerifyScreen) elements.adminVerifyScreen.style.display = 'none';
 }
 
 // showRoleSelection removed as it's no longer used
@@ -4353,25 +4562,6 @@ async function logout() {
         console.error('Error signing out:', error);
         // Force reload even on error
         window.location.reload();
-    }
-}
-
-function getAuthErrorMessage(errorCode) {
-    switch (errorCode) {
-        case 'auth/email-already-in-use':
-            return 'Этот email уже используется';
-        case 'auth/invalid-email':
-            return 'Неверный формат email';
-        case 'auth/weak-password':
-            return 'Слишком слабый пароль';
-        case 'auth/user-not-found':
-            return 'Пользователь не найден';
-        case 'auth/wrong-password':
-            return 'Неверный пароль';
-        case 'auth/too-many-requests':
-            return 'Слишком много попыток. Попробуйте позже';
-        default:
-            return 'Ошибка аутентификации. Попробуйте снова';
     }
 }
 
@@ -4509,7 +4699,7 @@ function renderUsersList() {
 
         // Avatar with profile photo support
         const avatarHtml = user.profilePhotoUrl
-            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
 
         userItem.innerHTML = `
@@ -4626,7 +4816,7 @@ function renderLoginHistoryTab() {
             : (fullName[0] || 'U');
 
         const avatarHtml = user.profilePhotoUrl
-            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
 
         const online = isUserOnline(user);
@@ -4698,7 +4888,7 @@ function renderAdminUsersStatsPanel() {
             : (fullName[0] || 'U');
 
         const avatarHtml = user.profilePhotoUrl
-            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
 
         const completed = user.completedTasksCount || 0;
@@ -4877,7 +5067,7 @@ function handleAssigneeSearch(e) {
 
             // Avatar with profile photo support
             const avatarHtml = user.profilePhotoUrl
-                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
                 : `<div class="assignee-dropdown-avatar">${initialsUpper}</div>`;
 
             const item = document.createElement('div');
@@ -4974,7 +5164,7 @@ function renderSelectedAssignees() {
         // Find user to get profile photo
         const user = state.users.find(u => u.email === assignee.email);
         const avatarHtml = user?.profilePhotoUrl
-            ? `<div class="assignee-chip-avatar" style="overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="assignee-chip-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="assignee-chip-avatar">${initials}</div>`;
 
         const chip = document.createElement('div');
@@ -5113,31 +5303,19 @@ async function awardXP(userId, taskId, wasOnTime, wasReturned) {
 }
 
 // ========== TELEGRAM NOTIFICATIONS ==========
-const TELEGRAM_BOT_TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
-// Generate random code for Telegram verification
-function generateTelegramCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-}
-
-// Send Telegram notification directly
+// Send Telegram notification via server-side endpoint (bot token stays server-only)
 async function sendTelegramNotification(chatId, message) {
     if (!chatId) return;
 
     try {
-        const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+        const response = await fetch('/api/notify-telegram', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                chat_id: chatId,
+                chatId,
                 text: message,
-                parse_mode: 'HTML'
+                parseMode: 'HTML'
             })
         });
 
@@ -5145,7 +5323,7 @@ async function sendTelegramNotification(chatId, message) {
         if (result.ok) {
             console.log('Telegram notification sent successfully');
         } else {
-            console.error('Telegram notification failed:', result.description);
+            console.error('Telegram notification failed:', result.error || result.description);
         }
     } catch (error) {
         console.error('Telegram notification error:', error);
@@ -5263,232 +5441,6 @@ function escapeHtmlForTelegram(text) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-}
-
-// Save Telegram code to Firestore for bot verification
-async function saveTelegramCode(code) {
-    if (!state.currentUser?.uid) return;
-
-    try {
-        await db.collection('telegramCodes').doc(code).set({
-            userId: state.currentUser.uid,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    } catch (error) {
-        console.error('Error saving Telegram code:', error);
-    }
-}
-
-// Initialize Telegram connection UI (called on DOMContentLoaded)
-function initTelegramConnection() {
-    const connectBtn = document.getElementById('telegram-connect-btn');
-    const modal = document.getElementById('telegram-modal');
-    const codeEl = document.getElementById('telegram-code');
-    const copyBtn = document.getElementById('copy-telegram-code');
-    const disconnectBtn = document.getElementById('disconnect-telegram-btn');
-    const connectScreen = document.getElementById('telegram-connect-screen');
-    const connectedScreen = document.getElementById('telegram-connected-screen');
-    const userInfoEl = document.getElementById('telegram-user-info');
-
-    let currentCode = '';
-
-    // Open modal
-    if (connectBtn) {
-        connectBtn.addEventListener('click', () => {
-            playClickSound();
-
-            // Open modal immediately
-            modal.classList.add('active');
-
-            // Check if already connected
-            if (state.currentUser?.telegramChatId) {
-                connectScreen.style.display = 'none';
-                connectedScreen.style.display = 'block';
-                userInfoEl.textContent = state.currentUser.telegramUsername ?
-                    `@${state.currentUser.telegramUsername}` : 'Telegram подключен';
-            } else {
-                connectScreen.style.display = 'block';
-                connectedScreen.style.display = 'none';
-                // Generate new code
-                currentCode = generateTelegramCode();
-                codeEl.textContent = currentCode;
-                // Save to Firestore in background (don't wait)
-                saveTelegramCode(currentCode);
-            }
-        });
-    }
-
-    // Copy code
-    if (copyBtn) {
-        copyBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(currentCode).then(() => {
-                copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Скопировано!';
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                    copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Копировать';
-                    copyBtn.classList.remove('copied');
-                }, 2000);
-            });
-        });
-    }
-
-    // Verify connection
-    const verifyBtn = document.getElementById('verify-telegram-btn');
-    const errorEl = document.getElementById('telegram-error');
-
-    if (verifyBtn) {
-        verifyBtn.addEventListener('click', async () => {
-            verifyBtn.disabled = true;
-            verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Проверяю...';
-            if (errorEl) errorEl.style.display = 'none';
-
-            try {
-                // Temporarily delete webhook to use getUpdates
-                await fetch(`${TELEGRAM_API}/deleteWebhook`);
-
-                // Get updates
-                const response = await fetch(`${TELEGRAM_API}/getUpdates?limit=100`);
-                const result = await response.json();
-
-                // Restore webhook
-                await fetch(`${TELEGRAM_API}/setWebhook?url=https://projectman-git-main-batrosas-projects.vercel.app/api/webhook`);
-
-                if (result.ok) {
-                    // Find message with the code
-                    const updates = result.result || [];
-                    let found = null;
-
-                    for (const update of updates.reverse()) {
-                        const msg = update.message;
-                        if (msg && msg.text && msg.text.toUpperCase().includes(currentCode)) {
-                            found = {
-                                chatId: msg.chat.id,
-                                username: msg.from.username
-                            };
-                            break;
-                        }
-                    }
-
-                    if (found) {
-                        // Save to Firestore
-                        await db.collection('users').doc(state.currentUser.uid).update({
-                            telegramChatId: String(found.chatId),
-                            telegramUsername: found.username || null
-                        });
-
-                        state.currentUser.telegramChatId = String(found.chatId);
-                        state.currentUser.telegramUsername = found.username;
-
-                        // Show success
-                        connectScreen.style.display = 'none';
-                        connectedScreen.style.display = 'block';
-                        userInfoEl.textContent = found.username ? `@${found.username}` : 'Telegram подключен';
-                        window.updateTelegramStatus && window.updateTelegramStatus();
-
-                        // Send welcome message
-                        await sendTelegramNotification(found.chatId,
-                            '✅ <b>Telegram успешно подключен!</b>\n\nТеперь вы будете получать уведомления о новых задачах и возвратах на доработку.');
-
-                        playClickSound();
-                    } else {
-                        if (errorEl) {
-                            errorEl.textContent = 'Код не найден. Убедитесь, что отправили код боту.';
-                            errorEl.style.display = 'block';
-                        }
-                    }
-                } else {
-                    if (errorEl) {
-                        errorEl.textContent = 'Ошибка проверки. Попробуйте ещё раз.';
-                        errorEl.style.display = 'block';
-                    }
-                }
-            } catch (error) {
-                console.error('Verify error:', error);
-                if (errorEl) {
-                    errorEl.textContent = 'Ошибка соединения. Попробуйте ещё раз.';
-                    errorEl.style.display = 'block';
-                }
-            }
-
-            verifyBtn.disabled = false;
-            verifyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Проверить подключение';
-        });
-    }
-
-    // Disconnect
-    if (disconnectBtn) {
-        disconnectBtn.addEventListener('click', async () => {
-            if (!confirm('Отключить Telegram уведомления?')) return;
-
-            try {
-                await db.collection('users').doc(state.currentUser.uid).update({
-                    telegramChatId: null,
-                    telegramUsername: null
-                });
-
-                state.currentUser.telegramChatId = null;
-                state.currentUser.telegramUsername = null;
-
-                modal.classList.remove('active');
-                window.updateTelegramStatus && window.updateTelegramStatus();
-                playClickSound();
-            } catch (error) {
-                console.error('Error disconnecting Telegram:', error);
-                alert('Ошибка при отключении');
-            }
-        });
-    }
-
-    // Global function to update status
-    window.updateTelegramStatus = function () {
-        const statusEl = document.getElementById('telegram-status');
-        if (!statusEl) return;
-
-        if (state.currentUser?.telegramChatId) {
-            statusEl.textContent = 'Подключен ✓';
-            statusEl.style.color = 'var(--success)';
-        } else {
-            statusEl.textContent = 'Не подключен';
-            statusEl.style.color = '';
-        }
-    };
-
-    // Global function to start listening for Telegram changes (called after auth)
-    window.startTelegramListener = function () {
-        if (!state.currentUser?.uid) return;
-
-        db.collection('users').doc(state.currentUser.uid).onSnapshot((doc) => {
-            if (doc.exists) {
-                const data = doc.data();
-                const wasConnected = state.currentUser.telegramChatId;
-                const isConnected = data.telegramChatId;
-
-                // Update local state
-                state.currentUser.telegramChatId = data.telegramChatId || null;
-                state.currentUser.telegramUsername = data.telegramUsername || null;
-
-                // If just connected, update UI
-                if (isConnected && !wasConnected) {
-                    const modal = document.getElementById('telegram-modal');
-                    const connectScreen = document.getElementById('telegram-connect-screen');
-                    const connectedScreen = document.getElementById('telegram-connected-screen');
-                    const userInfoEl = document.getElementById('telegram-user-info');
-
-                    if (modal?.classList.contains('active')) {
-                        connectScreen.style.display = 'none';
-                        connectedScreen.style.display = 'block';
-                        if (userInfoEl) {
-                            userInfoEl.textContent = data.telegramUsername ?
-                                `@${data.telegramUsername}` : 'Telegram подключен';
-                        }
-                    }
-                }
-
-                // Always update status button
-                window.updateTelegramStatus && window.updateTelegramStatus();
-            }
-        });
-    };
 }
 
 function checkReminders(tasks) {
@@ -5689,7 +5641,7 @@ function renderProjectCheckboxes(selectedUserId) {
         item.className = 'project-checkbox-item';
         item.innerHTML = `
             <input type="checkbox" id="project-${project.id}" ${isChecked ? 'checked' : ''} data-project-id="${project.id}">
-            <label for="project-${project.id}">${project.name}</label>
+            <label for="project-${project.id}">${escapeHtml(project.name)}</label>
         `;
         elements.projectsCheckboxes.appendChild(item);
     });
@@ -6128,7 +6080,7 @@ function handleKeyboardNavigation(e) {
         const activeModal = document.querySelector('.modal.active');
         if (activeModal) {
             e.preventDefault();
-            activeModal.classList.remove('active');
+            closeModalElement(activeModal);
             playClickSound();
             resetInactivityTimer();
             // Return to tasks mode after closing modal
@@ -6367,9 +6319,9 @@ function openFocusedTaskInfo() {
 document.addEventListener('DOMContentLoaded', () => {
     init();
     initKeyboardNavigation();
-    initTelegramConnection();
     initProfileAndLeaderboard();
     initCalendarModule();
+    initAgentChat();
 
 });
 
@@ -6951,7 +6903,7 @@ function openLeaderboardModal() {
             <div class="podium-place ${place}">
                 <div class="podium-avatar">
                     ${user.profilePhotoUrl
-                ? `<img src="${user.profilePhotoUrl}" alt="${fullName}">`
+                ? `<img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" alt="${escapeHtml(fullName)}">`
                 : initials.toUpperCase() || 'U'
             }
                     <div class="podium-medal">${medal}</div>
@@ -7205,9 +7157,9 @@ function renderCalUserDropdown(query = '') {
         div.className = 'ce-user-option';
         div.innerHTML = `
             <div class="assignee-dropdown-avatar" style="width:24px;height:24px;font-size:0.7rem">
-                ${getUserDisplayName(u).charAt(0)}
+                ${escapeHtml(getUserDisplayName(u).charAt(0))}
             </div>
-            <span>${getUserDisplayName(u)}</span>
+            <span>${escapeHtml(getUserDisplayName(u))}</span>
         `;
         div.onclick = () => {
             calendarState.selectedUsers.add(u.id);
@@ -7232,7 +7184,7 @@ function renderCalSelectedUsers() {
         const chip = document.createElement('div');
         chip.className = 'ce-user-chip';
         chip.innerHTML = `
-            <span>${getUserDisplayName(user)}</span>
+            <span>${escapeHtml(getUserDisplayName(user))}</span>
             <i class="fa-solid fa-xmark"></i>
         `;
         chip.querySelector('i').onclick = () => {
@@ -7323,6 +7275,313 @@ async function notifyCalendarParticipants(evt) {
         }
     });
 }
+
+// ========== GLOBAL AI AGENT CHAT (Task 15) ==========
+//
+// Client for POST /api/agent-chat (Task 14). That endpoint deliberately reads
+// ALL projects/tasks/files for the caller's organization via the Admin SDK,
+// bypassing the per-user `allowedProjects` restriction — "everyone in the org
+// sees everything via the agent" is an explicit design decision, so this UI
+// does not scope the chat to the currently open project, and the client-side
+// history is intentionally NOT reset when the user switches projects (see
+// agentChatState below — nothing here reads state.activeProjectId).
+//
+// Response shape actually returned by api/agent-chat.js (verified by reading
+// the file directly, not assumed from the plan text):
+//   - 200 { ok: true, answer, model }                          success
+//   - 200 { ok: true, answer: "<фраза на русском>" }            LLM/context
+//         (no `model` field on the "org not found"/"no org"/    fallback —
+//          "failed to load"/"OpenRouter not configured" paths)  still ok:true
+//   - 401 { error: "Unauthorized" }                             missing/invalid
+//                                                                 Firebase ID token
+//   - 400 { error: "Invalid JSON body" | "message is required" } validation
+//   - 405 { error: "Method not allowed" }                       wrong HTTP verb
+// Every failure mode the server can hit for itself (Firestore errors, missing
+// OpenRouter key, all models failing) is normalized to HTTP 200 with a
+// Russian-language `answer` string — so the client only needs its own
+// error-handling path for network failures and the auth/validation 4xx cases,
+// not for "the LLM had a bad day".
+
+const AGENT_CHAT_MAX_HISTORY_TURNS = 8; // mirrors MAX_HISTORY_TURNS in api/agent-chat.js
+
+const agentChatState = {
+    // { role: 'user' | 'assistant', content: string }[] — capped to the last
+    // AGENT_CHAT_MAX_HISTORY_TURNS entries before every send. Deliberately a
+    // plain in-memory array, not persisted to localStorage/Firestore: a fresh
+    // chat on page reload is a reasonable, simple default per the plan, and
+    // avoids having to think about retention/PII-in-localStorage questions
+    // for LLM chat transcripts that were never asked for.
+    history: [],
+    // Incremented by two real triggers (not by handleAgentChatSubmit itself
+    // firing twice — the synchronous `elements.agentChatInput.disabled`
+    // re-entrancy check there already fully serializes sends, so there is no
+    // way to reach a second in-flight send while one is pending):
+    //
+    //   1. closeModalElement() (search this file) — bumped whenever the
+    //      agent-chat modal specifically is closed, via any of its three
+    //      close paths (.close-modal button, clicking the backdrop, Escape).
+    //      Closing the modal does NOT clear agentChatState.history or the
+    //      rendered message list (Task 15's plan accepted "in-memory,
+    //      resets on reload" as the simple default — closing and reopening
+    //      the MODAL, as opposed to reloading the page, keeps showing prior
+    //      turns, like a persistent panel). So the race this guards is
+    //      narrower than a full reset: close the modal while a send is still
+    //      in flight, reopen it, send a NEW message — without this counter
+    //      the OLD request's response could still land and either append a
+    //      reply after the new user turn or stomp on the newer send's
+    //      input-disabled/re-enable lifecycle.
+    //   2. onAuthStateChanged()'s signed-out branch (search this file) —
+    //      bumped on every real sign-out, whichever path triggered it:
+    //      logout() calling `auth.signOut()` (which is immediately followed
+    //      by `window.location.reload()`, itself the strongest guard once it
+    //      lands, since it destroys the whole JS context — but there is a
+    //      window between signOut() resolving and the reload actually
+    //      happening), or handleAgentChatSubmit's own 401 handler forcing
+    //      `auth.signOut()` when the server rejects the caller's Firebase ID
+    //      token. Either way, a logged-out user must never see a stale
+    //      agent response render as if it belonged to their (now-ended)
+    //      session.
+    //
+    // The closure created by a given send() captures its own `generation`
+    // value and checks it still matches agentChatState.generation before
+    // touching the DOM once the network response resolves; a mismatch means
+    // one of the two triggers above fired since this send went out, so the
+    // response is dropped as a harmless no-op instead of appending a reply
+    // to the wrong turn or re-enabling an input that no longer represents
+    // the current chat.
+    generation: 0,
+};
+
+function truncateAgentChatHistory(history) {
+    if (!Array.isArray(history)) return [];
+    return history.slice(-AGENT_CHAT_MAX_HISTORY_TURNS);
+}
+
+// Renders one line of the agent's answer as safe DOM nodes: text via
+// `.textContent` (never innerHTML), newlines via one `<br>`-per-line-break
+// element. This is the ENTIRE extent of the "markdown-like formatting" this
+// UI applies (per the plan's manual-verification note #2) — no markdown
+// parsing, no HTML tag interpretation of any kind, because the source text is
+// LLM output that could be influenced by data inside the org's own
+// tasks/files (indirect prompt injection: a task title or uploaded document
+// could contain text designed to look like an instruction to the model, and
+// while the system prompt constrains the model's behavior, the model's
+// *output* is not a trusted input to the DOM). Splitting on "\n" and using
+// textContent per segment means there is no code path here that ever
+// interprets attacker-influenced text as markup, no matter what characters
+// (<, >, &, backticks, asterisks, etc.) appear in it.
+function renderAgentChatText(container, text) {
+    const lines = String(text ?? '').split('\n');
+    lines.forEach((line, index) => {
+        container.appendChild(document.createTextNode(line));
+        if (index < lines.length - 1) container.appendChild(document.createElement('br'));
+    });
+}
+
+function appendAgentChatMessage(role, text) {
+    if (!elements.agentChatMessages) return null;
+    const emptyState = elements.agentChatMessages.querySelector('.agent-chat-empty');
+    if (emptyState) emptyState.remove();
+
+    const bubble = document.createElement('div');
+    bubble.className = `agent-chat-message agent-chat-message-${role}`;
+    renderAgentChatText(bubble, text);
+    elements.agentChatMessages.appendChild(bubble);
+    elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
+    return bubble;
+}
+
+function renderAgentChatEmptyState() {
+    if (!elements.agentChatMessages) return;
+    elements.agentChatMessages.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'agent-chat-empty';
+    empty.textContent = 'Спросите про сроки, статусы, задачи или проекты организации — агент видит все проекты, а не только ваши.';
+    elements.agentChatMessages.appendChild(empty);
+}
+
+function setAgentChatInputDisabled(disabled) {
+    if (elements.agentChatInput) elements.agentChatInput.disabled = disabled;
+    if (elements.agentChatSendBtn) elements.agentChatSendBtn.disabled = disabled;
+}
+
+// Sends one message to the global agent endpoint. Attaches the current
+// Firebase ID token fresh on every call (getIdToken() returns a cached token
+// and silently refreshes it in the background when needed, so this is cheap
+// and always current — no manual expiry tracking required).
+async function sendAgentMessage(message, history) {
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) {
+        // Distinct from a 401 from the server: we never even attempt the
+        // request if there's no signed-in user locally (e.g. auth state
+        // flipped to signed-out while the chat panel was open).
+        const err = new Error('not-authenticated');
+        err.code = 'not-authenticated';
+        throw err;
+    }
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch('/api/agent-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ message, history }),
+    });
+    let data = null;
+    try {
+        data = await res.json();
+    } catch {
+        // Non-JSON body (e.g. an upstream proxy error page) — treat as a
+        // generic failure below rather than throwing a confusing parse error.
+        data = null;
+    }
+    return { status: res.status, data };
+}
+
+async function handleAgentChatSubmit(event) {
+    event.preventDefault();
+    if (!elements.agentChatInput) return;
+
+    // Re-entrancy guard: setAgentChatInputDisabled(true) below disables the
+    // textarea/button while a request is in flight, which stops real user
+    // interaction (clicks, typed Enter) from re-triggering submit — but
+    // form.requestSubmit() (used by the Enter-key handler) can still fire
+    // programmatically regardless of the disabled attribute, so check
+    // explicitly rather than relying on the DOM disabled state alone.
+    if (elements.agentChatInput.disabled) return;
+
+    const message = elements.agentChatInput.value.trim();
+    if (!message) return;
+
+    // Bump the generation counter for this send. Any previously in-flight
+    // send's callback will see its captured generation is now stale and bail
+    // out before touching the DOM/state below.
+    agentChatState.generation += 1;
+    const myGeneration = agentChatState.generation;
+
+    appendAgentChatMessage('user', message);
+    agentChatState.history.push({ role: 'user', content: message });
+    agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+
+    elements.agentChatInput.value = '';
+    autoResizeAgentChatInput();
+    setAgentChatInputDisabled(true);
+    const pendingBubble = appendAgentChatMessage('pending', 'Агент печатает…');
+
+    // History sent to the server is everything BEFORE this user turn (the
+    // server appends the current `message` itself) — matches the shape
+    // api/agent-chat.js expects: `messages = [system, ...history, user]`.
+    const historyForRequest = truncateAgentChatHistory(agentChatState.history.slice(0, -1));
+
+    try {
+        const { status, data } = await sendAgentMessage(message, historyForRequest);
+
+        // Staleness guard: if a newer send has started (or the chat was
+        // reset/closed) since this request went out, drop the result. Do NOT
+        // re-enable the input here either — the newer send already owns that.
+        if (myGeneration !== agentChatState.generation) return;
+
+        if (pendingBubble) pendingBubble.remove();
+
+        if (status === 200 && data && data.ok) {
+            const answer = typeof data.answer === 'string' && data.answer.trim()
+                ? data.answer
+                : 'Агент не смог сформировать ответ. Попробуйте переформулировать вопрос.';
+            appendAgentChatMessage('assistant', answer);
+            agentChatState.history.push({ role: 'assistant', content: answer });
+            agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+        } else if (status === 401) {
+            // Token expired/invalid server-side — a generic error message
+            // would be misleading here since retrying with the same (stale)
+            // client-side auth state will just 401 again. Show the notice
+            // briefly, then actually sign the user out: a server 401 doesn't
+            // flip local Firebase auth state on its own, so without this the
+            // app UI behind the still-open chat modal would keep rendering
+            // as if fully authenticated with no way to discover how to
+            // re-login now that Task 12 replaced the login form with the
+            // Telegram Login Widget in #auth-overlay. Calling auth.signOut()
+            // (same cached `auth` reference logout() uses, not a fresh
+            // firebase.auth() call) triggers the existing onAuthStateChanged
+            // handler, which calls showAuthScreen() and routes the user back
+            // to the Telegram widget automatically.
+            appendAgentChatMessage('error', 'Сессия истекла. Пожалуйста, войдите заново, чтобы продолжить общение с агентом.');
+            // Drop the user's turn from history since the server never
+            // actually processed it — resending it later as prior "history"
+            // context would misrepresent what the agent has seen.
+            agentChatState.history.pop();
+            auth.signOut().catch((e) => console.error('agent-chat: signOut after 401 failed', e));
+        } else if (status === 400) {
+            // Validation error from a well-formed client call "shouldn't"
+            // happen, but defend anyway (e.g. a future server-side change
+            // tightens validation in a way this client hasn't caught up to).
+            const detail = data && typeof data.error === 'string' ? data.error : null;
+            appendAgentChatMessage('error', detail
+                ? `Не удалось отправить сообщение: ${detail}`
+                : 'Не удалось отправить сообщение. Попробуйте ещё раз.');
+            agentChatState.history.pop();
+        } else {
+            appendAgentChatMessage('error', 'Не удалось получить ответ от агента. Попробуйте ещё раз.');
+            agentChatState.history.pop();
+        }
+    } catch (error) {
+        if (myGeneration !== agentChatState.generation) return;
+        if (pendingBubble) pendingBubble.remove();
+
+        if (error && error.code === 'not-authenticated') {
+            appendAgentChatMessage('error', 'Вы вышли из аккаунта. Войдите заново, чтобы продолжить общение с агентом.');
+        } else {
+            // fetch() itself rejected — network failure (offline, DNS, CORS,
+            // timeout before headers, etc.), not a server-returned status.
+            console.error('agent-chat: network error', error);
+            appendAgentChatMessage('error', 'Ошибка сети. Проверьте подключение к интернету и попробуйте ещё раз.');
+        }
+        agentChatState.history.pop();
+    } finally {
+        // Only the send that "owns" the current generation re-enables input —
+        // if a newer generation has already started, it's already managing
+        // its own disabled/enabled lifecycle and this stale call must not
+        // interfere (e.g. flipping the input back to enabled mid-way through
+        // a newer, still-in-flight request).
+        if (myGeneration === agentChatState.generation) {
+            setAgentChatInputDisabled(false);
+            elements.agentChatInput?.focus();
+        }
+    }
+}
+
+function autoResizeAgentChatInput() {
+    const input = elements.agentChatInput;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+}
+
+function initAgentChat() {
+    if (!elements.agentChatBtn || !elements.agentChatModal) return;
+
+    renderAgentChatEmptyState();
+
+    elements.agentChatBtn.addEventListener('click', () => {
+        playClickSound();
+        elements.agentChatModal.classList.add('active');
+        elements.agentChatInput?.focus();
+    });
+
+    if (elements.agentChatForm) {
+        elements.agentChatForm.addEventListener('submit', handleAgentChatSubmit);
+    }
+
+    if (elements.agentChatInput) {
+        elements.agentChatInput.addEventListener('input', autoResizeAgentChatInput);
+        // Enter sends, Shift+Enter inserts a newline (standard chat-input convention).
+        elements.agentChatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                elements.agentChatForm?.requestSubmit();
+            }
+        });
+    }
+}
+
+// ========== END GLOBAL AI AGENT CHAT ==========
 
 
 

@@ -449,58 +449,6 @@
         font-size: 0.9rem;
     }
 
-    /* Registration form - stack name fields vertically */
-    #register-form .form-row {
-        flex-direction: column;
-        gap: 0 !important;
-    }
-
-    #register-form .form-row .form-group {
-        flex: none !important;
-        width: 100%;
-    }
-
-    /* Consistent form-group spacing */
-    #login-form .form-group,
-    #register-form .form-group {
-        margin-bottom: 1rem;
-    }
-
-    #login-form .form-group:last-of-type,
-    #register-form .form-group:last-of-type {
-        margin-bottom: 0;
-    }
-
-    /* Input fields */
-    #login-form input,
-    #register-form input {
-        padding: 0.875rem 1rem;
-        font-size: 16px;
-        border-radius: 8px;
-    }
-
-    /* Labels */
-    #login-form label,
-    #register-form label {
-        font-size: 0.9rem;
-        margin-bottom: 0.5rem;
-    }
-
-    /* Submit buttons */
-    #login-form button[type="submit"],
-    #register-form button[type="submit"] {
-        margin-top: 1.5rem;
-        padding: 1rem;
-        font-size: 1rem;
-    }
-
-    /* Links at bottom */
-    #login-form > p,
-    #register-form > p {
-        margin-top: 0;
-        font-size: 0.9rem;
-    }
-
     /* Modal */
     .modal {
         padding: 0;

@@ -12,7 +12,11 @@ Design doc: `docs/plans/2026-07-01-security-telegram-auth-ai-agent-design.md`
 
 ---
 
-## Task 0: Verify the actual Firestore data model before writing queries
+## Task 0: Verify the actual Firestore data model before writing queries — CONFIRMED
+
+**Resolved (2026-07-01):** queried the live `projectman-96d3c` Firestore directly via the Firebase MCP tools. Both `projects` and `tasks` documents carry `organizationId` directly, confirmed on all sampled documents including the oldest `projects` docs (createdAt 2025-11-24, the earliest in the collection) — the field has been present since before any of this plan's other changes, no backfill needed. Task 14's `db.collection('projects').where('organizationId', '==', organizationId)` / same for `tasks` can proceed exactly as designed.
+
+Original task text below, kept for history:
 
 The AI agent (Task 13) needs to query `projects` and `tasks` by organization. It is **not yet confirmed** whether `projects`/`tasks` documents carry an `organizationId` field today — `readme.md`'s schema predates the `organizations` collection. Do not guess; confirm first.
 
@@ -270,6 +274,78 @@ describe("organizations privilege escalation", () => {
       bystander.collection("organizations").doc("some-org").update({ name: "Hijacked" })
     );
   });
+
+  it("allows the real createOrganization() write shape (organizationId + orgRole:'owner' + email + displayName) when the caller actually owns the referenced org", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("founder").set({ role: "reader" });
+      await ctx.firestore().collection("organizations").doc("new-org").set({ ownerId: "founder", name: "New Org" });
+    });
+
+    const founder = testEnv.authenticatedContext("founder").firestore();
+    await assertSucceeds(
+      founder.collection("users").doc("founder").update({
+        organizationId: "new-org",
+        orgRole: "owner",
+        email: "founder@example.com",
+        displayName: "Founder",
+      })
+    );
+  });
+
+  it("blocks self-granting orgRole:'owner' by pointing organizationId at an org the caller does not own", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("faker").set({ role: "reader" });
+      await ctx.firestore().collection("organizations").doc("real-org").set({ ownerId: "realowner", name: "Real Org" });
+    });
+
+    const faker = testEnv.authenticatedContext("faker").firestore();
+    await assertFails(
+      faker.collection("users").doc("faker").update({
+        organizationId: "real-org",
+        orgRole: "owner",
+      })
+    );
+  });
+
+  it("allows the real leaveOrganization() write shape (organizationId + orgRole both set to null)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("leaver").set({
+        role: "reader", organizationId: "some-org", orgRole: "employee",
+      });
+    });
+
+    const leaver = testEnv.authenticatedContext("leaver").firestore();
+    await assertSucceeds(
+      leaver.collection("users").doc("leaver").update({ organizationId: null, orgRole: null })
+    );
+  });
+
+  it("allows a plain employee to bump membersCount by exactly 1 on the org they just joined (real joinOrganization() follow-up write)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("joiner").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
+      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+    });
+
+    const joiner = testEnv.authenticatedContext("joiner").firestore();
+    await assertSucceeds(
+      joiner.collection("organizations").doc("some-org").update({ membersCount: 2 })
+    );
+  });
+
+  it("blocks a plain employee from changing membersCount by more than 1 or touching other org fields", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("joiner2").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
+      await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
+    });
+
+    const joiner2 = testEnv.authenticatedContext("joiner2").firestore();
+    await assertFails(
+      joiner2.collection("organizations").doc("some-org").update({ membersCount: 5 })
+    );
+    await assertFails(
+      joiner2.collection("organizations").doc("some-org").update({ membersCount: 2, name: "Renamed" })
+    );
+  });
 });
 ```
 
@@ -280,16 +356,39 @@ Expected: FAIL — first test fails because the current rules have no `organizat
 
 **Step 4: Apply the rules fix**
 
+> **Correction recorded during execution:** the original version of this step (adding `isSelfServiceOrgJoin()` as an OR-branch while leaving `notUpdatingRestrictedFields()`'s blocklist unchanged) was a no-op — `notUpdatingRestrictedFields()` never blocked `organizationId`/`orgRole` in the first place, so the OR made no difference and the vulnerability would NOT actually have been fixed. The corrected version below (a) adds `organizationId`/`orgRole` to the blocklist, then (b) adds three narrow, verified carve-outs matching each of the three real self-service write shapes used by `createOrganization()`/`joinOrganization()`/`leaveOrganization()` in `script.js`, with the create carve-out cryptographically tied to actually owning the referenced org document (via `get()`), not just claiming to. Verified against official Firebase docs that `"field" in resource.data` is the documented-safe way to check a possibly-missing field (do not compare a possibly-absent field directly to `null`) — see https://firebase.google.com/docs/firestore/security/rules-conditions.
+
 In `firestore.rules`, replace the `notUpdatingRestrictedFields` function and the `users` update rule, and add a new `organizations` match block:
 
 ```
 function notUpdatingRestrictedFields() {
-  return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects']);
+  return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects', 'organizationId', 'orgRole']);
 }
 
 function isSelfServiceOrgJoin() {
-  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'orgRole'])
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['organizationId', 'orgRole'])
     && request.resource.data.orgRole == 'employee';
+}
+
+function isSelfServiceOrgLeave() {
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['organizationId', 'orgRole'])
+    && request.resource.data.organizationId == null
+    && request.resource.data.orgRole == null;
+}
+
+function wasNotYetInOrg() {
+  return !('organizationId' in resource.data) || resource.data.organizationId == null;
+}
+
+function isSelfServiceOrgCreate() {
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['organizationId', 'orgRole', 'email', 'displayName'])
+    && request.resource.data.orgRole == 'owner'
+    && wasNotYetInOrg()
+    && exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
+    && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerId == request.auth.uid;
 }
 ```
 
@@ -297,33 +396,120 @@ and change the `users/{userId}` update rule to:
 
 ```
 allow update: if (request.auth != null && request.auth.uid == userId
-                   && (notUpdatingRestrictedFields() || isSelfServiceOrgJoin()))
+                   && (notUpdatingRestrictedFields() || isSelfServiceOrgJoin() || isSelfServiceOrgLeave() || isSelfServiceOrgCreate()))
               || isAdmin();
 ```
 
 Add, after the `users` match block:
 
 ```
+function isMemberCountStep() {
+  let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+  return changedKeys.hasOnly(['membersCount'])
+    && (request.resource.data.membersCount == resource.data.membersCount + 1
+        || request.resource.data.membersCount == resource.data.membersCount - 1);
+}
+
 match /organizations/{orgId} {
   allow read: if request.auth != null;
   allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-  allow update, delete: if request.auth != null && (
+  allow update: if request.auth != null && (
+    resource.data.ownerId == request.auth.uid ||
+    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin'] ||
+    isMemberCountStep()
+  );
+  allow delete: if request.auth != null && (
     resource.data.ownerId == request.auth.uid ||
     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgRole in ['owner', 'admin']
   );
 }
 ```
 
+**Second correction recorded during execution:** the implementer traced `joinOrganization()` (script.js:666-668) and found it calls `organizations/{orgId}.update({membersCount: increment(1)})` immediately after the self-join succeeds — under the `organizations` block above (before this correction), a plain employee is neither `ownerId` nor `orgRole in ['owner','admin']`, so that follow-up write would be denied, breaking the join flow (or at least leaving `membersCount` out of sync while the user doc itself did get updated). This is a regression in the rules block written for *this task*, not pre-existing debt — fixed by adding `isMemberCountStep()`, a narrow carve-out limited to the single `membersCount` field changing by exactly ±1 per write. This intentionally does not verify the caller is joining/leaving *this specific* org (that would require correlating two separate document writes, which isn't reliably expressible in security rules without a transaction guarantee this app doesn't use) — accepted as a reasonable, low-severity trade-off since `membersCount` is a display/limit-tracking counter, not a field that gates any actual permission.
+
+**Note — pre-existing, out-of-scope gap found while tracing this (do not fix as part of Task 5, just record in "Known gaps"):** promoting/demoting a *different* user's `orgRole` (e.g. an org owner making a teammate `admin`/`moderator`, or removing a member) is done in `script.js` (around line 4553 admin role-change UI, line 4763-4766 member removal, line 713-718 `deleteOrganization`'s batch update of other members) but the `users/{userId}` update rule only grants non-owner-of-the-target-doc writes via `isAdmin()` (the legacy global admin/reader flag), which typical org owners/admins don't have. This looks broken today independent of this task and is a separate, larger feature gap (would need a rule path like "caller's own orgRole is owner/admin AND caller's organizationId matches the target user's organizationId" or a dedicated server-side endpoint) — track as a follow-up, do not attempt in Task 5.
+
 **Step 5: Run to verify it passes**
 
-Run: `npm run test:rules`
-Expected: PASS (all three tests)
+First, check whether the Firestore emulator can actually run in this environment: `java -version`. The emulator (`firebase emulators:exec`) requires Java.
+
+- **If Java is available**: `npm run test:rules` — expect PASS on all 8 tests (the original 3, plus the 3 create/leave tests, plus the 2 membersCount tests added above).
+- **If Java is NOT available**: attempt to install one before giving up, since this task is security-critical and worth the effort — e.g. `brew install openjdk` if Homebrew is present (`brew --version`), then retry. If installation isn't feasible in your environment either, fall back to careful manual/static tracing of the rules logic against every test case (as documented in this plan's corrected Step 4), and say so explicitly and honestly in your report — do not claim tests passed if they were never executed.
+
+**Step 5b: Third correction — the `create` rule is a full bypass of everything above (found by code-quality review, confirmed via a live emulator probe, not theoretical)**
+
+Code-quality review found and empirically confirmed (via their own throwaway emulator test using the exact shipped rules) that `users/{userId}`'s existing `allow create` rule was never touched by this task and only constrains `role`:
+
+```
+allow create: if request.auth != null && request.auth.uid == userId 
+  && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader');
+```
+
+Since Firestore evaluates a `.set(..., {merge:true})` call as a **`create`** (not `update`) whenever the target document doesn't yet exist, and `createOrganization()` in `script.js:598` explicitly does exactly this ("use set with merge to handle missing docs"), an attacker whose own `users/{uid}` doc doesn't yet exist (e.g. a freshly-registered account, before normal registration's own doc-creation write lands, or any doc that was ever deleted) can call:
+
+```js
+db.collection('users').doc(myUid).set({ role: 'reader', organizationId: 'victim-org', orgRole: 'owner' })
+```
+
+and it succeeds — full self-escalation, no ownership check, via a different write shape than everything fixed so far. This must be closed before any deploy.
+
+**Fix:** extend the `create` rule with the same rigor as the `update` fix — a narrow, `get()`-verified carve-out for the real `createOrganization()`-on-a-missing-doc shape, otherwise forbid `organizationId`/`orgRole` entirely at creation time (matching what real registration actually writes today: just `role: 'reader'` plus basic profile fields, never org fields).
+
+```
+function isSelfServiceOrgCreateAtDocCreation() {
+  return request.resource.data.keys().hasOnly(['organizationId', 'orgRole', 'email', 'displayName', 'role'])
+    && (!('role' in request.resource.data) || request.resource.data.role == 'reader')
+    && request.resource.data.orgRole == 'owner'
+    && exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
+    && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerId == request.auth.uid;
+}
+
+allow create: if request.auth != null && request.auth.uid == userId && (
+  (!request.resource.data.keys().hasAny(['organizationId', 'orgRole'])
+    && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader'))
+  || isSelfServiceOrgCreateAtDocCreation()
+);
+```
+
+This mirrors `isSelfServiceOrgCreate()`'s ownership tie exactly, just adapted for the create path (no `wasNotYetInOrg()` guard needed here — there's no prior document state to check against when creating one from nothing).
+
+Add these test cases to `firestore-tests/organizations.rules.test.js` (a 9th and 10th, plus consider splitting the file into nested `describe` blocks per code-quality review's suggestion — e.g. `describe("users create path")` / `describe("users update path")` / `describe("organizations doc")` — now that it's growing):
+
+```js
+it("blocks self-granting orgRole:'owner' via create() when the user doc doesn't exist yet (the bypass code-quality review found)", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("organizations").doc("victim-org").set({ ownerId: "victim", name: "Victim Org" });
+  });
+
+  const attacker = testEnv.authenticatedContext("attacker-no-doc").firestore();
+  await assertFails(
+    attacker.collection("users").doc("attacker-no-doc").set({
+      role: "reader", organizationId: "victim-org", orgRole: "owner",
+    })
+  );
+});
+
+it("allows the real createOrganization() write shape via create() when the caller actually owns the referenced org and their user doc doesn't exist yet", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("organizations").doc("new-org-2").set({ ownerId: "founder2", name: "New Org 2" });
+  });
+
+  const founder2 = testEnv.authenticatedContext("founder2").firestore();
+  await assertSucceeds(
+    founder2.collection("users").doc("founder2").set({
+      organizationId: "new-org-2", orgRole: "owner", email: "founder2@example.com", displayName: "Founder 2",
+    })
+  );
+});
+```
+
+Run `npm run test:rules` again (same Java/Homebrew approach as Step 5) — expect all 10 tests to pass. Do not consider this task done until this passes.
 
 **Step 6: Deploy and commit**
 
-1. Confirm Firebase project access is working (`projectman-96d3c` visible via MCP/CLI).
-2. `firebase deploy --only firestore:rules` (from `/Users/teko/Desktop/projectman`, with the correct project selected).
-3. `git add firestore.rules firestore-tests/ package.json firebase.json && git commit -m "fix: close organizations privilege-escalation gap in Firestore rules"`
+1. Confirm Firebase project access is working (`projectman-96d3c` visible via MCP/CLI). If not yet available, skip the deploy sub-step and flag it as still needed — do not skip committing the code/rules/tests themselves.
+2. `firebase deploy --only firestore:rules` (from `/Users/teko/Desktop/projectman`, with the correct project selected) — once access is confirmed. **Do not deploy until Step 5b's fix is committed and all 10 tests pass** — deploying only the update-path fix would leave the create-path escalation live in production.
+3. `git add firestore.rules firestore-tests/ package.json firebase.json && git commit -m "fix: close organizations privilege-escalation gap in Firestore rules"` (if committing Step 5b separately: `git commit -m "fix: close create-path bypass of organizations privilege-escalation fix"`)
 
 ---
 
@@ -954,6 +1140,27 @@ Note: unlike `~/Desktop/12`, there's no `waitUntil` import here — Vercel's Nod
 
 ---
 
+## Task 13b: Fix stored XSS in attachment/file-list rendering (found during Task 13, out of original scope)
+
+While implementing Task 13, a real stored-XSS vulnerability was found in **existing, unrelated code**: several functions in `script.js` render attachment filenames and URLs via `innerHTML` template-literal interpolation with zero escaping. Task 13's own new code deliberately used safe `textContent`/DOM-construction instead, which is what surfaced the contrast.
+
+**Confirmed vulnerable locations** (verify current line numbers before editing — they will have shifted after Task 13's edits):
+
+1. `showNoPreview(container, attachment)` (~line 448) — `attachment.url` in an `href`, `attachment.name` in a `download` attribute, both inside an `innerHTML` template literal. **Real cross-user risk**: `attachment` here comes from a task's already-persisted `attachments`/`completionProofs` array in Firestore — any authenticated user who can attach a file to a task controls this filename, and it renders in whichever other user later previews that attachment.
+2. `openFilesListModal(attachments)` (~line 464-533) — same pattern, `attachment.name` and `downloadUrl`/`attachment.url` interpolated into `item.innerHTML`. **Real cross-user risk**, same reasoning — this is the main "view a task's attached files" modal, seen by any teammate with access to that task.
+3. `renderAttachmentsList()` (~line 349) — `attachment.name` in `item.innerHTML`. Lower severity: this renders `pendingAttachments`, the CURRENT user's own not-yet-submitted upload queue (self-XSS only, since nobody else sees this state) — but fix for consistency and defense-in-depth, since these files do get promoted into the persisted `attachments` array on submit.
+4. The completion-proof equivalent of #3 (~line 3169, function rendering `completionProofAttachments`) — same self-XSS-only pattern as #3, same reasoning to fix anyway.
+
+**Do a full sweep, don't just patch these four**: `grep -n "attachment\.\(name\|url\)\|proof\.\(name\|url\)" script.js` and check every `innerHTML =`/`innerHTML +=` assignment in the file for any other place a Firestore-sourced filename, URL, comment, or user-supplied string gets interpolated without escaping. Also check `completionComment`, `revisionReason`, and any other free-text field that gets rendered — these are less obviously "filenames" but are equally attacker-controlled free text if they ever hit `innerHTML` unescaped.
+
+**Fix approach**: follow the exact pattern Task 13's own new code already established — replace `innerHTML` template-literal interpolation of any Firestore-sourced/user-controlled value with either (a) `document.createElement` + `.textContent` for the dynamic parts (keep static structural HTML via `innerHTML` only for the parts that contain zero interpolated data), or (b) a small shared `escapeHtml(str)` helper (`.replace` chain for `&`, `<`, `>`, `"`, `'`) applied to every interpolated value if rewriting to full DOM construction is too invasive for a given function. Prefer (a) for consistency with the rest of the codebase's existing safe patterns (e.g., the XSS-safe `el(tag, {className, text})`-style helpers used elsewhere in this session's other project) — but use your judgment per function; some of these functions build fairly complex nested markup where a full rewrite might be riskier than a targeted `escapeHtml()` call on just the 2-3 interpolated fields. Do NOT change the visual output/styling — this is a security fix, not a redesign.
+
+**Verification**: after fixing, manually construct a test case — create a task, attach/simulate an attachment with `name: '<img src=x onerror=alert(1)>.pdf'` (via direct Firestore write in a test, bypassing the actual upload UI, since Cloudinary itself may also sanitize/reject certain filenames — the point is to verify the RENDERING code is safe regardless of what upstream validation does), then verify it renders as inert, literal text (visible as the raw string, not executed) when displayed through each fixed function. This mirrors the XSS verification methodology already used earlier in this project's sibling engine work (inserting a literal payload and confirming inert rendering).
+
+**Commit:** `git commit -m "fix: escape user-controlled attachment names/URLs before innerHTML rendering (stored XSS)"`
+
+---
+
 ## Task 14: Global AI agent chat endpoint
 
 **Files:**
@@ -1205,3 +1412,15 @@ This is optional; the bulk of this file's value can only be verified end-to-end 
 6. Post-deploy smoke test: Telegram login, file upload + extraction, agent chat — the same manual checks from Tasks 12-15, run against the real production URL.
 
 **Commit:** none (deploy step, not a code change) — if any last-minute fixes come up during smoke testing, commit those individually with their own descriptive messages.
+
+---
+
+## Known gaps / tracked follow-ups (recorded during execution, not blocking)
+
+- **`api/notify-telegram.js` (Task 2) is an open relay**: no auth/authorization check — any client can POST an arbitrary `chatId`+`text` and it will relay through the bot token. Code-quality review confirmed this mirrors the plan's own original sample and the pre-existing client-side behavior (not a regression introduced by this task), so it wasn't blocked on, but it should be fixed properly once Task 10 (`lib/firebase-admin.js`) exists: restrict `chatId` to values found in `users.telegramChatId`, or add rate limiting.
+- ~~**Module system mismatch**: `api/webhook.js` and `api/notify-telegram.js` (Task 2) are CommonJS (`module.exports`), matching the repo's current no-`package.json` state. Task 7 introduces `package.json` with `"type": "module"` and Tasks 8-14's sample code uses ESM `import`/`export default`. When executing Task 7, also convert `api/webhook.js` and `api/notify-telegram.js` to ESM syntax so the whole `api/`/`lib/` tree is consistent — do this as a small addition to Task 7, verified with `node --check` on both files after conversion.~~ **Resolved in Task 7** (commit `ee6ef93`): both files converted to `export default async function handler(...) {...}`. Neither file had any `require()` calls, so no import statements were needed — the only change was the export syntax. Verified with `node --check` on both (syntax-only; full Vercel runtime behavior still needs a live deploy check).
+- **`api/webhook.js` (Task 4) has no guard for missing `TELEGRAM_BOT_TOKEN`/`FIREBASE_WEB_API_KEY`**: if either env var is unset at deploy time, the webhook silently returns 200 OK to Telegram forever while never actually sending a reply or completing the Firestore update (pre-existing unchecked-fetch shape, just newly reachable via config error instead of a typo). `api/notify-telegram.js` already has the `if (!token) return response.status(503)...` pattern — add the same guard to `api/webhook.js` as a fast-follow for consistency and observability.
+- ~~**`lib/material-parser.js` (Task 9) xlsx shared-strings and PDF paths are untested**: the xlsx fixture (generated via `openpyxl`) uses inline strings (`t="inlineStr"`), so `parseSharedStrings()` and the `type === "s"` branch — the path real Excel-produced files predominantly use — has zero test coverage. The PDF extraction path (`pdf-parse` + optional `@napi-rs/canvas`) also has no real-file smoke test, only the empty-file/warning case. Add a shared-strings xlsx fixture and a minimal real PDF fixture before this parser is trusted against real user uploads in Task 13.~~ **Resolved** (commit `6d7892f`): confirmed via openpyxl source (`openpyxl/cell/_writer.py`) that openpyxl 3.1.5 always writes `t="inlineStr"` on save and has no shared-strings writer at all, so the gap could not be closed by re-generating with openpyxl — `lib/__fixtures__/sample-shared-strings.xlsx` was hand-built (valid xlsx zip with a real `xl/sharedStrings.xml` `<sst>` table and `t="s"` cells referencing it by index), verified independently with `unzip -l`/`unzip -p` and by loading it in openpyxl (`load_workbook` round-trips the expected rows), then verified end-to-end through the actual `extractMaterialText()` code path. For PDF, `reportlab` was available and used to generate `lib/__fixtures__/sample.pdf` with a genuine text layer, independently verified with both `pdftotext` and `pypdf` before exercising it through `extractMaterialText()`. Both new fixtures are covered by new tests in `lib/material-parser.fixtures.test.js` asserting on the exact embedded text; all 6 tests in `lib/material-parser.test.js` + `lib/material-parser.fixtures.test.js` pass. `@napi-rs/canvas` is present in `node_modules` in this environment (transitive dep) and its import in `extractPdf()` is wrapped in a bare `try {}catch{}`, so the primary `pdf-parse` text-layer path does not hard-depend on it — not independently re-verified with canvas absent, since it is currently installed.
+- **`isOrgOwnerOrAdmin(orgId)` (Task 5) doesn't actually scope by `orgId`**: any user whose own `orgRole` is `owner`/`admin` (for whatever org they belong to) can update/delete ANY organization document, not just their own — the parameter name implies scoping that doesn't exist. Confirmed pre-existing (identical since the original `organizations` rule draft, not introduced by the create-path fix round), not a regression, but worth fixing: compare the caller's own `organizationId` to the target `orgId` path parameter via a `get()` on the caller's `users` doc. Track as a follow-up, not blocking Task 5's deploy.
+- **`firebase-admin@14.1.0` (Task 10) pulls in 6 moderate `npm audit` advisories** transitively via `@google-cloud/storage` → `gaxios`/`teeny-request` → `uuid@9.0.1` (GHSA-w5hq-g745-h8pq). Traced: this codebase never calls `uuid` directly, only Google Cloud client-library internals, almost certainly via the unaffected `uuid.v4()` path, not the vulnerable buf-supplied v3/v5/v6 path. `npm audit fix --force` would downgrade to `firebase-admin@10.3.0` (breaking major regression) — not worth doing. Track as a dependency-watch item: re-check when `firebase-admin` ships a release pulling in a patched `@google-cloud/storage`.
+- **`api/webhook.js`'s `/start` reply (Task 12) references a deleted UI path**: it tells users "Откройте ProjectMan → Настройки → Telegram" for a linking code, but that settings screen was removed in Task 12 (Telegram login now sets `telegramChatId` at login time, no linking code needed for new flows). Not a code bug — the old `telegramCodes` collection/webhook code-linking flow was deliberately left alone as a separate product decision — but the bot's copy will mislead anyone who messages it expecting that path to exist. Update the `/start` message text as a fast-follow.
