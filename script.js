@@ -214,6 +214,19 @@ function formatFileSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// Guard against attacker-controlled attachment URLs (e.g. a Firestore-sourced
+// attachment.url set to "javascript:alert(1)") being used as an href/window.open
+// target. Only allow http(s) and known-safe Cloudinary-style protocol-relative
+// paths; anything else (javascript:, data:, vbscript:, etc.) is neutralized.
+function sanitizeAttachmentUrl(url) {
+    if (typeof url !== 'string') return '#';
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (trimmed.startsWith('//')) return trimmed;
+    if (trimmed.startsWith('/')) return trimmed;
+    return '#';
+}
+
 // Upload file to Cloudinary
 async function uploadToCloudinary(file) {
     const formData = new FormData();
@@ -363,7 +376,7 @@ function renderAttachmentsList() {
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
+                <div class="attachment-name">${escapeHtml(attachment.name)}</div>
                 <div class="attachment-size">${attachment.uploading ? 'Загрузка...' : formatFileSize(attachment.size)}</div>
             </div>
             ${!attachment.uploading ? `
@@ -417,11 +430,13 @@ function openFilePreview(attachment) {
     console.log('File type:', fileType);
     console.log('File URL:', attachment.url);
 
+    const safeUrl = sanitizeAttachmentUrl(attachment.url);
+
     // 1. OFFICE DOCUMENTS (Word, Excel) -> Download directly (most reliable)
     if (['word', 'excel'].includes(fileType)) {
         // Create download link
         const link = document.createElement('a');
-        link.href = attachment.url;
+        link.href = safeUrl;
         link.download = attachment.name || 'file';
         link.target = '_blank';
         document.body.appendChild(link);
@@ -435,7 +450,7 @@ function openFilePreview(attachment) {
     // 3. ARCHIVES/OTHERS -> Direct (will trigger download)
 
     // Try opening directly
-    const newWindow = window.open(attachment.url, '_blank');
+    const newWindow = window.open(safeUrl, '_blank');
 
     if (!newWindow) {
         alert('Не удалось открыть файл. Возможно, заблокировано всплывающее окно.');
@@ -448,12 +463,13 @@ function openFilePreview(attachment) {
 function showNoPreview(container, attachment) {
     const fileType = attachment.type || getFileType(attachment.name);
     const iconClass = getFileIcon(fileType);
+    const safeUrl = sanitizeAttachmentUrl(attachment.url);
 
     container.innerHTML = `
         <div class="no-preview">
             <i class="fa-solid ${iconClass}"></i>
             <p>Предпросмотр недоступен для этого типа файла</p>
-            <a href="${attachment.url}" download="${attachment.name}" class="primary-btn">
+            <a href="${escapeHtml(safeUrl)}" download="${escapeHtml(attachment.name)}" class="primary-btn">
                 <i class="fa-solid fa-download"></i> Скачать файл
             </a>
         </div>
@@ -485,15 +501,16 @@ function openFilesListModal(attachments) {
 
         const item = document.createElement('div');
         item.className = 'file-list-item';
-        // Force download URL (clean)
-        let downloadUrl = attachment.url;
+        // Force download URL (clean), guarding against non-http(s) schemes
+        // (e.g. javascript:) in a Firestore-sourced attachment.url.
+        let downloadUrl = sanitizeAttachmentUrl(attachment.url);
 
         // Google Docs Viewer URL for Office files
-        let viewUrl = attachment.url;
+        let viewUrl = downloadUrl;
         let isViewable = true;
 
         if (['word', 'excel', 'ppt'].includes(fileType)) {
-            viewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(attachment.url)}&embedded=false`;
+            viewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(downloadUrl)}&embedded=false`;
         } else if (!['pdf', 'image'].includes(fileType)) {
             // For archives etc, view acts same as download
             isViewable = false;
@@ -504,7 +521,7 @@ function openFilesListModal(attachments) {
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
+                <div class="attachment-name">${escapeHtml(attachment.name)}</div>
                 <div class="attachment-size">${formatFileSize(attachment.size || 0)}</div>
             </div>
             <div class="file-actions" style="display: flex; gap: 10px; align-items: center;">
@@ -512,7 +529,7 @@ function openFilesListModal(attachments) {
                 <div class="action-btn view-btn" title="Просмотреть">
                     <i class="fa-solid fa-eye"></i>
                 </div>` : ''}
-                <a href="${downloadUrl}" target="_blank" download="${attachment.name}" class="action-btn download-link" title="Скачать">
+                <a href="${escapeHtml(downloadUrl)}" target="_blank" download="${escapeHtml(attachment.name)}" class="action-btn download-link" title="Скачать">
                     <i class="fa-solid fa-download"></i>
                 </a>
             </div>
@@ -2799,7 +2816,7 @@ function createTaskCard(task) {
 
         if (assigneeUser?.profilePhotoUrl) {
             avatar.style.overflow = 'hidden';
-            avatar.innerHTML = `<img src="${assigneeUser.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+            avatar.innerHTML = `<img src="${escapeHtml(sanitizeAttachmentUrl(assigneeUser.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
         } else {
             avatar.textContent = initials;
         }
@@ -3183,7 +3200,7 @@ function renderCompletionAttachments() {
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="attachment-info">
-                <div class="attachment-name">${attachment.name}</div>
+                <div class="attachment-name">${escapeHtml(attachment.name)}</div>
                 <div class="attachment-size">${attachment.uploading ? 'Загрузка...' : formatFileSize(attachment.size)}</div>
             </div>
             ${!attachment.uploading ? `
@@ -4282,7 +4299,7 @@ function setupEventListeners() {
 
                     const avatarEl = document.getElementById('selected-user-avatar');
                     if (user.profilePhotoUrl) {
-                        avatarEl.innerHTML = `<img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+                        avatarEl.innerHTML = `<img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
                         avatarEl.style.overflow = 'hidden';
                     } else {
                         avatarEl.textContent = initials.toUpperCase() || 'U';
@@ -4648,7 +4665,7 @@ function renderUsersList() {
 
         // Avatar with profile photo support
         const avatarHtml = user.profilePhotoUrl
-            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
 
         userItem.innerHTML = `
@@ -4765,7 +4782,7 @@ function renderLoginHistoryTab() {
             : (fullName[0] || 'U');
 
         const avatarHtml = user.profilePhotoUrl
-            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
 
         const online = isUserOnline(user);
@@ -4837,7 +4854,7 @@ function renderAdminUsersStatsPanel() {
             : (fullName[0] || 'U');
 
         const avatarHtml = user.profilePhotoUrl
-            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem; overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="avatar" style="width: 40px; height: 40px; font-size: 1rem;">${initials.toUpperCase() || 'U'}</div>`;
 
         const completed = user.completedTasksCount || 0;
@@ -5016,7 +5033,7 @@ function handleAssigneeSearch(e) {
 
             // Avatar with profile photo support
             const avatarHtml = user.profilePhotoUrl
-                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
                 : `<div class="assignee-dropdown-avatar">${initialsUpper}</div>`;
 
             const item = document.createElement('div');
@@ -5113,7 +5130,7 @@ function renderSelectedAssignees() {
         // Find user to get profile photo
         const user = state.users.find(u => u.email === assignee.email);
         const avatarHtml = user?.profilePhotoUrl
-            ? `<div class="assignee-chip-avatar" style="overflow: hidden;"><img src="${user.profilePhotoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+            ? `<div class="assignee-chip-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
             : `<div class="assignee-chip-avatar">${initials}</div>`;
 
         const chip = document.createElement('div');
@@ -5590,7 +5607,7 @@ function renderProjectCheckboxes(selectedUserId) {
         item.className = 'project-checkbox-item';
         item.innerHTML = `
             <input type="checkbox" id="project-${project.id}" ${isChecked ? 'checked' : ''} data-project-id="${project.id}">
-            <label for="project-${project.id}">${project.name}</label>
+            <label for="project-${project.id}">${escapeHtml(project.name)}</label>
         `;
         elements.projectsCheckboxes.appendChild(item);
     });
@@ -6851,7 +6868,7 @@ function openLeaderboardModal() {
             <div class="podium-place ${place}">
                 <div class="podium-avatar">
                     ${user.profilePhotoUrl
-                ? `<img src="${user.profilePhotoUrl}" alt="${fullName}">`
+                ? `<img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" alt="${escapeHtml(fullName)}">`
                 : initials.toUpperCase() || 'U'
             }
                     <div class="podium-medal">${medal}</div>
@@ -7105,9 +7122,9 @@ function renderCalUserDropdown(query = '') {
         div.className = 'ce-user-option';
         div.innerHTML = `
             <div class="assignee-dropdown-avatar" style="width:24px;height:24px;font-size:0.7rem">
-                ${getUserDisplayName(u).charAt(0)}
+                ${escapeHtml(getUserDisplayName(u).charAt(0))}
             </div>
-            <span>${getUserDisplayName(u)}</span>
+            <span>${escapeHtml(getUserDisplayName(u))}</span>
         `;
         div.onclick = () => {
             calendarState.selectedUsers.add(u.id);
@@ -7132,7 +7149,7 @@ function renderCalSelectedUsers() {
         const chip = document.createElement('div');
         chip.className = 'ce-user-chip';
         chip.innerHTML = `
-            <span>${getUserDisplayName(user)}</span>
+            <span>${escapeHtml(getUserDisplayName(user))}</span>
             <i class="fa-solid fa-xmark"></i>
         `;
         chip.querySelector('i').onclick = () => {
