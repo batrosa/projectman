@@ -4009,28 +4009,32 @@ body.light-mode .my-task-item:hover {
 
 /* Task Info Button */
 .info-task {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    color: #818cf8;
+    background: #6366f1;
+    border: none;
+    color: #fff;
     cursor: pointer;
-    padding: 8px 14px;
-    border-radius: 6px;
-    font-size: 0.95rem;
-    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 700;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
     transition: all 0.2s;
     user-select: none;
-    min-height: 32px;
+    min-height: 30px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.info-task i {
+    color: #fff;
 }
 
 .info-task:hover {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%);
-    border-color: rgba(99, 102, 241, 0.5);
-    color: #a5b4fc;
+    background: #4f46e5;
     transform: translateY(-1px);
+    filter: brightness(1.05);
 }
 
 /* Light mode adjustments */

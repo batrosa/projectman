@@ -16,6 +16,6 @@
     "@vercel/functions": "^3.7.5",
     "fflate": "^0.8.3",
     "firebase-admin": "13.5.0",
-    "pdf-parse": "^2.4.5"
+    "unpdf": "^1.6.2"
   }
 }

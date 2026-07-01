@@ -7609,11 +7609,14 @@ function renderDayTasks(dateStr) {
         row.appendChild(info);
         row.appendChild(tag);
 
-        // Navigate to the task's project board (calendar is a modal on top of it).
+        // Navigate to the task's project board. Close every layer on top of the
+        // board: the day-tasks modal, the calendar, and the "Панель управления"
+        // (settings) modal the calendar was opened from.
         row.addEventListener('click', () => {
             if (task.projectId) selectProject(task.projectId);
             closeDayTasksModal();
             calElements.modal?.classList.remove('active');
+            document.getElementById('settings-modal')?.classList.remove('active');
         });
 
         body.appendChild(row);
