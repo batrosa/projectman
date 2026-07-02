@@ -3260,8 +3260,16 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                         completedOnTime: wasOnTime
                     });
 
-                    // Find assignee user and award XP
-                    if (task.assigneeEmail) {
+                    // Award XP/stats to each assignee. Resolve by uid
+                    // (assigneeIds) first — Telegram-login users have no email,
+                    // so the old email-only match recorded nothing in their
+                    // profile ("личный кабинет"). Email is a legacy fallback.
+                    const assigneeUids = Array.isArray(task.assigneeIds) ? task.assigneeIds.filter(Boolean) : [];
+                    if (assigneeUids.length > 0) {
+                        for (const uid of assigneeUids) {
+                            await awardXP(uid, taskId, wasOnTime, wasReturned);
+                        }
+                    } else if (task.assigneeEmail) {
                         const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
                         for (const email of assigneeEmails) {
                             const user = state.users.find(u =>
@@ -6974,15 +6982,18 @@ function openProfileModal() {
     modal.classList.add('active');
 
     // Load active tasks count asynchronously (these need to be queried from tasks)
-    countActiveTasks(userData.email).then(activeTasks => {
+    countActiveTasks(userData).then(activeTasks => {
         document.getElementById('profile-active-tasks').textContent = activeTasks;
     });
 }
 
-async function countActiveTasks(userEmail) {
-    if (!userEmail) return 0;
+async function countActiveTasks(user) {
+    // Match by uid first (assigneeIds) — Telegram-login users have no email, so
+    // the old email-only count always showed 0 for them. Email is a fallback.
+    const uid = user?.id || null;
+    const email = user?.email ? user.email.toLowerCase() : null;
+    if (!uid && !email) return 0;
 
-    const email = userEmail.toLowerCase();
     let activeTasks = 0;
 
     // Get all tasks from all projects
@@ -6997,14 +7008,17 @@ async function countActiveTasks(userEmail) {
 
         tasksSnapshot.forEach(taskDoc => {
             const task = taskDoc.data();
+            if (task.status === 'done') return;
 
-            // Check if user is assignee and task is not done
-            if (task.assigneeEmail && task.status !== 'done') {
-                const assigneeEmails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
-                if (assigneeEmails.includes(email)) {
-                    activeTasks++;
-                }
+            let isAssignee = false;
+            if (uid && Array.isArray(task.assigneeIds) && task.assigneeIds.includes(uid)) {
+                isAssignee = true;
             }
+            if (!isAssignee && email && task.assigneeEmail) {
+                const emails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
+                if (emails.includes(email)) isAssignee = true;
+            }
+            if (isAssignee) activeTasks++;
         });
     }
 
