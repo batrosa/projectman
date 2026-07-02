@@ -316,4 +316,29 @@ describe("project and task organization permissions", () => {
     // ...still cannot read tasks of a project outside their allowedProjects:
     await assertFails(rdr.collection("tasks").where("projectId", "==", "p-no").get());
   });
+
+  it("restricts a MODERATOR by allowedProjects — manages tasks/files only in allowed projects", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("mod").set({ role: "reader", organizationId: "org-m", orgRole: "moderator", allowedProjects: ["p-allowed"] });
+      await ctx.firestore().collection("projects").doc("p-allowed").set({ organizationId: "org-m", name: "Allowed" });
+      await ctx.firestore().collection("projects").doc("p-denied").set({ organizationId: "org-m", name: "Denied" });
+      await ctx.firestore().collection("tasks").doc("t-allowed").set({ organizationId: "org-m", projectId: "p-allowed", title: "A", status: "in-progress" });
+      await ctx.firestore().collection("tasks").doc("t-denied").set({ organizationId: "org-m", projectId: "p-denied", title: "D", status: "in-progress" });
+      await ctx.firestore().collection("projects").doc("p-allowed").collection("files").doc("f-a").set({ filename: "a.pdf" });
+      await ctx.firestore().collection("projects").doc("p-denied").collection("files").doc("f-d").set({ filename: "d.pdf" });
+    });
+    const mod = testEnv.authenticatedContext("mod").firestore();
+    // Allowed project: full task management + file read
+    await assertSucceeds(mod.collection("tasks").where("projectId", "==", "p-allowed").get());
+    await assertSucceeds(mod.collection("tasks").add({ organizationId: "org-m", projectId: "p-allowed", title: "new" }));
+    await assertSucceeds(mod.collection("tasks").doc("t-allowed").update({ title: "edited" }));
+    await assertSucceeds(mod.collection("tasks").doc("t-allowed").delete());
+    await assertSucceeds(mod.collection("projects").doc("p-allowed").collection("files").doc("f-a").get());
+    // Denied project (not in allowedProjects): no read/create/update/delete, no file read
+    await assertFails(mod.collection("tasks").where("projectId", "==", "p-denied").get());
+    await assertFails(mod.collection("tasks").add({ organizationId: "org-m", projectId: "p-denied", title: "x" }));
+    await assertFails(mod.collection("tasks").doc("t-denied").update({ title: "hack" }));
+    await assertFails(mod.collection("tasks").doc("t-denied").delete());
+    await assertFails(mod.collection("projects").doc("p-denied").collection("files").doc("f-d").get());
+  });
 });

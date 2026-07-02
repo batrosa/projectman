@@ -81,7 +81,7 @@ describe("organizations privilege escalation", () => {
       );
     });
 
-    it("allows the real leaveOrganization() write shape (organizationId + orgRole both set to null)", async () => {
+    it("blocks a client-side self-leave (organizationId/orgRole → null) — leaving is server-only now (api/org)", async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         await ctx.firestore().collection("users").doc("leaver").set({
           role: "reader", organizationId: "some-org", orgRole: "employee",
@@ -89,7 +89,10 @@ describe("organizations privilege escalation", () => {
       });
 
       const leaver = testEnv.authenticatedContext("leaver").firestore();
-      await assertSucceeds(
+      // Direct client leave used to be allowed (isSelfServiceOrgLeave); it's
+      // removed so it can't skip the membersCount decrement / allowedProjects
+      // cleanup that api/org 'leave' does.
+      await assertFails(
         leaver.collection("users").doc("leaver").update({ organizationId: null, orgRole: null })
       );
     });

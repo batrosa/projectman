@@ -1380,6 +1380,8 @@ let firebaseInitAttempts = 0;
 let isFirebaseInitialized = false;
 let taskListenerUnsubscribe = null; // To manage real-time listener for tasks
 let myTasksListenerUnsubscribe = null; // To manage real-time listener for my tasks count
+let myTasksChunkUnsubs = [];           // per-project-chunk listeners (scoped My Tasks badge)
+let myTasksByChunk = [];               // latest tasks per chunk, merged for the count
 let projectFilesListenerUnsubscribe = null; // To manage real-time listener for project files
 let projectFiles = []; // Files for the currently selected project (projects/{projectId}/files)
 
@@ -1800,6 +1802,11 @@ function setupRealtimeListeners() {
 
         renderProjects();
         renderBoard();
+
+        // Re-scope the "My Tasks" badge to the now-loaded/updated accessible
+        // projects (its listeners query by projectId, so they need the project
+        // list). Cheap: unsubscribes+resubscribes; projects change rarely.
+        if (state.currentUser) subscribeToMyTasks();
     }, error => {
         console.error("Error listening to projects:", error);
     });
@@ -6629,25 +6636,33 @@ async function updateMyTasksCount() {
 
 // Subscribe to real-time updates for My Tasks count
 function subscribeToMyTasks() {
-    // Unsubscribe from previous listener if exists
-    if (myTasksListenerUnsubscribe) {
-        myTasksListenerUnsubscribe();
-        myTasksListenerUnsubscribe = null;
-    }
-
+    unsubscribeFromMyTasks(); // clear any previous (broad or chunked) listeners
     if (!state.currentUser) return;
 
-    // Listen to all tasks and filter on client side
-    myTasksListenerUnsubscribe = db.collection('tasks').onSnapshot(snapshot => {
-        // Recalculate my tasks count when any task changes
-        updateMyTasksCountFromSnapshot(snapshot);
-    }, error => {
-        console.error("Error listening to my tasks:", error);
-    });
+    // Scope to the projects the user may see. A broad tasks listener fails
+    // entirely for a restricted member (Firestore denies the WHOLE query if any
+    // matched doc is unreadable), so listen per accessible project via chunked
+    // `in` queries (Firestore caps `in` at 10 values) and merge the results.
+    const projectIds = getFilteredProjects().map(p => p.id);
+    if (projectIds.length === 0) {
+        renderMyTasksBadge([]); // no accessible projects → hide the badge
+        return;
+    }
+    const chunks = [];
+    for (let i = 0; i < projectIds.length; i += 10) chunks.push(projectIds.slice(i, i + 10));
+    myTasksByChunk = chunks.map(() => []);
+    myTasksChunkUnsubs = chunks.map((chunk, idx) =>
+        db.collection('tasks').where('projectId', 'in', chunk).onSnapshot(snapshot => {
+            myTasksByChunk[idx] = snapshot.docs.map(d => d.data());
+            renderMyTasksBadge(myTasksByChunk.flat());
+        }, error => {
+            console.error("Error listening to my tasks chunk:", error);
+        })
+    );
 }
 
-// Update count from snapshot (faster than fetching again)
-function updateMyTasksCountFromSnapshot(snapshot) {
+// Recompute the "My Tasks" badge from the merged task list across chunks.
+function renderMyTasksBadge(tasks) {
     if (!state.currentUser || !elements.myTasksCount) return;
 
     const userUid = state.currentUser.uid;
@@ -6657,9 +6672,7 @@ function updateMyTasksCountFromSnapshot(snapshot) {
 
     let activeCount = 0;
 
-    snapshot.forEach(doc => {
-        const task = doc.data();
-
+    (tasks || []).forEach(task => {
         // Skip completed tasks
         if (task.status === 'done') return;
 
@@ -6695,8 +6708,11 @@ function updateMyTasksCountFromSnapshot(snapshot) {
     }
 }
 
-// Unsubscribe from my tasks listener
+// Unsubscribe from all My Tasks listeners (chunked + any legacy broad one).
 function unsubscribeFromMyTasks() {
+    myTasksChunkUnsubs.forEach(u => { try { u(); } catch (e) { /* ignore */ } });
+    myTasksChunkUnsubs = [];
+    myTasksByChunk = [];
     if (myTasksListenerUnsubscribe) {
         myTasksListenerUnsubscribe();
         myTasksListenerUnsubscribe = null;
@@ -7135,30 +7151,35 @@ async function countActiveTasks(user) {
 
     let activeTasks = 0;
 
-    // Get all tasks from all projects
-    const projectsSnapshot = await db.collection('projects')
-        .where('organizationId', '==', state.organization?.id)
-        .get();
+    // Only the caller's ACCESSIBLE projects. Scanning all org projects would
+    // throw on a project the caller can't read (rules), leaving the profile
+    // "Текущие задачи" stuck on "…". Each project read is also guarded so one
+    // failure can't abort the whole count.
+    const accessibleProjects = getFilteredProjects();
 
-    for (const projectDoc of projectsSnapshot.docs) {
-        const tasksSnapshot = await db.collection('tasks')
-            .where('projectId', '==', projectDoc.id)
-            .get();
+    for (const project of accessibleProjects) {
+        try {
+            const tasksSnapshot = await db.collection('tasks')
+                .where('projectId', '==', project.id)
+                .get();
 
-        tasksSnapshot.forEach(taskDoc => {
-            const task = taskDoc.data();
-            if (task.status === 'done') return;
+            tasksSnapshot.forEach(taskDoc => {
+                const task = taskDoc.data();
+                if (task.status === 'done') return;
 
-            let isAssignee = false;
-            if (uid && Array.isArray(task.assigneeIds) && task.assigneeIds.includes(uid)) {
-                isAssignee = true;
-            }
-            if (!isAssignee && email && task.assigneeEmail) {
-                const emails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
-                if (emails.includes(email)) isAssignee = true;
-            }
-            if (isAssignee) activeTasks++;
-        });
+                let isAssignee = false;
+                if (uid && Array.isArray(task.assigneeIds) && task.assigneeIds.includes(uid)) {
+                    isAssignee = true;
+                }
+                if (!isAssignee && email && task.assigneeEmail) {
+                    const emails = task.assigneeEmail.toLowerCase().split(',').map(e => e.trim());
+                    if (emails.includes(email)) isAssignee = true;
+                }
+                if (isAssignee) activeTasks++;
+            });
+        } catch (e) {
+            console.error('countActiveTasks: failed for project', project.id, e);
+        }
     }
 
     return activeTasks;
@@ -7603,20 +7624,34 @@ function openCalendar() {
     renderCalendar();
 }
 
-// Loads all tasks visible to the current user so the calendar can plot them by
-// deadline. Mirrors the org-wide, unfiltered listener already used by the "My
-// Tasks" badge (subscribeToMyTasks) so it works for the same set of users;
-// tasks without a deadline are ignored when rendering.
+// Loads the tasks the user may see so the calendar can plot them by deadline.
+// Scoped to accessible projects via chunked `in` listeners (a broad tasks
+// listener fails entirely for a restricted member — Firestore denies the whole
+// query if any matched doc is unreadable). tasksListenerUnsubscribe stays a
+// single fn that tears down all chunk listeners, so existing teardown works.
 function setupCalendarTasksListener() {
     if (calendarState.tasksListenerUnsubscribe) calendarState.tasksListenerUnsubscribe();
 
-    calendarState.tasksListenerUnsubscribe = db.collection('tasks')
-        .onSnapshot(snapshot => {
-            calendarState.tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const projectIds = getFilteredProjects().map(p => p.id);
+    if (projectIds.length === 0) {
+        calendarState.tasks = [];
+        calendarState.tasksListenerUnsubscribe = null;
+        renderCalendar();
+        return;
+    }
+    const chunks = [];
+    for (let i = 0; i < projectIds.length; i += 10) chunks.push(projectIds.slice(i, i + 10));
+    const byChunk = chunks.map(() => []);
+    const unsubs = chunks.map((chunk, idx) =>
+        db.collection('tasks').where('projectId', 'in', chunk).onSnapshot(snapshot => {
+            byChunk[idx] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            calendarState.tasks = byChunk.flat();
             renderCalendar();
             // Keep an open day modal in sync with live task changes.
             if (calendarState.openDayDate) renderDayTasks(calendarState.openDayDate);
-        }, err => console.error("Calendar tasks listener error:", err));
+        }, err => console.error("Calendar tasks listener error:", err))
+    );
+    calendarState.tasksListenerUnsubscribe = () => unsubs.forEach(u => { try { u(); } catch (e) { /* ignore */ } });
 }
 
 function renderCalendar() {

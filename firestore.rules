@@ -12,14 +12,6 @@ service cloud.firestore {
       return (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects', 'organizationId', 'orgRole']));
     }
 
-    // Функция: Самостоятельный выход из организации
-    function isSelfServiceOrgLeave() {
-      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
-      return changedKeys.hasOnly(['organizationId', 'orgRole'])
-        && request.resource.data.organizationId == null
-        && request.resource.data.orgRole == null;
-    }
-
     // Функция: Проверка, что пользователь ещё не состоит в организации
     function wasNotYetInOrg() {
       return !('organizationId' in resource.data) || resource.data.organizationId == null;
@@ -94,6 +86,17 @@ service cloud.firestore {
         && projectBelongsToOrg(projectId, userData.organizationId);
     }
 
+    // Кто может УПРАВЛЯТЬ данными проекта (создавать/править/удалять задачи и
+    // файлы): владелец/админ организации проекта — всегда; модератор — ТОЛЬКО
+    // если проект ему доступен (allowedProjects). Ключуется по организации
+    // ПРОЕКТА (projectBelongsToOrg), а не по полю задачи, чтобы работать и для
+    // задач без organizationId. Так ограничение проектов из панели доступа
+    // применяется и к модератору, а не только в UI.
+    function canManageProject(projectId) {
+      return hasProjectOrgRole(projectId, ['owner', 'admin'])
+        || (hasProjectOrgRole(projectId, ['moderator']) && canViewProject(projectId));
+    }
+
     function canReaderWorkOnTask() {
       return request.auth != null
         && canViewProject(resource.data.projectId)
@@ -145,10 +148,13 @@ service cloud.firestore {
       // Обновлять: Владелец (но БЕЗ смены роли/оргполей, кроме явных сценариев join/leave/create) ИЛИ Админ (все поля)
       // NOTE: self-service JOIN was removed — a user can no longer set their own
       // organizationId client-side (that let anyone join any org without the
-      // invite code). Joining now goes through api/join-org (Admin SDK), which
-      // validates the code. Leave and owner-create-org remain self-service.
+      // invite code). Joining now goes through api/join-org (Admin SDK). LEAVE
+      // and REMOVE are also server-side now (api/org), so self-service leave was
+      // removed too — otherwise a client could null its organizationId directly,
+      // skipping the membersCount decrement and allowedProjects cleanup.
+      // Owner-create-org remains self-service (isSelfServiceOrgCreate).
       allow update: if (request.auth != null && request.auth.uid == userId
-                         && (notUpdatingRestrictedFields() || isSelfServiceOrgLeave() || isSelfServiceOrgCreate()))
+                         && (notUpdatingRestrictedFields() || isSelfServiceOrgCreate()))
                     || isOrgUserManagerUpdate()
                     || isOrgUserStatsUpdate()
                     || isAdmin();
@@ -222,27 +228,24 @@ service cloud.firestore {
       // made the whole per-project query fail for a reader while it worked for a
       // moderator (who reads via the project). The task-org branch is kept too
       // for orphan tasks whose project was deleted.
+      // Read: owner/admin of the task's org (or the project's org) see everything;
+      // moderators/employees/readers only tasks of a project they can view
+      // (allowedProjects) — so the access panel restricts moderators too.
       allow read: if isAdmin()
-        || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
-        || hasProjectOrgRole(resource.data.projectId, ['owner', 'admin', 'moderator'])
-        || (canViewProject(resource.data.projectId) && projectBelongsToOrg(resource.data.projectId, myOrgId()))
+        || hasOrgRole(resource.data.organizationId, ['owner', 'admin'])
+        || hasProjectOrgRole(resource.data.projectId, ['owner', 'admin'])
+        || (projectBelongsToOrg(resource.data.projectId, myOrgId()) && canViewProject(resource.data.projectId))
         || (isOrgMember(resource.data.organizationId) && canViewProject(resource.data.projectId));
-      
-      // Запись: 
-      // 1. Админ может всё.
-      // 2. Обычный пользователь (Reader) может только ОБНОВЛЯТЬ статус задачи (drag & drop) 
-      // и ставить галочку "assigneeCompleted", но НЕ менять название/дедлайн/удалять.
-      allow create: if isAdmin()
-        || (hasOrgRole(request.resource.data.organizationId, ['owner', 'admin', 'moderator'])
-            && projectBelongsToOrg(request.resource.data.projectId, request.resource.data.organizationId));
-      allow delete: if isAdmin()
-        || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
-        || hasProjectOrgRole(resource.data.projectId, ['owner', 'admin', 'moderator']);
+
+      // Запись:
+      // - Управлять задачей (create/delete/полный update) может тот, кто может
+      //   управлять её проектом: owner/admin (всегда) или moderator, которому
+      //   проект доступен (canManageProject).
+      // - Reader/employee может лишь двигать статус своей задачи (carve-out ниже).
+      allow create: if isAdmin() || canManageProject(request.resource.data.projectId);
+      allow delete: if isAdmin() || canManageProject(resource.data.projectId);
       allow update: if isAdmin()
-        || (hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
-            && request.resource.data.organizationId == resource.data.organizationId
-            && request.resource.data.projectId == resource.data.projectId)
-        || (hasProjectOrgRole(resource.data.projectId, ['owner', 'admin', 'moderator'])
+        || (canManageProject(resource.data.projectId)
             && request.resource.data.projectId == resource.data.projectId
             && (!('organizationId' in resource.data) || request.resource.data.organizationId == resource.data.organizationId))
         || (request.auth != null
@@ -274,8 +277,11 @@ service cloud.firestore {
     // Коллекция Project Files (подколлекция файлов проекта)
     // Все записи выполняются только сервером через Admin SDK (в обход правил) — клиент может только читать.
     match /projects/{projectId}/files/{fileId} {
+      // owner/admin: all files in their org's projects; moderator/employee/reader:
+      // only files of projects they can view (allowedProjects). Writes are
+      // server-only (api/project-files, which also enforces project access).
       allow read: if isAdmin()
-        || hasProjectOrgRole(projectId, ['owner', 'admin', 'moderator'])
+        || hasProjectOrgRole(projectId, ['owner', 'admin'])
         || (request.auth != null && projectBelongsToOrg(projectId, myOrgId()) && canViewProject(projectId));
       allow write: if false;
     }

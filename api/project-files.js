@@ -57,6 +57,16 @@ export function extensionOf(filename) {
   return clean.slice(idx + 1);
 }
 
+// Whether the caller may act on a project's files. Mirrors the Firestore
+// canViewProject rule + owner/admin bypass: owner/admin → any project in their
+// org; everyone else → only projects in their allowedProjects (empty/absent =
+// all). Org membership for the project is checked separately by the caller.
+function callerCanAccessProject(orgRole, allowedProjects, projectId) {
+  if (orgRole === "owner" || orgRole === "admin") return true;
+  if (!Array.isArray(allowedProjects) || allowedProjects.length === 0) return true;
+  return allowedProjects.includes(projectId);
+}
+
 export default async function handler(request, response) {
   if (request.method !== "POST" && request.method !== "DELETE") {
     response.setHeader("Allow", "POST, DELETE");
@@ -79,9 +89,14 @@ export default async function handler(request, response) {
   }
 
   let callerOrgId;
+  let callerOrgRole = null;
+  let callerAllowedProjects = null;
   try {
     const userDoc = await adminDb().collection("users").doc(decoded.uid).get();
-    callerOrgId = userDoc.exists ? userDoc.data().organizationId : null;
+    const cd = userDoc.exists ? userDoc.data() : null;
+    callerOrgId = cd ? cd.organizationId : null;
+    callerOrgRole = cd ? cd.orgRole : null;
+    callerAllowedProjects = cd ? cd.allowedProjects : null;
   } catch (error) {
     console.error("project-files: failed to load caller user doc", error);
     return response.status(500).json({ error: "Failed to verify caller" });
@@ -123,6 +138,9 @@ export default async function handler(request, response) {
     if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
       return response.status(403).json({ error: "Forbidden" });
     }
+    if (!callerCanAccessProject(callerOrgRole, callerAllowedProjects, projectId)) {
+      return response.status(403).json({ error: "Forbidden — no access to this project" });
+    }
 
     try {
       await db.collection("projects").doc(projectId).collection("files").doc(fileId).delete();
@@ -134,7 +152,7 @@ export default async function handler(request, response) {
     return response.status(200).json({ ok: true });
   }
 
-  const { projectId, filename, url, mimeType, sizeBytes, uploadedBy } = body;
+  const { projectId, filename, url, mimeType, sizeBytes } = body;
 
   const validation = validateUpload({ projectId, filename, url, sizeBytes });
   if (!validation.ok) {
@@ -157,6 +175,9 @@ export default async function handler(request, response) {
   if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
     return response.status(403).json({ error: "Forbidden" });
   }
+  if (!callerCanAccessProject(callerOrgRole, callerAllowedProjects, projectId)) {
+    return response.status(403).json({ error: "Forbidden — no access to this project" });
+  }
 
   let fileRef;
   try {
@@ -166,7 +187,7 @@ export default async function handler(request, response) {
       url,
       mimeType: mimeType || null,
       sizeBytes: sizeBytes || null,
-      uploadedBy: uploadedBy || null,
+      uploadedBy: decoded.uid, // from the verified token, never client-supplied (was spoofable)
       uploadedAt: new Date().toISOString(),
       extractionStatus: "pending",
       extractedText: null,
