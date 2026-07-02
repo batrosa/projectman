@@ -57,12 +57,24 @@
         margin-right: 0;
     }
 
+    /* Primary "Новая задача" gets its own full-width row on top; the secondary
+       controls (Файлы проекта, помощь, удалить) share the row below so the
+       delete button no longer wraps alone. */
     #add-task-btn {
-        flex: 1;
+        order: -1;
+        flex: 1 1 100%;
         justify-content: center;
         padding: 0.875rem;
         font-size: 1rem;
         min-height: 50px;
+    }
+
+    #project-files-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+        min-height: 50px;
+        padding: 0.875rem 1rem;
+        margin-right: 0.75rem;
     }
 
     #help-btn {
@@ -464,10 +476,13 @@
         width: 100%;
         max-width: 100%;
         padding: 0;
-        max-height: 100dvh;
+        /* dvh must come LAST so it wins where supported: plain 100vh on iOS
+           Safari is taller than the visible area, which pushed modal footers /
+           chat inputs down behind the browser toolbar. */
         max-height: 100vh;
-        height: 100dvh;
+        max-height: 100dvh;
         height: 100vh;
+        height: 100dvh;
         overflow: hidden;
         margin: 0;
         border-radius: 0;
@@ -1148,6 +1163,50 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
         word-break: break-word;
     }
 
+    /* Calendar header keeps its gradient on mobile. The generic .modal-header
+       rule (loaded after style.css) otherwise paints it white in light mode,
+       which hid the white month title and the prev/next/«Сегодня» controls. */
+    .calendar-header,
+    body.light-mode .calendar-header {
+        background: linear-gradient(135deg, #0ea5e9, #2563eb) !important;
+    }
+
+    .calendar-header h2,
+    .calendar-header .icon-btn,
+    .calendar-header #cal-today-btn,
+    .calendar-header .close-modal {
+        color: #fff !important;
+    }
+
+    /* Keep the calendar header on one compact row (it was wrapping into a tall
+       blank block on narrow phones). */
+    .calendar-header {
+        flex-wrap: nowrap !important;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem !important;
+    }
+
+    .calendar-header-nav {
+        gap: 0.4rem !important;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .calendar-header h2 {
+        min-width: 0 !important;
+        font-size: 0.95rem !important;
+    }
+
+    .calendar-header-actions {
+        gap: 0.4rem !important;
+        flex-shrink: 0;
+    }
+
+    .calendar-header #cal-today-btn {
+        padding: 0.4rem 0.6rem !important;
+        font-size: 0.75rem !important;
+    }
+
     /* Calendar "tasks of the day" modal: let the sheet grow and scroll */
     .day-tasks-body {
         max-height: none;
@@ -1166,6 +1225,15 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
     /* Prevent iOS zoom-on-focus for the agent chat composer */
     .agent-chat-input {
         font-size: 16px !important;
+    }
+
+    /* Full-screen agent chat: keep the composer above the iOS home indicator */
+    .agent-chat-form {
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .agent-chat-messages {
+        -webkit-overflow-scrolling: touch;
     }
 
     /* Name-setup (post-registration) inputs: 16px avoids iOS zoom */

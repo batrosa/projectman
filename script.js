@@ -4384,6 +4384,12 @@ function setupEventListeners() {
         elements.sidebarOverlay.classList.add('active');
     });
 
+    // Buttons that live inside the mobile sidebar and open a modal must first
+    // close the sidebar, otherwise the modal opens behind it.
+    [elements.myTasksBtn, elements.adminPanelBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', closeSidebarOnMobile);
+    });
+
     // Close sidebar when clicking overlay
     elements.sidebarOverlay.addEventListener('click', () => {
         playClickSound();
@@ -8183,6 +8189,7 @@ function initAgentChat() {
 
     elements.agentChatBtn.addEventListener('click', () => {
         playClickSound();
+        closeSidebarOnMobile(); // otherwise the chat opens behind the open mobile sidebar
         elements.agentChatModal.classList.add('active');
         elements.agentChatInput?.focus();
     });
