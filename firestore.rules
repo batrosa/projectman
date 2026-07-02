@@ -280,13 +280,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Коллекция Calendar Events — строго в рамках своей организации.
-    match /calendar_events/{eventId} {
-      allow read: if isOrgMember(resource.data.organizationId);
-      allow create: if isOrgMember(request.resource.data.organizationId);
-      allow update, delete: if isOrgMember(resource.data.organizationId);
-    }
-
     // telegramCodes — legacy-инфраструктура старого подключения по коду. Больше
     // не используется (вход и привязка идут через bot deep-link, см.
     // lib/telegram-bot-login.js). Коллекция закрыта полностью (default deny).

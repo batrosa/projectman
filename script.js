@@ -4040,13 +4040,9 @@ function closeModalElement(modal) {
     if (elements.agentChatModal && modal === elements.agentChatModal) {
         agentChatState.generation += 1;
     }
-    // Detach the calendar's live listeners when it is dismissed so they don't
-    // keep running in the background after the calendar is closed.
+    // Detach the calendar's live tasks listener when it is dismissed so it
+    // doesn't keep running in the background after the calendar is closed.
     if (calElements.modal && modal === calElements.modal) {
-        if (calendarState.listenerUnsubscribe) {
-            calendarState.listenerUnsubscribe();
-            calendarState.listenerUnsubscribe = null;
-        }
         if (calendarState.tasksListenerUnsubscribe) {
             calendarState.tasksListenerUnsubscribe();
             calendarState.tasksListenerUnsubscribe = null;
@@ -7552,10 +7548,7 @@ function initProfileAndLeaderboard() {
 // ========== CALENDAR MODULE ==========
 let calendarState = {
     currentDate: new Date(),
-    events: [],
     tasks: [],
-    selectedUsers: new Set(),
-    listenerUnsubscribe: null,
     tasksListenerUnsubscribe: null,
     openDayDate: null
 };
@@ -7569,23 +7562,9 @@ const calElements = {
     nextBtn: document.getElementById('cal-next-month'),
     todayBtn: document.getElementById('cal-today-btn'),
 
-    eventModal: document.getElementById('cal-event-modal'),
-    eventForm: document.getElementById('cal-event-form'),
-    eventTitle: document.getElementById('ce-title'),
-    eventDate: document.getElementById('ce-date'),
-    eventTime: document.getElementById('ce-time'),
-    eventDesc: document.getElementById('ce-desc'),
-    eventId: document.getElementById('ce-id'),
-    deleteBtn: document.getElementById('ce-delete-btn'),
-
-    userSearch: document.getElementById('ce-user-search'),
-    userDropdown: document.getElementById('ce-users-dropdown'),
-    selectedUsersCont: document.getElementById('ce-selected-users'),
-
     dayTasksModal: document.getElementById('day-tasks-modal'),
     dayTasksTitle: document.getElementById('day-tasks-title'),
-    dayTasksBody: document.getElementById('day-tasks-body'),
-    dayAddEventBtn: document.getElementById('day-add-event-btn')
+    dayTasksBody: document.getElementById('day-tasks-body')
 };
 
 function initCalendarModule() {
@@ -7609,58 +7588,19 @@ function initCalendarModule() {
         renderCalendar();
     });
 
-    calElements.eventForm?.addEventListener('submit', handleCalendarSubmit);
-    calElements.deleteBtn?.addEventListener('click', deleteCalendarEvent);
-
-    // Day-tasks modal: close button(s) + "add meeting" shortcut
+    // Day-tasks modal: close button(s) + backdrop click
     calElements.dayTasksModal?.querySelectorAll('.close-modal').forEach(btn => {
         btn.addEventListener('click', closeDayTasksModal);
     });
     calElements.dayTasksModal?.addEventListener('click', (e) => {
         if (e.target === calElements.dayTasksModal) closeDayTasksModal();
     });
-    calElements.dayAddEventBtn?.addEventListener('click', () => {
-        const date = calendarState.openDayDate;
-        closeDayTasksModal();
-        openEventModal(null, date);
-    });
-
-    calElements.userSearch?.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        renderCalUserDropdown(query);
-    });
-
-    calElements.userSearch?.addEventListener('focus', () => {
-        renderCalUserDropdown(calElements.userSearch.value.toLowerCase());
-    });
-
-    document.addEventListener('click', (e) => {
-        if (!calElements.userDropdown?.contains(e.target) && e.target !== calElements.userSearch) {
-            calElements.userDropdown?.classList.remove('active');
-        }
-    });
 }
 
 function openCalendar() {
     calElements.modal?.classList.add('active');
-    setupCalendarListener();
-    renderCalendar();
-}
-
-function setupCalendarListener() {
-    if (calendarState.listenerUnsubscribe) calendarState.listenerUnsubscribe();
-
-    const orgId = state.organization?.id;
-    if (!orgId) return;
-
-    calendarState.listenerUnsubscribe = db.collection('calendar_events')
-        .where('organizationId', '==', orgId)
-        .onSnapshot(snapshot => {
-            calendarState.events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            renderCalendar();
-        }, err => console.error("Calendar listener error:", err));
-
     setupCalendarTasksListener();
+    renderCalendar();
 }
 
 // Loads all tasks visible to the current user so the calendar can plot them by
@@ -7773,19 +7713,7 @@ function addDayToGrid(num, otherMonth, fullDate) {
     cont.className = 'calendar-events-container';
     dayEl.appendChild(cont);
 
-    // Meetings (existing feature) first, then task pills coloured by status.
-    const dayEvents = calendarState.events.filter(e => e.date === dateStr);
-    dayEvents.forEach(evt => {
-        const pill = document.createElement('div');
-        pill.className = 'calendar-event-pill';
-        pill.textContent = evt.title;
-        pill.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEventModal(evt);
-        });
-        cont.appendChild(pill);
-    });
-
+    // Task pills coloured by status.
     const dayTasks = calendarTasksForDate(dateStr);
     const MAX_PILLS = 3;
     dayTasks.slice(0, MAX_PILLS).forEach(task => {
@@ -7901,169 +7829,6 @@ function renderDayTasks(dateStr) {
 function closeDayTasksModal() {
     calElements.dayTasksModal?.classList.remove('active');
     calendarState.openDayDate = null;
-}
-
-function openEventModal(event = null, defaultDate = null) {
-    calendarState.selectedUsers.clear();
-    calElements.eventForm?.reset();
-    calElements.eventId.value = event?.id || '';
-    calElements.deleteBtn.style.display = event ? 'block' : 'none';
-
-    if (event) {
-        calElements.eventTitle.value = event.title;
-        calElements.eventDate.value = event.date;
-        calElements.eventTime.value = event.time;
-        calElements.eventDesc.value = event.description || '';
-        (event.participantIds || []).forEach(uid => calendarState.selectedUsers.add(uid));
-    } else {
-        calElements.eventDate.value = defaultDate || new Date().toISOString().split('T')[0];
-        calElements.eventTime.value = "10:00";
-        // Auto select current user
-        if (state.currentUser?.uid) calendarState.selectedUsers.add(state.currentUser.uid);
-    }
-
-    renderCalSelectedUsers();
-    calElements.eventModal?.classList.add('active');
-}
-
-function renderCalUserDropdown(query = '') {
-    if (!calElements.userDropdown) return;
-
-    const users = (state.users || []).filter(u => {
-        const name = getUserDisplayName(u).toLowerCase();
-        return name.includes(query) && !calendarState.selectedUsers.has(u.id);
-    });
-
-    if (users.length === 0) {
-        calElements.userDropdown.classList.remove('active');
-        return;
-    }
-
-    calElements.userDropdown.innerHTML = '';
-    users.forEach(u => {
-        const div = document.createElement('div');
-        div.className = 'ce-user-option';
-        div.innerHTML = `
-            <div class="assignee-dropdown-avatar" style="width:24px;height:24px;font-size:0.7rem">
-                ${escapeHtml(getUserDisplayName(u).charAt(0))}
-            </div>
-            <span>${escapeHtml(getUserDisplayName(u))}</span>
-        `;
-        div.onclick = () => {
-            calendarState.selectedUsers.add(u.id);
-            calElements.userSearch.value = '';
-            calElements.userDropdown.classList.remove('active');
-            renderCalSelectedUsers();
-        };
-        calElements.userDropdown.appendChild(div);
-    });
-
-    calElements.userDropdown.classList.add('active');
-}
-
-function renderCalSelectedUsers() {
-    if (!calElements.selectedUsersCont) return;
-    calElements.selectedUsersCont.innerHTML = '';
-
-    calendarState.selectedUsers.forEach(uid => {
-        const user = state.users.find(u => u.id === uid);
-        if (!user) return;
-
-        const chip = document.createElement('div');
-        chip.className = 'ce-user-chip';
-        chip.innerHTML = `
-            <span>${escapeHtml(getUserDisplayName(user))}</span>
-            <i class="fa-solid fa-xmark"></i>
-        `;
-        chip.querySelector('i').onclick = () => {
-            calendarState.selectedUsers.delete(uid);
-            renderCalSelectedUsers();
-        };
-        calElements.selectedUsersCont.appendChild(chip);
-    });
-}
-
-async function handleCalendarSubmit(e) {
-    e.preventDefault();
-    const id = calElements.eventId.value;
-    const eventData = {
-        title: calElements.eventTitle.value,
-        date: calElements.eventDate.value,
-        time: calElements.eventTime.value,
-        description: calElements.eventDesc.value,
-        participantIds: Array.from(calendarState.selectedUsers),
-        organizationId: state.organization?.id,
-        updatedAt: new Date().toISOString()
-    };
-
-    if (!db) {
-        alert("Ошибка подключения к базе данных");
-        return;
-    }
-
-    const orgId = state.organization?.id;
-    if (!orgId) {
-        alert("Ошибка: не найдена ваша организация. Попробуйте перезагрузить страницу.");
-        return;
-    }
-
-    const submitBtn = document.querySelector(`button[type="submit"][form="cal-event-form"]`);
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
-    }
-
-    try {
-        if (id) {
-            await db.collection('calendar_events').doc(id).update(eventData);
-        } else {
-            eventData.createdAt = new Date().toISOString();
-            eventData.createdById = state.currentUser?.uid;
-            await db.collection('calendar_events').add(eventData);
-
-            // Notify participants via Telegram
-            notifyCalendarParticipants(eventData);
-        }
-        calElements.eventModal?.classList.remove('active');
-    } catch (err) {
-        console.error("Error saving calendar event:", err);
-        alert("Ошибка при сохранении события: " + err.message);
-    } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> Сохранить';
-        }
-    }
-}
-
-async function deleteCalendarEvent() {
-    const id = calElements.eventId.value;
-    if (!id || !confirm("Удалить эту встречу?")) return;
-
-    try {
-        await db.collection('calendar_events').doc(id).delete();
-        calElements.eventModal?.classList.remove('active');
-    } catch (err) {
-        console.error("Error deleting event:", err);
-    }
-}
-
-async function notifyCalendarParticipants(evt) {
-    const participants = evt.participantIds.map(id => state.users.find(u => u.id === id)).filter(Boolean);
-    const dateStr = new Date(evt.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long' });
-
-    // parse_mode is HTML, so escape user-entered title/description/names — an
-    // unescaped <, & or tag breaks the send or distorts the message.
-    const message = `📅 <b>Новая встреча: ${escapeHtmlForTelegram(evt.title)}</b>\n\n` +
-        `🗓 <b>Когда:</b> ${escapeHtmlForTelegram(dateStr)} в ${escapeHtmlForTelegram(evt.time)}\n` +
-        `👥 <b>Участники:</b> ${escapeHtmlForTelegram(participants.map(u => getUserDisplayName(u)).join(', '))}\n` +
-        (evt.description ? `\n💬 <b>Описание:</b> ${escapeHtmlForTelegram(evt.description)}` : '');
-
-    participants.forEach(u => {
-        if (u.id !== state.currentUser?.uid && u.telegramChatId) {
-            sendTelegramNotification(u.telegramChatId, message);
-        }
-    });
 }
 
 // ========== GLOBAL AI AGENT CHAT (Task 15) ==========
