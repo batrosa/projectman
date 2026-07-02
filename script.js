@@ -2058,15 +2058,18 @@ async function deleteProjectFile(fileId, filename) {
         if (!currentUser) throw new Error('Вы не авторизованы');
         const idToken = await currentUser.getIdToken();
 
-        const response = await fetch('/api/project-files', {
+        // Pass ids as query params, NOT a request body: mobile Safari and some
+        // proxies drop the body of a fetch DELETE, which made deletion fail on
+        // phones ("Ошибка") while working on desktop. Query params always arrive.
+        const url = `/api/project-files?projectId=${encodeURIComponent(projectId)}&fileId=${encodeURIComponent(fileId)}`;
+        const response = await fetch(url, {
             method: 'DELETE',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-            body: JSON.stringify({ projectId, fileId }),
+            headers: { Authorization: `Bearer ${idToken}` },
         });
 
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(result.error || 'Не удалось удалить файл');
+            throw new Error(result.error || `Не удалось удалить файл (код ${response.status})`);
         }
 
         playClickSound();

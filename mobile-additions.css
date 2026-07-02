@@ -674,7 +674,9 @@
     #help-modal .modal-content,
     #admin-panel-modal .modal-content,
     #my-tasks-modal .modal-content,
-    #files-list-modal .modal-content {
+    #files-list-modal .modal-content,
+    #project-files-modal .modal-content,
+    #day-tasks-modal .modal-content {
         height: auto;
         max-height: 90dvh;
         max-height: 90vh;
@@ -687,7 +689,9 @@
     #help-modal,
     #admin-panel-modal,
     #my-tasks-modal,
-    #files-list-modal {
+    #files-list-modal,
+    #project-files-modal,
+    #day-tasks-modal {
         padding: 1rem;
         align-items: flex-start;
         padding-top: 2rem;
@@ -697,7 +701,9 @@
     #help-modal .modal-header,
     #admin-panel-modal .modal-header,
     #my-tasks-modal .modal-header,
-    #files-list-modal .modal-header {
+    #files-list-modal .modal-header,
+    #project-files-modal .modal-header,
+    #day-tasks-modal .modal-header {
         padding: 1.5rem 1.5rem 1rem;
     }
 
@@ -1119,5 +1125,52 @@ button, a, input, select, textarea, .task-card, .project-item, .pin-key {
     .assignee-dropdown-email {
         font-size: 0.75rem;
         opacity: 0.7;
+    }
+}
+
+/* ========== Project files / calendar day-tasks / agent input (mobile) ========== */
+@media (max-width: 768px) {
+    /* Bigger, always-tappable delete target in the project files list */
+    .file-delete-btn {
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    .file-list-item {
+        gap: 0.75rem;
+        padding: 0.875rem;
+    }
+
+    .file-list-item .attachment-name {
+        word-break: break-word;
+    }
+
+    /* Calendar "tasks of the day" modal: let the sheet grow and scroll */
+    .day-tasks-body {
+        max-height: none;
+        padding: 1rem 1.25rem 1.25rem;
+    }
+
+    .day-task-row {
+        padding: 0.875rem;
+        min-height: 56px;
+    }
+
+    .day-tasks-footer {
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* Prevent iOS zoom-on-focus for the agent chat composer */
+    .agent-chat-input {
+        font-size: 16px !important;
+    }
+
+    /* Name-setup (post-registration) inputs: 16px avoids iOS zoom */
+    #name-setup-form input {
+        font-size: 16px !important;
+        min-height: 48px;
     }
 }

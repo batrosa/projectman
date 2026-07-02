@@ -102,7 +102,11 @@ export default async function handler(request, response) {
   // Firestore doc is gone. Same org-scope bar as upload — any member of the
   // project's organization may remove a file (e.g. to fix a wrong upload).
   if (request.method === "DELETE") {
-    const { projectId, fileId } = body;
+    // Prefer the query string (mobile Safari / some proxies drop the body of a
+    // fetch DELETE, which broke deletion on phones); fall back to the JSON body.
+    const query = request.query || {};
+    const projectId = query.projectId || body.projectId;
+    const fileId = query.fileId || body.fileId;
     if (!projectId || !fileId) {
       return response.status(400).json({ error: "projectId and fileId are required" });
     }
