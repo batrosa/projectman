@@ -611,13 +611,18 @@ async function createOrganization(name) {
 
     const orgRef = await db.collection('organizations').add(orgData);
 
-    // Update user with organization (use set with merge to handle missing docs)
+    // Update user with organization. Write ONLY organizationId + orgRole — the
+    // real name is already set by the post-registration name gate. Previously we
+    // also wrote displayName (which, with no Telegram email/displayName, always
+    // resolved to the literal "User") and email:null, clobbering the real name.
     await db.collection('users').doc(state.currentUser.uid).set({
         organizationId: orgRef.id,
-        orgRole: 'owner',
-        email: state.currentUser.email,
-        displayName: state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User'
+        orgRole: 'owner'
     }, { merge: true });
+
+    state.currentUser.organizationId = orgRef.id;
+    state.currentUser.orgRole = 'owner';
+    state.orgRole = 'owner';
 
     return { id: orgRef.id, ...orgData };
 }
@@ -1360,6 +1365,7 @@ function enterApp() {
     applyRoleRestrictions();
     setupRealtimeListeners();
     subscribeToMyTasks();
+    subscribeToOwnUserDoc();
 
 
     // Start presence tracking (used for admin "who is online" / last seen)
@@ -1761,6 +1767,50 @@ function showUpdateNotification() {
 // Persistence - NOW FIREBASE
 let projectsListenerUnsubscribe = null;
 let usersListenerUnsubscribe = null;
+let ownUserDocListenerUnsubscribe = null;
+
+// Live listener on the current user's OWN doc. Catches being removed from the
+// organization (kicked, or org deleted) or an orgRole change and applies it
+// immediately, instead of leaving a stale, still-privileged session until the
+// next reload. The org-filtered users listener can't see this: when a user is
+// removed, their doc drops out of that org-scoped query.
+function subscribeToOwnUserDoc() {
+    if (ownUserDocListenerUnsubscribe) {
+        ownUserDocListenerUnsubscribe();
+        ownUserDocListenerUnsubscribe = null;
+    }
+    if (!state.currentUser) return;
+    const uid = state.currentUser.uid;
+
+    ownUserDocListenerUnsubscribe = db.collection('users').doc(uid).onSnapshot(doc => {
+        if (!doc.exists || !state.currentUser) return;
+        const data = doc.data();
+
+        // Removed from / moved out of the organization we're currently in.
+        if (state.organization && data.organizationId !== state.organization.id) {
+            if (ownUserDocListenerUnsubscribe) {
+                ownUserDocListenerUnsubscribe();
+                ownUserDocListenerUnsubscribe = null;
+            }
+            alert('Ваш доступ к организации изменился. Страница будет перезагружена.');
+            window.location.reload();
+            return;
+        }
+
+        // Live role refresh (demotion/promotion) without a re-login.
+        const newOrgRole = data.orgRole || 'employee';
+        const newRole = data.role || state.role;
+        if (newOrgRole !== state.orgRole || newRole !== state.role) {
+            state.orgRole = newOrgRole;
+            state.role = newRole;
+            state.currentUser.orgRole = newOrgRole;
+            state.currentUser.role = newRole;
+            state.currentUser.allowedProjects = data.allowedProjects || [];
+            applyRoleRestrictions();
+            renderBoard();
+        }
+    }, err => console.error('Own user doc listener error:', err));
+}
 
 
 function setupRealtimeListeners() {
@@ -1984,7 +2034,10 @@ function renderProjectFilesList() {
         item.className = 'file-list-item';
         if (file.url) {
             item.style.cursor = 'pointer';
-            item.onclick = () => window.open(file.url, '_blank');
+            item.onclick = () => {
+                const safeUrl = sanitizeAttachmentUrl(file.url);
+                if (safeUrl) window.open(safeUrl, '_blank', 'noopener');
+            };
         }
 
         const iconWrap = document.createElement('div');
@@ -4978,6 +5031,10 @@ async function logout() {
     try {
         // Unsubscribe from my tasks listener
         unsubscribeFromMyTasks();
+        if (ownUserDocListenerUnsubscribe) {
+            ownUserDocListenerUnsubscribe();
+            ownUserDocListenerUnsubscribe = null;
+        }
         stopPresenceHeartbeat();
 
         await auth.signOut();
@@ -5964,6 +6021,14 @@ function escapeHtmlForTelegram(text) {
 function checkReminders(tasks) {
     // Only run if we have users loaded
     if (!state.users || state.users.length === 0) return;
+
+    // Only managers run the reminder sweep. It writes de-dup flags
+    // (lastNotTakenReminder / overdueNotificationSent / reminderSent) that the
+    // reader task-rule forbids — so on a reader's client these writes were
+    // denied and the reminder re-fired on every snapshot. Managers write via
+    // the broad task-update rule, so the flags persist and throttle correctly.
+    // (Also cuts duplicate Telegram sends from many open clients.)
+    if (!canManageTasks()) return;
 
     const now = new Date();
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
@@ -7031,7 +7096,7 @@ function openProfileModal() {
     const initials = ((userData.firstName || '')[0] || '') + ((userData.lastName || '')[0] || '');
 
     if (userData.profilePhotoUrl) {
-        avatarImg.src = userData.profilePhotoUrl;
+        avatarImg.src = sanitizeAttachmentUrl(userData.profilePhotoUrl) || '';
         avatarImg.style.display = 'block';
         avatarText.style.display = 'none';
     } else {
