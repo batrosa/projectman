@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor } from "./agent-chat.js";
+import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit } from "./agent-chat.js";
 
 const CONTEXT_CHAR_LIMIT = 45000;
 
@@ -681,5 +681,31 @@ describe("accessibleProjectIdsFor", () => {
   it("drops the sentinel: a lone sentinel means access to NO projects ([])", () => {
     expect(accessibleProjectIdsFor({ orgRole: "employee", allowedProjects: ["__no_access__"] })).toEqual([]);
     expect(accessibleProjectIdsFor({ orgRole: "reader", allowedProjects: ["p1", "__no_access__"] })).toEqual(["p1"]);
+  });
+});
+
+describe("evaluateRateLimit", () => {
+  it("allows a request under the limit and appends the timestamp", () => {
+    const r = evaluateRateLimit([1000, 2000], 3000, 60000, 5);
+    expect(r.allowed).toBe(true);
+    expect(r.timestamps).toEqual([1000, 2000, 3000]);
+  });
+
+  it("drops timestamps that fall outside the window", () => {
+    // window 1000ms; at now=3000, 500 is 2500ms old (dropped), 2500 is 500ms old (kept)
+    const r = evaluateRateLimit([500, 2500], 3000, 1000, 5);
+    expect(r.timestamps).toEqual([2500, 3000]);
+  });
+
+  it("blocks once in-window requests reach the max (and does not count the blocked one)", () => {
+    const r = evaluateRateLimit([1, 2, 3], 4, 100, 3);
+    expect(r.allowed).toBe(false);
+    expect(r.timestamps).toEqual([1, 2, 3]);
+  });
+
+  it("treats missing/garbage prior data as empty", () => {
+    expect(evaluateRateLimit(null, 100, 1000, 5).allowed).toBe(true);
+    expect(evaluateRateLimit(undefined, 100, 1000, 5).timestamps).toEqual([100]);
+    expect(evaluateRateLimit(["x", NaN, 50], 100, 1000, 5).timestamps).toEqual([50, 100]);
   });
 });

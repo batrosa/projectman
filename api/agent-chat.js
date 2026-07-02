@@ -16,6 +16,11 @@ const MAX_OUTPUT_TOKENS = 2000;
 // Mirrors the frontend access model (see script.js): users.allowedProjects with
 // an empty/absent array means "all projects"; a lone sentinel id means "none".
 const NO_ACCESS_SENTINEL = "__no_access__";
+// Per-user rate limit protecting the OpenRouter budget from a single
+// authenticated user spamming the endpoint (a known abuse/cost vector).
+const RATE_LIMIT_COLLECTION = "agentRateLimits";
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 20; // requests per window per user
 const OFF_TOPIC_RESPONSE =
   "Я отвечаю только по ProjectMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
 
@@ -72,6 +77,23 @@ export default async function handler(request, response) {
   // model decide is more natural and correct; the OFF_TOPIC_RESPONSE phrase is
   // still enforced verbatim by the prompt for real off-topic questions.
   const db = adminDb();
+
+  // Per-user rate limit (best-effort; fails OPEN if the limiter itself errors,
+  // so a limiter hiccup never blocks a legitimate user). Written via the Admin
+  // SDK to agentRateLimits/{uid}, which clients can't touch (default-deny).
+  try {
+    const now = Date.now();
+    const rlRef = db.collection(RATE_LIMIT_COLLECTION).doc(decoded.uid);
+    const rlSnap = await rlRef.get();
+    const rl = evaluateRateLimit(rlSnap.exists ? rlSnap.data().timestamps : [], now);
+    if (!rl.allowed) {
+      return response.status(200).json({ ok: true, answer: "Слишком много запросов подряд. Подождите минуту и попробуйте снова." });
+    }
+    await rlRef.set({ timestamps: rl.timestamps, updatedAt: now }, { merge: true });
+  } catch (error) {
+    console.error("agent-chat: rate limit check failed", error);
+  }
+
   let organizationId;
   let accessibleProjectIds = null; // null = all projects (owner/admin or unrestricted)
   try {
@@ -157,6 +179,19 @@ export default async function handler(request, response) {
     answer: "Не удалось получить ответ от ИИ-агента, попробуйте ещё раз через минуту.",
     model: "fallback",
   });
+}
+
+// Pure sliding-window rate-limit decision. Given the user's prior request
+// timestamps (ms) and the current time, drop timestamps outside the window and
+// decide whether this request is allowed. Returns the new timestamp list to
+// persist. Extracted for unit testing; the Firestore read/write lives in the
+// handler.
+export function evaluateRateLimit(prior, nowMs, windowMs = RATE_LIMIT_WINDOW_MS, max = RATE_LIMIT_MAX) {
+  const recent = (Array.isArray(prior) ? prior : []).filter(
+    (t) => typeof t === "number" && Number.isFinite(t) && nowMs - t < windowMs
+  );
+  if (recent.length >= max) return { allowed: false, timestamps: recent };
+  return { allowed: true, timestamps: [...recent, nowMs] };
 }
 
 // Which project ids this user may see, mirroring the app's access model:
