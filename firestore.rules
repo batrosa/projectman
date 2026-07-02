@@ -202,9 +202,18 @@ service cloud.firestore {
 
     // Коллекция Projects
     match /projects/{projectId} {
+      // Read: any member of the project's organization. Per-project visibility
+      // (allowedProjects) is applied CLIENT-SIDE (getFilteredProjects hides the
+      // sidebar entry) rather than here, because the client loads projects with
+      // one broad `where(organizationId==)` query and Firestore fails the WHOLE
+      // query if any matched doc is unreadable — so a per-doc canViewProject
+      // check here made a restricted member see ZERO projects. The sensitive
+      // content (a project's TASKS and FILES) stays gated by canViewProject in
+      // their own rules below, so a member still cannot read a forbidden
+      // project's tasks/files; only the project's name/deadline metadata is
+      // org-readable.
       allow read: if isAdmin()
-        || hasOrgRole(resource.data.organizationId, ['owner', 'admin'])
-        || (isOrgMember(resource.data.organizationId) && canViewProject(projectId));
+        || isOrgMember(resource.data.organizationId);
       allow create: if isAdmin() || hasOrgRole(request.resource.data.organizationId, ['owner', 'admin']);
       allow update: if isAdmin()
         || (hasOrgRole(resource.data.organizationId, ['owner', 'admin'])

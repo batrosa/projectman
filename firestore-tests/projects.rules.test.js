@@ -286,4 +286,18 @@ describe("project and task organization permissions", () => {
     await assertFails(outsider.collection("projects").doc("p-a").get());
     await assertFails(outsider.collection("tasks").doc("t-a").get());
   });
+
+  it("lets a restricted member load the org's projects (fix: no more zero-projects) but still not read a forbidden project's tasks", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("restricted").set({ organizationId: "org-r", orgRole: "employee", allowedProjects: ["p-allowed"] });
+      await ctx.firestore().collection("projects").doc("p-allowed").set({ organizationId: "org-r", name: "Allowed" });
+      await ctx.firestore().collection("projects").doc("p-forbidden").set({ organizationId: "org-r", name: "Forbidden" });
+      await ctx.firestore().collection("tasks").doc("t-forbidden").set({ organizationId: "org-r", projectId: "p-forbidden", title: "Secret" });
+    });
+    const restricted = testEnv.authenticatedContext("restricted").firestore();
+    // The broad projects query no longer fails just because one project is out of reach:
+    await assertSucceeds(restricted.collection("projects").where("organizationId", "==", "org-r").get());
+    // ...but the forbidden project's TASKS stay gated by canViewProject:
+    await assertFails(restricted.collection("tasks").where("projectId", "==", "p-forbidden").get());
+  });
 });
