@@ -264,4 +264,26 @@ describe("project and task organization permissions", () => {
       archivedBy: null,
     }));
   });
+
+  it("denies a member of another org from reading a project/task by direct get (cross-tenant)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await seedOrgUser(ctx, "member1", { organizationId: "org-1", orgRole: "employee" });
+      await seedOrgUser(ctx, "outsider1", { organizationId: "org-2", orgRole: "employee" });
+      await ctx.firestore().collection("projects").doc("p-a").set({ name: "A", organizationId: "org-1" });
+      await ctx.firestore().collection("tasks").doc("t-a").set({
+        projectId: "p-a", organizationId: "org-1", title: "Secret", status: "in-progress", subStatus: "assigned",
+      });
+    });
+
+    const member = testEnv.authenticatedContext("member1").firestore();
+    const outsider = testEnv.authenticatedContext("outsider1").firestore();
+
+    // Same-org member can read.
+    await assertSucceeds(member.collection("projects").doc("p-a").get());
+    await assertSucceeds(member.collection("tasks").doc("t-a").get());
+
+    // Member of a different org cannot read either by direct id.
+    await assertFails(outsider.collection("projects").doc("p-a").get());
+    await assertFails(outsider.collection("tasks").doc("t-a").get());
+  });
 });

@@ -104,34 +104,13 @@ export default async function handler(req, res) {
                 }
             } else if (text === '/START') {
                 replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectMan. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
-            } else if (/^[A-Z0-9]{6}$/.test(text)) {
-                if (!firebaseApiKey) {
-                    replyText = `❌ Подключение по коду сейчас недоступно: сервер не настроен. Используйте вход через кнопку Telegram на сайте ProjectMan.`;
-                } else {
-                    // Check if code exists in Firestore
-                    const codeDoc = await firestoreGet('telegramCodes', text, firebaseApiKey);
-                    
-                    if (codeDoc && codeDoc.fields && codeDoc.fields.userId) {
-                        const userId = codeDoc.fields.userId.stringValue;
-
-                        // Update user's Telegram info
-                        const updated = await firestoreUpdate('users', userId, {
-                            telegramChatId: String(chatId),
-                            telegramUsername: username || ''
-                        }, firebaseApiKey);
-
-                        if (updated) {
-                            // Delete used code
-                            await firestoreDelete('telegramCodes', text, firebaseApiKey);
-                            replyText = `✅ Telegram успешно подключен!\n\nТеперь вы будете получать уведомления о:\n📋 Новых задачах\n🔄 Возвратах на доработку\n⏰ Приближении дедлайна\n\nВернитесь в приложение — всё готово!`;
-                        } else {
-                            replyText = `❌ Ошибка подключения. Попробуйте получить новый код.`;
-                        }
-                    } else {
-                        replyText = `❌ Код не найден или устарел.\n\nПолучите новый код в настройках ProjectMan.`;
-                    }
-                }
             } else {
+                // NOTE: the old 6-char "connect by code" linking flow was removed —
+                // it linked a Telegram chat to a user by a world-readable/guessable
+                // telegramCodes doc without verifying the webhook secret (account
+                // hijack vector). Login + notification linking now happen only via
+                // the bot deep-link flow (botLoginMatch above), which requires the
+                // verified webhook secret.
                 replyText = `📋 Для входа откройте ProjectMan и нажмите «Войти через Telegram».\n\nЕсли вы видите ошибку домена на сайте, напишите администратору.`;
             }
 

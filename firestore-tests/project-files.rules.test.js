@@ -24,12 +24,23 @@ describe("project files subcollection", () => {
     );
   });
 
-  it("allows read for a user who can view the project", async () => {
+  it("allows read for a same-org member who can view the project", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("users").doc("viewer1").set({ role: "reader", allowedProjects: [] });
+      await ctx.firestore().collection("users").doc("viewer1").set({ role: "reader", orgRole: "employee", organizationId: "org-1", allowedProjects: [] });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "P1", organizationId: "org-1" });
       await ctx.firestore().collection("projects").doc("p1").collection("files").doc("f1").set({ filename: "x.pdf" });
     });
     const viewer = testEnv.authenticatedContext("viewer1").firestore();
     await assertSucceeds(viewer.collection("projects").doc("p1").collection("files").doc("f1").get());
+  });
+
+  it("denies read of another organization's project files (cross-tenant)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("outsider").set({ role: "reader", orgRole: "employee", organizationId: "org-2", allowedProjects: [] });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "P1", organizationId: "org-1" });
+      await ctx.firestore().collection("projects").doc("p1").collection("files").doc("f1").set({ filename: "secret.pdf" });
+    });
+    const outsider = testEnv.authenticatedContext("outsider").firestore();
+    await assertFails(outsider.collection("projects").doc("p1").collection("files").doc("f1").get());
   });
 });
