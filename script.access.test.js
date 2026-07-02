@@ -177,3 +177,51 @@ describe("revokeProjectAccess", () => {
     expect(writes[0].allowedProjects).not.toEqual([]);
   });
 });
+
+describe("handleAssigneeSearch (assignee dropdown respects project access)", () => {
+  function setupPicker(users, activeProjectId) {
+    ctx.document.body.textContent = "";
+    const input = ctx.document.createElement("input");
+    input.id = "assignee-search";
+    const dropdown = ctx.document.createElement("div");
+    dropdown.id = "assignee-dropdown";
+    ctx.document.body.appendChild(input);
+    ctx.document.body.appendChild(dropdown);
+    const state = setState(users);
+    state.activeProjectId = activeProjectId;
+    vm.runInContext("selectedAssignees = []", ctx);
+    return dropdown;
+  }
+
+  it("lists only members with access to the active project", () => {
+    const search = getFn("handleAssigneeSearch");
+    const dropdown = setupPicker(
+      [
+        { id: "owner", orgRole: "owner", firstName: "Оля", lastName: "В" },
+        { id: "emp1", orgRole: "employee", firstName: "Иван", lastName: "И", allowedProjects: ["p1"] },
+        { id: "emp2", orgRole: "employee", firstName: "Пётр", lastName: "П", allowedProjects: ["p2"] },
+        { id: "emp3", orgRole: "employee", firstName: "Сноб", lastName: "С", allowedProjects: [SENTINEL()] },
+      ],
+      "p1",
+    );
+
+    search(); // empty query -> show every assignable member
+
+    const names = [...dropdown.querySelectorAll(".assignee-dropdown-name")].map((n) => n.textContent);
+    expect(names).toContain("Оля В"); // owner: full access by role
+    expect(names).toContain("Иван И"); // employee with p1
+    expect(names).not.toContain("Пётр П"); // only p2 -> hidden for p1
+    expect(names).not.toContain("Сноб С"); // sentinel -> no access anywhere
+  });
+
+  it("shows 'not found' when nobody has access to the active project", () => {
+    const search = getFn("handleAssigneeSearch");
+    const dropdown = setupPicker(
+      [{ id: "emp", orgRole: "employee", firstName: "Ева", lastName: "Е", allowedProjects: ["p2"] }],
+      "p1",
+    );
+    search();
+    expect(dropdown.querySelector(".assignee-dropdown-empty")).not.toBeNull();
+    expect(dropdown.querySelectorAll(".assignee-dropdown-name").length).toBe(0);
+  });
+});

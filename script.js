@@ -5541,6 +5541,14 @@ function handleAssigneeSearch(e) {
 
     // Filter users
     const filteredUsers = state.users.filter(user => {
+        // Only members with access to the current project can be assigned to its
+        // tasks — hide everyone who can't see this project. owner/admin always
+        // pass (full access by role). Already-assigned chips are unaffected;
+        // this only limits who can be ADDED.
+        if (state.activeProjectId && !userHasProjectAccess(user, state.activeProjectId)) {
+            return false;
+        }
+
         let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
         if (!fullName && user.displayName) fullName = user.displayName;
         if (!fullName && user.email) fullName = user.email.split('@')[0];
