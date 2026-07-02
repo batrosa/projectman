@@ -3640,7 +3640,7 @@ function openTaskDetailsModal(task) {
         completionProofs.forEach(proof => {
             if (proof && proof.url) {
                 filesHTML += `
-                    <div class="completion-proof-file" data-proof='${JSON.stringify(proof).replace(/'/g, "\\'")}'>
+                    <div class="completion-proof-file" data-proof="${escapeHtml(JSON.stringify(proof))}">
                         <i class="fa-solid ${getFileIcon(proof.type || 'other')}"></i>
                         <div class="completion-proof-file-info">
                             <div class="completion-proof-file-name">${escapeHtml(proof.name)}</div>
@@ -6434,6 +6434,17 @@ function renderMyTasks(tasks) {
     });
 }
 
+// Maps a task to its board-view id (assigned / in-progress / review / done),
+// so jumping to a task can open the exact status column it's in.
+function boardViewForTask(task) {
+    if (!task) return 'assigned';
+    if (task.status === 'done') return 'done';
+    const sub = task.subStatus || (task.assigneeCompleted ? 'completed' : 'assigned');
+    if (sub === 'completed') return 'review';
+    if (sub === 'in_work') return 'in-progress';
+    return 'assigned';
+}
+
 // Navigate to project containing the task, opening the task's own status column
 function navigateToTask(projectId, taskId, boardView) {
     // Close modal
@@ -7840,14 +7851,17 @@ function renderDayTasks(dateStr) {
         row.appendChild(info);
         row.appendChild(tag);
 
-        // Navigate to the task's project board. Close every layer on top of the
-        // board: the day-tasks modal, the calendar, and the "Панель управления"
-        // (settings) modal the calendar was opened from.
+        // Jump to the task: close every layer on top of the board (day-tasks
+        // modal, calendar, and the "Панель управления" settings modal the
+        // calendar was opened from), then open the task's exact status column
+        // and highlight it — same behaviour as "Мои задачи".
+        const boardView = boardViewForTask(task);
         row.addEventListener('click', () => {
-            if (task.projectId) selectProject(task.projectId);
             closeDayTasksModal();
-            calElements.modal?.classList.remove('active');
-            document.getElementById('settings-modal')?.classList.remove('active');
+            if (calElements.modal) closeModalElement(calElements.modal);
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal) closeModalElement(settingsModal);
+            if (task.projectId) navigateToTask(task.projectId, task.id, boardView);
         });
 
         body.appendChild(row);
