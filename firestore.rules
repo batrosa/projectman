@@ -180,8 +180,14 @@ service cloud.firestore {
 
     // Коллекция Organizations
     match /organizations/{orgId} {
-      // Читать могут все авторизованные пользователи
-      allow read: if request.auth != null;
+      // Читать (get одного документа) может только участник этой организации —
+      // getOrganization() читает лишь СВОЮ организацию. Листинг/запросы по
+      // коллекции запрещены полностью: это закрывает enumeration инвайт-кодов
+      // (раньше любой авторизованный мог получить список всех организаций и их
+      // inviteCode). Превью по коду, создание и смена кода теперь только
+      // серверные (api/org, api/join-org) через Admin SDK.
+      allow get: if isOrgMember(orgId) || isAdmin();
+      allow list: if false;
       // Создать может только тот, кто указывает себя владельцем
       allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
       // Обновлять: владелец организации ИЛИ пользователь с orgRole owner/admin ИЛИ шаг ±1 membersCount (join/leave)

@@ -177,4 +177,35 @@ describe("organizations privilege escalation", () => {
       await assertFails(admin.collection("organizations").doc("org-admin").delete());
     });
   });
+
+  describe("organizations read (invite-code enumeration closed)", () => {
+    it("lets a member GET their own organization", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("m1").set({ organizationId: "orgA", orgRole: "employee" });
+        await ctx.firestore().collection("organizations").doc("orgA").set({ ownerId: "o", name: "Org A", inviteCode: "CODEA" });
+      });
+      const m1 = testEnv.authenticatedContext("m1").firestore();
+      await assertSucceeds(m1.collection("organizations").doc("orgA").get());
+    });
+
+    it("blocks GET of an organization the caller is NOT a member of", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("out1").set({ organizationId: "orgB", orgRole: "employee" });
+        await ctx.firestore().collection("organizations").doc("orgA2").set({ ownerId: "o", name: "Org A2", inviteCode: "SECRET" });
+      });
+      const out1 = testEnv.authenticatedContext("out1").firestore();
+      await assertFails(out1.collection("organizations").doc("orgA2").get());
+    });
+
+    it("blocks LISTING / querying organizations (no harvesting invite codes)", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("snoop").set({ organizationId: "orgC", orgRole: "employee" });
+        await ctx.firestore().collection("organizations").doc("orgC").set({ ownerId: "o", name: "Org C", inviteCode: "C1" });
+        await ctx.firestore().collection("organizations").doc("orgD").set({ ownerId: "o2", name: "Org D", inviteCode: "D1" });
+      });
+      const snoop = testEnv.authenticatedContext("snoop").firestore();
+      await assertFails(snoop.collection("organizations").get());
+      await assertFails(snoop.collection("organizations").where("inviteCode", "==", "D1").get());
+    });
+  });
 });

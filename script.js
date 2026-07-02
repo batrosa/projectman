@@ -563,68 +563,34 @@ function openFilesListModal(attachments) {
 
 // ========== ORGANIZATION FUNCTIONS ==========
 
-// Generate random invite code
-function generateInviteCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No confusing chars like 0/O, 1/I
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
+// Call the server-side organization endpoint (api/org). Create / preview /
+// regenerate-code all run server-side via the Admin SDK, so the `organizations`
+// collection can stay non-listable on the client — closing the invite-code
+// enumeration hole. Invite-code generation and uniqueness checks live there too.
+async function callOrgApi(action, payload = {}) {
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) throw new Error('Не авторизован');
+    const idToken = await currentUser.getIdToken();
+    const response = await fetch('/api/org', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ action, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Ошибка сервера');
+    return result;
 }
 
-// Check if invite code is unique
-async function isInviteCodeUnique(code) {
-    const snapshot = await db.collection('organizations').where('inviteCode', '==', code).get();
-    return snapshot.empty;
-}
-
-// Generate unique invite code
-async function generateUniqueInviteCode() {
-    let code = generateInviteCode();
-    let attempts = 0;
-    while (!(await isInviteCodeUnique(code)) && attempts < 10) {
-        code = generateInviteCode();
-        attempts++;
-    }
-    return code;
-}
-
-// Create organization
+// Create organization (server-side: validates name uniqueness, generates a
+// unique invite code, creates the org and makes the caller its owner).
 async function createOrganization(name) {
     if (!state.currentUser) throw new Error('Не авторизован');
-
-    const inviteCode = await generateUniqueInviteCode();
-
-    const orgData = {
-        name: name.trim(),
-        inviteCode: inviteCode,
-        ownerId: state.currentUser.uid,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        membersCount: 1,
-        plan: 'free',
-        settings: {
-            maxUsers: 100,
-            allowInvites: true
-        }
-    };
-
-    const orgRef = await db.collection('organizations').add(orgData);
-
-    // Update user with organization. Write ONLY organizationId + orgRole — the
-    // real name is already set by the post-registration name gate. Previously we
-    // also wrote displayName (which, with no Telegram email/displayName, always
-    // resolved to the literal "User") and email:null, clobbering the real name.
-    await db.collection('users').doc(state.currentUser.uid).set({
-        organizationId: orgRef.id,
-        orgRole: 'owner'
-    }, { merge: true });
-
-    state.currentUser.organizationId = orgRef.id;
+    const result = await callOrgApi('create', { name: name.trim() });
+    const org = result.organization;
+    state.currentUser.organizationId = org.id;
     state.currentUser.orgRole = 'owner';
     state.orgRole = 'owner';
-
-    return { id: orgRef.id, ...orgData };
+    return org;
 }
 
 // Join organization by invite code
@@ -721,21 +687,18 @@ async function deleteOrganization() {
     state.currentUser.orgRole = null;
 }
 
-// Regenerate invite code (invalidates old code)
+// Regenerate invite code (invalidates old code). Done server-side (api/org):
+// generating a unique code needs to query all orgs, which the client can no
+// longer do; the endpoint also re-checks owner/admin rights.
 async function regenerateInviteCode() {
     if (!state.organization) throw new Error('Нет организации');
     if (!hasPermission('regenerate_invite')) {
         throw new Error('Недостаточно прав');
     }
 
-    const newCode = await generateUniqueInviteCode();
-
-    await db.collection('organizations').doc(state.organization.id).update({
-        inviteCode: newCode
-    });
-
-    state.organization.inviteCode = newCode;
-    return newCode;
+    const result = await callOrgApi('regenerateCode');
+    state.organization.inviteCode = result.inviteCode;
+    return result.inviteCode;
 }
 
 // Get organization by ID
@@ -745,22 +708,16 @@ async function getOrganization(orgId) {
     return { id: doc.id, ...doc.data() };
 }
 
-// Find organization by invite code (for preview)
+// Find organization by invite code (for the join preview card). Server-side
+// (api/org preview): the client can no longer query organizations by code.
+// Returns { id, name, membersCount } or null if the code matches nothing.
 async function findOrganizationByCode(code) {
-    const snapshot = await db.collection('organizations').where('inviteCode', '==', code.toUpperCase().trim()).get();
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
-    const orgData = { id: doc.id, ...doc.data() };
-
-    // Count actual members for accurate display
     try {
-        const membersSnapshot = await db.collection('users').where('organizationId', '==', doc.id).get();
-        orgData.membersCount = membersSnapshot.size;
+        const result = await callOrgApi('preview', { inviteCode: code });
+        return result.organization || null;
     } catch (e) {
-        console.error('Error counting members:', e);
+        return null; // unknown code / transient error → no preview
     }
-
-    return orgData;
 }
 
 // Show organization selection screen
@@ -7066,113 +7023,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ========== MIGRATION FUNCTION ==========
-// Run this ONCE from browser console: migrateToOrganization('TEKO Group')
-async function migrateToOrganization(orgName) {
-    if (!auth.currentUser) {
-        console.error('Please login first!');
-        return;
-    }
-
-    console.log('Starting migration to organization:', orgName);
-
-    try {
-        // 1. Check if organization already exists with this name
-        let orgId = null;
-        let orgData = null;
-
-        const existingOrgs = await db.collection('organizations').where('name', '==', orgName).get();
-
-        if (!existingOrgs.empty) {
-            // Use existing organization
-            orgId = existingOrgs.docs[0].id;
-            orgData = existingOrgs.docs[0].data();
-            console.log('Found existing organization:', orgId);
-        } else {
-            // Create new organization
-            const inviteCode = await generateUniqueInviteCode();
-            orgData = {
-                name: orgName,
-                inviteCode: inviteCode,
-                ownerId: auth.currentUser.uid,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                membersCount: 0,
-                plan: 'free',
-                settings: { maxUsers: 100, allowInvites: true }
-            };
-            const orgRef = await db.collection('organizations').add(orgData);
-            orgId = orgRef.id;
-            console.log('Created new organization:', orgId, 'Code:', inviteCode);
-        }
-
-        // 2. Migrate all users without organizationId
-        const usersSnapshot = await db.collection('users').get();
-        let userCount = 0;
-
-        for (const userDoc of usersSnapshot.docs) {
-            const userData = userDoc.data();
-            if (!userData.organizationId) {
-                const isOwner = userDoc.id === auth.currentUser.uid;
-                await db.collection('users').doc(userDoc.id).set({
-                    organizationId: orgId,
-                    orgRole: isOwner ? 'owner' : (userData.role === 'admin' ? 'admin' : 'employee')
-                }, { merge: true });
-                userCount++;
-                console.log('Migrated user:', userData.email, isOwner ? '(owner)' : '');
-            }
-        }
-
-        // 3. Migrate all projects without organizationId
-        const projectsSnapshot = await db.collection('projects').get();
-        let projectCount = 0;
-
-        for (const projectDoc of projectsSnapshot.docs) {
-            const projectData = projectDoc.data();
-            if (!projectData.organizationId) {
-                await db.collection('projects').doc(projectDoc.id).update({
-                    organizationId: orgId
-                });
-                projectCount++;
-                console.log('Migrated project:', projectData.name);
-            }
-        }
-
-        // 4. Migrate all tasks without organizationId
-        const tasksSnapshot = await db.collection('tasks').get();
-        let taskCount = 0;
-
-        for (const taskDoc of tasksSnapshot.docs) {
-            const taskData = taskDoc.data();
-            if (!taskData.organizationId) {
-                await db.collection('tasks').doc(taskDoc.id).update({
-                    organizationId: orgId
-                });
-                taskCount++;
-            }
-        }
-        console.log('Migrated tasks:', taskCount);
-
-        // 5. Update members count
-        await db.collection('organizations').doc(orgId).update({
-            membersCount: userCount
-        });
-
-        console.log('=== MIGRATION COMPLETE ===');
-        console.log('Organization:', orgName);
-        console.log('Organization ID:', orgId);
-        console.log('Invite Code:', orgData.inviteCode);
-        console.log('Users migrated:', userCount);
-        console.log('Projects migrated:', projectCount);
-        console.log('Tasks migrated:', taskCount);
-        console.log('');
-        console.log('Reload the page to see changes!');
-
-        return { orgId, inviteCode: orgData.inviteCode, userCount, projectCount, taskCount };
-    } catch (error) {
-        console.error('Migration failed:', error);
-        throw error;
-    }
-}
-
 function forceUpdate() {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function (registrations) {

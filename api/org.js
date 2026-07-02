@@ -1,0 +1,162 @@
+// Server-side organization lifecycle: preview-by-code, create, and
+// regenerate-invite-code — all via the Admin SDK. This lets the `organizations`
+// collection stop being client-readable/listable, which closes the invite-code
+// ENUMERATION hole: previously `allow read: if request.auth != null` let any
+// authenticated user list every organization and harvest its inviteCode, then
+// join an arbitrary org. Joining itself lives in api/join-org.
+import { FieldValue } from "firebase-admin/firestore";
+import { adminAuth, adminDb } from "../lib/firebase-admin.js";
+
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing 0/O, 1/I
+const MAX_ORG_NAME = 80;
+
+async function parseJsonBody(request) {
+  if (request.body && typeof request.body === "object") return request.body;
+  if (typeof request.body === "string") return JSON.parse(request.body || "{}");
+  const chunks = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  const text = Buffer.concat(chunks).toString("utf8");
+  return text ? JSON.parse(text) : {};
+}
+
+function randomCode() {
+  let code = "";
+  for (let i = 0; i < 6; i += 1) code += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
+  return code;
+}
+
+// Server-side uniqueness check (the client can no longer query organizations).
+async function generateUniqueCode(db) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const code = randomCode();
+    const snap = await db.collection("organizations").where("inviteCode", "==", code).limit(1).get();
+    if (snap.empty) return code;
+  }
+  return randomCode() + randomCode(); // astronomically unlikely fallback
+}
+
+export default async function handler(request, response) {
+  if (request.method !== "POST") {
+    response.setHeader("Allow", "POST");
+    return response.status(405).json({ error: "Method not allowed" });
+  }
+
+  const idToken = (request.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!idToken) return response.status(401).json({ error: "Unauthorized" });
+
+  let decoded;
+  try {
+    decoded = await adminAuth().verifyIdToken(idToken);
+  } catch {
+    return response.status(401).json({ error: "Unauthorized" });
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch {
+    return response.status(400).json({ error: "Invalid JSON body" });
+  }
+
+  const action = String(body.action || "");
+  const db = adminDb();
+
+  // ── Preview an org by invite code (for the "you're about to join X" card).
+  // Returns only name + member count for a VALID code; without the code nothing
+  // is revealed, and codes are unguessable (6 chars over 32-symbol alphabet).
+  if (action === "preview") {
+    const code = String(body.inviteCode || "").toUpperCase().trim();
+    if (code.length < 4 || code.length > 24) return response.status(400).json({ error: "Некорректный код" });
+    try {
+      const snap = await db.collection("organizations").where("inviteCode", "==", code).limit(1).get();
+      if (snap.empty) return response.status(404).json({ ok: false, error: "Организация не найдена" });
+      const doc = snap.docs[0];
+      const data = doc.data() || {};
+      let membersCount = data.membersCount || 0;
+      try {
+        const members = await db.collection("users").where("organizationId", "==", doc.id).get();
+        membersCount = members.size || membersCount;
+      } catch { /* fall back to the stored count */ }
+      return response.status(200).json({ ok: true, organization: { id: doc.id, name: data.name || "", membersCount } });
+    } catch (error) {
+      console.error("org preview failed", error);
+      return response.status(500).json({ error: "Не удалось найти организацию" });
+    }
+  }
+
+  // ── Create an organization (caller becomes owner).
+  if (action === "create") {
+    const name = String(body.name || "").trim();
+    if (!name || name.length > MAX_ORG_NAME) return response.status(400).json({ error: "Некорректное название организации" });
+
+    let userData;
+    try {
+      const userSnap = await db.collection("users").doc(decoded.uid).get();
+      if (!userSnap.exists) return response.status(403).json({ error: "Профиль не найден" });
+      userData = userSnap.data();
+    } catch (error) {
+      console.error("org create: load caller failed", error);
+      return response.status(500).json({ error: "Не удалось проверить пользователя" });
+    }
+    if (userData.organizationId) return response.status(409).json({ error: "Вы уже состоите в организации" });
+
+    try {
+      const existing = await db.collection("organizations").where("name", "==", name).limit(1).get();
+      if (!existing.empty) return response.status(409).json({ error: "Организация с таким названием уже существует" });
+    } catch (error) {
+      console.error("org create: name check failed", error);
+      return response.status(500).json({ error: "Не удалось создать организацию" });
+    }
+
+    try {
+      const inviteCode = await generateUniqueCode(db);
+      const orgData = {
+        name,
+        inviteCode,
+        ownerId: decoded.uid,
+        createdAt: FieldValue.serverTimestamp(),
+        membersCount: 1,
+        plan: "free",
+        settings: { maxUsers: 100, allowInvites: true },
+      };
+      const orgRef = await db.collection("organizations").add(orgData);
+      await db.collection("users").doc(decoded.uid).set(
+        { organizationId: orgRef.id, orgRole: "owner" },
+        { merge: true }
+      );
+      return response.status(200).json({
+        ok: true,
+        organization: { id: orgRef.id, name, inviteCode, ownerId: decoded.uid, membersCount: 1, settings: orgData.settings },
+      });
+    } catch (error) {
+      console.error("org create: write failed", error);
+      return response.status(500).json({ error: "Не удалось создать организацию" });
+    }
+  }
+
+  // ── Rotate the invite code (owner/admin of their own org only).
+  if (action === "regenerateCode") {
+    let userData;
+    try {
+      const userSnap = await db.collection("users").doc(decoded.uid).get();
+      userData = userSnap.exists ? userSnap.data() : null;
+    } catch (error) {
+      console.error("org regen: load caller failed", error);
+      return response.status(500).json({ error: "Не удалось проверить пользователя" });
+    }
+    const orgId = userData && userData.organizationId;
+    if (!orgId || !["owner", "admin"].includes(userData.orgRole)) {
+      return response.status(403).json({ error: "Недостаточно прав" });
+    }
+    try {
+      const inviteCode = await generateUniqueCode(db);
+      await db.collection("organizations").doc(orgId).update({ inviteCode });
+      return response.status(200).json({ ok: true, inviteCode });
+    } catch (error) {
+      console.error("org regen: write failed", error);
+      return response.status(500).json({ error: "Не удалось обновить код" });
+    }
+  }
+
+  return response.status(400).json({ error: "Unknown action" });
+}
