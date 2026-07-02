@@ -3453,18 +3453,11 @@ function submitRevisionReason(e) {
         returnedAt: new Date().toISOString()
     };
 
-    // Find task to get assignee info for notifications
+    // Find task to get assignee info for notifications (by uid, email fallback)
     const task = state.tasks.find(t => t.id === taskId);
-    if (task && task.assigneeEmail) {
-        // Send notifications to all assignees
-        const emails = task.assigneeEmail.split(',');
-        const names = task.assignee ? task.assignee.split(', ') : [];
-
-        emails.forEach((email, index) => {
-            if (email && email.trim()) {
-                // Send Telegram notification
-                sendTelegramRevisionNotification(email.trim(), task.title, reason, returnedBy);
-            }
+    if (task) {
+        taskAssigneeChatIds(task).forEach(chatId => {
+            sendTelegramRevisionNotification(chatId, task.title, reason, returnedBy);
         });
     }
 
@@ -5668,11 +5661,27 @@ async function sendNewTaskNotificationToAssignee(assignee, taskTitle, projectNam
     await sendTelegramNotification(chatId, message);
 }
 
-// Send revision notification via Telegram
-async function sendTelegramRevisionNotification(userEmail, taskTitle, revisionReason, returnedBy) {
-    // Find user by email
-    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
-    if (!user || !user.telegramChatId) return;
+// Returns the Telegram chatIds of all assignees of a task. Resolves by uid
+// (assigneeIds) first — the only reliable key for Telegram-login users — and
+// falls back to email only for legacy tasks that predate assigneeIds.
+function taskAssigneeChatIds(task) {
+    const chatIds = new Set();
+    (task.assigneeIds || []).forEach(uid => {
+        const chatId = resolveAssigneeChatId({ id: uid });
+        if (chatId) chatIds.add(chatId);
+    });
+    if ((!task.assigneeIds || task.assigneeIds.length === 0) && task.assigneeEmail) {
+        task.assigneeEmail.split(',').forEach(email => {
+            const chatId = resolveAssigneeChatId({ email: email.trim() });
+            if (chatId) chatIds.add(chatId);
+        });
+    }
+    return [...chatIds];
+}
+
+// Send revision notification via Telegram (chatId resolved by caller via uid)
+async function sendTelegramRevisionNotification(chatId, taskTitle, revisionReason, returnedBy) {
+    if (!chatId) return;
 
     const message = `🔄 <b>Задача возвращена на доработку</b>
 
@@ -5685,14 +5694,12 @@ ${escapeHtmlForTelegram(revisionReason)}
 
 Пожалуйста, внесите изменения и отправьте на проверку.`;
 
-    await sendTelegramNotification(user.telegramChatId, message);
+    await sendTelegramNotification(chatId, message);
 }
 
-// Send deadline reminder via Telegram
-async function sendTelegramReminderNotification(userEmail, taskTitle, projectName, deadline) {
-    // Find user by email
-    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
-    if (!user || !user.telegramChatId) return;
+// Send deadline reminder via Telegram (chatId resolved by caller via uid)
+async function sendTelegramReminderNotification(chatId, taskTitle, projectName, deadline) {
+    if (!chatId) return;
 
     const message = `⏰ <b>Напоминание о дедлайне!</b>
 
@@ -5702,14 +5709,12 @@ async function sendTelegramReminderNotification(userEmail, taskTitle, projectNam
 
 Осталось менее 20% времени. Поторопитесь!`;
 
-    await sendTelegramNotification(user.telegramChatId, message);
+    await sendTelegramNotification(chatId, message);
 }
 
-// Send "take task into work" reminder via Telegram
-async function sendTelegramTakeTaskReminder(userEmail, taskTitle, projectName) {
-    // Find user by email
-    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
-    if (!user || !user.telegramChatId) return;
+// Send "take task into work" reminder via Telegram (chatId resolved via uid)
+async function sendTelegramTakeTaskReminder(chatId, taskTitle, projectName) {
+    if (!chatId) return;
 
     const message = `📋 <b>Напоминание!</b>
 
@@ -5718,14 +5723,12 @@ async function sendTelegramTakeTaskReminder(userEmail, taskTitle, projectName) {
 
 Пожалуйста, возьмите задачу в работу как можно скорее!`;
 
-    await sendTelegramNotification(user.telegramChatId, message);
+    await sendTelegramNotification(chatId, message);
 }
 
-// Send overdue notification via Telegram
-async function sendTelegramOverdueNotification(userEmail, taskTitle, projectName, deadline) {
-    // Find user by email
-    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
-    if (!user || !user.telegramChatId) return;
+// Send overdue notification via Telegram (chatId resolved by caller via uid)
+async function sendTelegramOverdueNotification(chatId, taskTitle, projectName, deadline) {
+    if (!chatId) return;
 
     const message = `⚠️ <b>Просрочка!</b>
 
@@ -5735,7 +5738,7 @@ async function sendTelegramOverdueNotification(userEmail, taskTitle, projectName
 
 Срок выполнения задачи истёк! Пожалуйста, завершите её как можно скорее.`;
 
-    await sendTelegramNotification(user.telegramChatId, message);
+    await sendTelegramNotification(chatId, message);
 }
 
 // Send task completion notification to creator/admin via Telegram
@@ -5791,7 +5794,7 @@ function checkReminders(tasks) {
         const currentSubStatus = task.subStatus || 'assigned';
 
         // 1. Check for "take task" reminder (status = assigned, 2+ hours passed)
-        if (currentSubStatus === 'assigned' && task.assigneeEmail) {
+        if (currentSubStatus === 'assigned' && (task.assigneeIds?.length || task.assigneeEmail)) {
             const timeSinceCreation = now - createdAtDate;
 
             // Check if 2+ hours since creation
@@ -5810,11 +5813,8 @@ function checkReminders(tasks) {
                 const shouldSend = !lastReminderTime || (now - lastReminderTime >= TWO_HOURS_MS);
 
                 if (shouldSend) {
-                    const emails = task.assigneeEmail.split(',');
-                    emails.forEach((email) => {
-                        if (email && email.trim()) {
-                            sendTelegramTakeTaskReminder(email.trim(), task.title, projectName);
-                        }
+                    taskAssigneeChatIds(task).forEach(chatId => {
+                        sendTelegramTakeTaskReminder(chatId, task.title, projectName);
                     });
 
                     // Update last reminder time
@@ -5828,7 +5828,7 @@ function checkReminders(tasks) {
         // 2. Check for overdue notification (status = in_work, deadline passed)
         // Send notification the day AFTER the deadline (not on the deadline day itself)
         // Also don't send if task was just taken into work (within last hour)
-        if (currentSubStatus === 'in_work' && task.assigneeEmail && !task.overdueNotificationSent) {
+        if (currentSubStatus === 'in_work' && (task.assigneeIds?.length || task.assigneeEmail) && !task.overdueNotificationSent) {
             // Check if task was taken into work recently (within last hour) - don't notify yet
             let takenToWorkTime = null;
             if (task.takenToWorkAt) {
@@ -5866,11 +5866,8 @@ function checkReminders(tasks) {
 
             // Send notification only if we're at least 1 day AFTER the deadline
             if (diffDays >= 1) {
-                const emails = task.assigneeEmail.split(',');
-                emails.forEach((email) => {
-                    if (email && email.trim()) {
-                        sendTelegramOverdueNotification(email.trim(), task.title, projectName, task.deadline);
-                    }
+                taskAssigneeChatIds(task).forEach(chatId => {
+                    sendTelegramOverdueNotification(chatId, task.title, projectName, task.deadline);
                 });
 
                 // Mark as sent
@@ -5879,7 +5876,7 @@ function checkReminders(tasks) {
         }
 
         // 3. Original deadline reminder (less than 20% time left)
-        if (!task.reminderSent && task.assigneeEmail) {
+        if (!task.reminderSent && (task.assigneeIds?.length || task.assigneeEmail)) {
             const totalDuration = deadlineDate - createdAtDate;
             const timeLeft = deadlineDate - now;
 
@@ -5887,11 +5884,8 @@ function checkReminders(tasks) {
                 const percentage = (timeLeft / totalDuration) * 100;
 
                 if (percentage < 20 && percentage > 0) {
-                    const emails = task.assigneeEmail.split(',');
-                    emails.forEach((email) => {
-                        if (email && email.trim()) {
-                            sendTelegramReminderNotification(email.trim(), task.title, projectName, task.deadline);
-                        }
+                    taskAssigneeChatIds(task).forEach(chatId => {
+                        sendTelegramReminderNotification(chatId, task.title, projectName, task.deadline);
                     });
 
                     // Mark as sent
