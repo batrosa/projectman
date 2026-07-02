@@ -252,7 +252,13 @@ service cloud.firestore {
             && canReaderWorkOnTask()
             && request.resource.data.projectId == resource.data.projectId
             && request.resource.data.status == 'in-progress'
+            // The task must ALREADY be in-progress — a reader can't reopen a
+            // done/archived task by writing status back to 'in-progress'.
+            && resource.data.status == 'in-progress'
             && request.resource.data.subStatus in ['in_work', 'completed']
+            // No skipping the flow: can't jump straight from 'assigned' to
+            // 'completed' (must pass through 'in_work' / "Взять в работу").
+            && !(resource.data.subStatus == 'assigned' && request.resource.data.subStatus == 'completed')
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'status',
               'assigneeCompleted',

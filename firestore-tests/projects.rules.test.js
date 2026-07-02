@@ -228,6 +228,85 @@ describe("project and task organization permissions", () => {
     }));
   });
 
+  it("blocks a reader from REOPENING a done task (can't write status back to in-progress once approved)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("reader1").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "employee",
+        allowedProjects: ["p1"],
+      });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "Own", organizationId: "org-1" });
+      // Task already approved/closed: status is "done".
+      await ctx.firestore().collection("tasks").doc("t-done").set({
+        projectId: "p1",
+        organizationId: "org-1",
+        title: "Approved task",
+        status: "done",
+        subStatus: "completed",
+        assigneeCompleted: true,
+        assigneeIds: ["reader1"],
+      });
+    });
+
+    const reader = testEnv.authenticatedContext("reader1").firestore();
+    // Only "allowed" keys are touched, so the ONLY thing that can reject this is
+    // the new `resource.data.status == 'in-progress'` guard (old status is "done").
+    await assertFails(reader.collection("tasks").doc("t-done").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T05:00:00.000Z",
+      takenToWorkBy: "Reader",
+    }));
+  });
+
+  it("blocks a reader from SKIPPING the flow (assigned → completed directly, without going through in_work)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("reader1").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "employee",
+        allowedProjects: ["p1"],
+      });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "Own", organizationId: "org-1" });
+      await ctx.firestore().collection("tasks").doc("t-skip").set({
+        projectId: "p1",
+        organizationId: "org-1",
+        title: "Fresh task",
+        status: "in-progress",
+        subStatus: "assigned",
+        assigneeCompleted: false,
+        assigneeIds: ["reader1"],
+      });
+    });
+
+    const reader = testEnv.authenticatedContext("reader1").firestore();
+    // All "allowed" keys, so the ONLY reason this fails is the new no-skip guard
+    // (old subStatus 'assigned' → new subStatus 'completed').
+    await assertFails(reader.collection("tasks").doc("t-skip").update({
+      status: "in-progress",
+      subStatus: "completed",
+      assigneeCompleted: true,
+      completedAt: "2026-07-02T05:00:00.000Z",
+      completedBy: "Reader",
+      completionComment: "Done fast",
+      completionProof: null,
+      completionProofs: ["https://res.cloudinary.com/dwoa1lqz1/proof.pdf"],
+      revisionReason: null,
+      revisionReturnedBy: null,
+      revisionReturnedAt: null,
+    }));
+    // Sanity: the legitimate first step (assigned → in_work) is still allowed.
+    await assertSucceeds(reader.collection("tasks").doc("t-skip").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T05:00:00.000Z",
+      takenToWorkBy: "Reader",
+    }));
+  });
+
   it("legacy-shaped data (organizationId:null orgRole:null user, task without assigneeIds/organizationId) still allows the assignee to take the task into work", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("users").doc("legacyReader1").set({
