@@ -38,6 +38,22 @@ describe("users doc — XP/stats are server-only", () => {
     await assertFails(u1.collection("users").doc("u1").update({ noRevisionTasksCount: 500 }));
   });
 
+  it("blocks a user from self-writing telegramChatId (notification-routing / open-relay vector)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("u3").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "employee",
+        telegramChatId: "111",
+      });
+    });
+
+    const u3 = testEnv.authenticatedContext("u3").firestore();
+    // telegramChatId is bound server-side during Telegram login; a client must
+    // not be able to point it at an arbitrary chat.
+    await assertFails(u3.collection("users").doc("u3").update({ telegramChatId: "999" }));
+  });
+
   it("blocks a moderator (and owner) from writing ANOTHER user's stats via the client", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("users").doc("mod").set({
@@ -66,9 +82,13 @@ describe("users doc — XP/stats are server-only", () => {
     });
 
     const u2 = testEnv.authenticatedContext("u2").firestore();
+    // displayName/profilePhotoUrl/profileCompleted/lastLoginAt are legitimate
+    // self-profile writes and must stay allowed (they are NOT in the locked set).
     await assertSucceeds(u2.collection("users").doc("u2").update({
       displayName: "New Name",
       profilePhotoUrl: "https://example.com/p.png",
+      profileCompleted: true,
+      lastLoginAt: "2026-07-02T10:00:00.000Z",
     }));
   });
 

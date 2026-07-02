@@ -8,14 +8,20 @@ service cloud.firestore {
     }
 
     // Функция: Проверка, что пользователь не меняет защищённые поля — роль,
-    // доступы, организация И игровые счётчики (XP/уровень/статистика). Начисление
-    // XP теперь только серверное (api/award-xp через Admin SDK, в обход правил),
-    // поэтому клиент вообще не должен писать эти поля — иначе любой мог сам себе
-    // накрутить XP/уровень в рейтинге.
+    // доступы, организация, игровые счётчики (XP/уровень/статистика) И
+    // telegramChatId. XP теперь начисляется только сервером (api/award-xp через
+    // Admin SDK, в обход правил). telegramChatId привязывается только сервером в
+    // ходе входа через Telegram-бота (api/telegram-auth, api/webhook,
+    // lib/telegram-user) и используется в api/notify-telegram для маршрутизации
+    // уведомлений (where('telegramChatId','==',...)) — если бы клиент мог его
+    // писать, любой авторизованный мог бы привязать произвольный chatId и
+    // релеить сообщения на чужой Telegram (обход изоляции по организации).
+    // Клиент эти поля не пишет вообще, поэтому замок ничего не ломает.
     function notUpdatingRestrictedFields() {
       return (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'role', 'allowedProjects', 'organizationId', 'orgRole',
-        'totalXP', 'level', 'completedTasksCount', 'onTimeTasksCount', 'noRevisionTasksCount'
+        'totalXP', 'level', 'completedTasksCount', 'onTimeTasksCount', 'noRevisionTasksCount',
+        'telegramChatId'
       ]));
     }
 
