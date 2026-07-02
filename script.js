@@ -651,33 +651,20 @@ async function joinOrganization(inviteCode) {
         throw new Error('Вы уже состоите в другой организации. Сначала покиньте её.');
     }
 
-    // Build update data - preserve existing firstName/lastName if they exist
-    const updateData = {
+    // Self-service join: write ONLY organizationId + orgRole. The Firestore
+    // rule (isSelfServiceOrgJoin) rejects the write if any other key changes.
+    // Previously we also set `email` (null for Telegram-login users) and name
+    // fields here, which triggered "Missing or insufficient permissions". The
+    // real name is already captured by the post-registration name gate.
+    await db.collection('users').doc(state.currentUser.uid).set({
         organizationId: orgDoc.id,
-        orgRole: 'employee',
-        email: state.currentUser.email
-    };
+        orgRole: 'employee'
+    }, { merge: true });
 
-    // If user document exists but has no firstName, try to get from state or displayName
-    if (!userData.firstName) {
-        // Try to get name from current state (from recent login)
-        if (state.currentUser.firstName) {
-            updateData.firstName = state.currentUser.firstName;
-            updateData.lastName = state.currentUser.lastName || '';
-        } else {
-            // Fallback: parse from displayName or email
-            const displayName = state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'User';
-            updateData.displayName = displayName;
-        }
-    }
-
-    await db.collection('users').doc(state.currentUser.uid).set(updateData, { merge: true });
-
-    // Update local state with the name
-    if (userData.firstName) {
-        state.currentUser.firstName = userData.firstName;
-        state.currentUser.lastName = userData.lastName || '';
-    }
+    // Reflect membership in local state
+    state.currentUser.organizationId = orgDoc.id;
+    state.currentUser.orgRole = 'employee';
+    state.orgRole = 'employee';
 
     // Increment members count
     await db.collection('organizations').doc(orgDoc.id).update({
