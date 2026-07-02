@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=53.0" defer></script>
+    <script src="script.js?v=54.0" defer></script>
 </head>
 
 <body>
@@ -1633,10 +1633,10 @@
     </div>
 
     <!-- Global AI Agent Chat Modal — calls POST /api/agent-chat (Task 14).
-         Org-wide agent: visible to all roles, sees ALL projects/tasks/files in
-         the organization (not scoped to the current user's allowedProjects or
-         the currently open project). History is intentionally independent of
-         project switching — see agent chat init in script.js. -->
+         Visible to all roles, but its context is SCOPED server-side to the
+         caller's accessible projects (allowedProjects; owner/admin & no-allow-
+         list members see all) — NOT the whole org, and NOT tied to the open
+         project. History is intentionally independent of project switching. -->
     <div id="agent-chat-modal" class="modal">
         <div class="modal-content agent-chat-modal-content">
             <div class="modal-header">

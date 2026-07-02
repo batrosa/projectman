@@ -1,8 +1,9 @@
-// Global AI agent chat endpoint: an org-wide assistant that reads ALL
-// projects/tasks/uploaded-file-text for the caller's organization via the
-// Admin SDK, deliberately bypassing the client-side `allowedProjects`
-// restriction — "everyone in the org sees everything via the agent" is an
-// explicit design decision from earlier in this plan, not an oversight.
+// Global AI agent chat endpoint: an assistant that reads the projects/tasks/
+// uploaded-file-text the CALLER may access, via the Admin SDK. The context is
+// SCOPED to the caller's accessible projects (see accessibleProjectIdsFor):
+// owner/admin and members with no allow-list get all org projects; a restricted
+// member gets only their allowedProjects. It does NOT bypass allowedProjects —
+// do not "restore" an org-wide read here, it would leak restricted projects.
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { buildOpenRouterModels, openRouterModelBody, fetchWithTimeout } from "../lib/openrouter-config.js";
 
@@ -212,30 +213,32 @@ export function accessibleProjectIdsFor(userData) {
 }
 
 async function loadOrganizationContext(db, organizationId, accessibleProjectIds = null) {
-  // Single-field equality `where("organizationId", "==", ...)` on each
-  // collection uses Firestore's automatic per-field index — composite
-  // indexes are only required when a query combines multiple `where`
-  // inequality/equality fields, or mixes `where` on one field with
-  // `orderBy` on a different field. Neither query here does either, so no
-  // entry in firestore.indexes.json is needed (the repo has no such file,
-  // and firebase.json only references firestore.rules).
-  const [projectsSnap, tasksSnap] = await Promise.all([
-    db.collection("projects").where("organizationId", "==", organizationId).get(),
-    db.collection("tasks").where("organizationId", "==", organizationId).get(),
-  ]);
-
+  // All queries here are single-field (`where(organizationId==)`,
+  // `where(projectId in ...)`, `where(extractionStatus==)`), so Firestore's
+  // automatic per-field index covers them — no firestore.indexes.json needed.
+  const projectsSnap = await db.collection("projects").where("organizationId", "==", organizationId).get();
   let projects = projectsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  let tasks = tasksSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-  // Restrict to the projects this user may see (null = no restriction). Tasks
-  // and the file text below are all keyed off this filtered project set, so a
-  // restricted member's agent context never contains a project they lack access
-  // to — the agent literally has no data to answer about it.
+  // Restrict to the projects this user may see (null = no restriction).
   if (accessibleProjectIds !== null) {
     const allowedSet = new Set(accessibleProjectIds);
     projects = projects.filter((p) => allowedSet.has(p.id));
-    tasks = tasks.filter((t) => allowedSet.has(t.projectId));
   }
+
+  // Load tasks BY projectId (not by task.organizationId). Tasks can lack or
+  // carry a stale organizationId — the board loads them by projectId and the
+  // rules authorize by the PROJECT's org — so querying by task.organizationId
+  // would silently miss those tasks and the agent would answer "no tasks" for
+  // work the user clearly sees. `where(projectId in ...)` is capped at 10 ids,
+  // so chunk and parallelize; a single-field `in` still uses the auto index.
+  const projectIds = projects.map((p) => p.id);
+  const idChunks = [];
+  for (let i = 0; i < projectIds.length; i += 10) idChunks.push(projectIds.slice(i, i + 10));
+  const taskSnaps = await Promise.all(
+    idChunks.map((chunk) => db.collection("tasks").where("projectId", "in", chunk).get())
+  );
+  const tasks = [];
+  taskSnaps.forEach((snap) => snap.docs.forEach((doc) => tasks.push({ id: doc.id, ...doc.data() })));
 
   // Parallelized across projects (was a sequential for-await loop, serializing
   // N Firestore round-trips for N projects). Latency matters here: this

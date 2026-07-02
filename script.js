@@ -8448,8 +8448,6 @@ async function handleAgentChatSubmit(event) {
         // re-enable the input here either — the newer send already owns that.
         if (myGeneration !== agentChatState.generation) return;
 
-        if (pendingBubble) pendingBubble.remove();
-
         if (status === 200 && data && data.ok) {
             const answer = typeof data.answer === 'string' && data.answer.trim()
                 ? data.answer
@@ -8492,7 +8490,6 @@ async function handleAgentChatSubmit(event) {
         }
     } catch (error) {
         if (myGeneration !== agentChatState.generation) return;
-        if (pendingBubble) pendingBubble.remove();
 
         if (error && error.code === 'not-authenticated') {
             appendAgentChatMessage('error', 'Вы вышли из аккаунта. Войдите заново, чтобы продолжить общение с агентом.');
@@ -8504,6 +8501,12 @@ async function handleAgentChatSubmit(event) {
         }
         agentChatState.history.pop();
     } finally {
+        // Always clear THIS send's "Агент печатает…" bubble — even if the result
+        // was discarded above because the chat was closed/reset mid-request
+        // (which bumps the generation). Otherwise the pending bubble is orphaned
+        // and shows forever on reopen. Removing our own bubble never affects a
+        // newer send's bubble.
+        if (pendingBubble) pendingBubble.remove();
         // Only the send that "owns" the current generation re-enables input —
         // if a newer generation has already started, it's already managing
         // its own disabled/enabled lifecycle and this stale call must not

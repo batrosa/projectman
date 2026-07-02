@@ -337,11 +337,12 @@ describe("generation-counter guard (close-modal race)", () => {
     });
     await submitPromise;
 
-    // The stale response must not have rendered an assistant bubble, must
-    // not have removed the "pending" bubble (nothing owns that anymore), and
-    // must not have pushed onto history — it's a pure no-op.
+    // The stale response must not render an assistant bubble or push onto
+    // history — BUT its own "Агент печатает…" pending bubble must be cleared
+    // (in finally), otherwise it's orphaned and shows forever on reopen.
     expect(dom.messages.querySelector(".agent-chat-message-assistant")).toBeNull();
-    expect(dom.messages.querySelectorAll(".agent-chat-message").length).toBe(2); // unchanged: user + pending still there
+    expect(dom.messages.querySelector(".agent-chat-message-pending")).toBeNull();
+    expect(dom.messages.querySelectorAll(".agent-chat-message").length).toBe(1); // only the user turn remains
   });
 
   it("still renders normally when the modal is NOT closed before the response arrives", async () => {
