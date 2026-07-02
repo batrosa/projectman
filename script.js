@@ -2273,10 +2273,8 @@ function openEditTaskModal(task) {
     // Populate assignees picker and load existing assignees
     populateAssigneeDropdown();
 
-    // Set selected assignees from task
-    if (task.assigneeEmail && task.assignee) {
-        setSelectedAssignees(task.assigneeEmail, task.assignee);
-    }
+    // Set selected assignees from task (rebuilds from assigneeIds — see helper)
+    setSelectedAssignees(task);
 
     // Load existing attachments
     pendingAttachments = task.attachments ? [...task.attachments] : [];
@@ -5426,8 +5424,8 @@ function handleAssigneeSearch(e) {
         fullName = fullName.toLowerCase();
         const email = (user.email || '').toLowerCase();
 
-        // Check if already selected
-        const isSelected = selectedAssignees.some(a => a.email === user.email);
+        // Check if already selected (by uid — email is null for Telegram users)
+        const isSelected = selectedAssignees.some(a => a.id === user.id);
         if (isSelected) return false;
 
         // If no query, show all
@@ -5518,20 +5516,22 @@ function addAssignee(user) {
     if (!fullName && user.displayName) fullName = user.displayName;
     if (!fullName) fullName = user.email || 'Без имени';
 
-    // Check if already added
-    if (selectedAssignees.some(a => a.email === user.email)) return;
+    // Check if already added (by uid — email is null for Telegram users)
+    if (selectedAssignees.some(a => a.id === user.id)) return;
 
     selectedAssignees.push({
         id: user.id,
-        email: user.email,
+        email: user.email || null,
         name: fullName
     });
 
     renderSelectedAssignees();
 }
 
-function removeAssignee(email) {
-    selectedAssignees = selectedAssignees.filter(a => a.email !== email);
+// Remove by index: two Telegram users both have email=null, so removing by
+// email would drop all of them at once.
+function removeAssigneeAt(index) {
+    selectedAssignees.splice(index, 1);
     renderSelectedAssignees();
 
     // Update dropdown if it's open to show removed user again
@@ -5547,51 +5547,84 @@ function renderSelectedAssignees() {
 
     container.innerHTML = '';
 
-    selectedAssignees.forEach(assignee => {
-        const initials = assignee.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+    selectedAssignees.forEach((assignee, index) => {
+        const initials = (assignee.name || '?').split(' ').map(n => n[0] || '').join('').toUpperCase().substring(0, 2);
 
-        // Find user to get profile photo
-        const user = state.users.find(u => u.email === assignee.email);
-        const avatarHtml = user?.profilePhotoUrl
-            ? `<div class="assignee-chip-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
-            : `<div class="assignee-chip-avatar">${initials}</div>`;
+        // Resolve the user by uid first (email is null for Telegram users).
+        const user = state.users.find(u =>
+            (assignee.id && u.id === assignee.id) ||
+            (assignee.email && (u.email || '').toLowerCase() === assignee.email.toLowerCase())
+        );
 
         const chip = document.createElement('div');
         chip.className = 'assignee-chip';
-        chip.innerHTML = `
-            ${avatarHtml}
-            <span>${escapeHtml(assignee.name)}</span>
-            <button type="button" class="assignee-chip-remove" data-email="${escapeHtml(assignee.email)}">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        `;
 
-        chip.querySelector('.assignee-chip-remove').addEventListener('click', (e) => {
+        const avatar = document.createElement('div');
+        avatar.className = 'assignee-chip-avatar';
+        if (user?.profilePhotoUrl) {
+            avatar.style.overflow = 'hidden';
+            const img = document.createElement('img');
+            img.src = sanitizeAttachmentUrl(user.profilePhotoUrl);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
+            avatar.appendChild(img);
+        } else {
+            avatar.textContent = initials;
+        }
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = assignee.name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'assignee-chip-remove';
+        removeBtn.setAttribute('aria-label', 'Убрать исполнителя');
+        const xIcon = document.createElement('i');
+        xIcon.className = 'fa-solid fa-xmark';
+        removeBtn.appendChild(xIcon);
+        removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            removeAssignee(assignee.email);
+            removeAssigneeAt(index);
         });
 
+        chip.appendChild(avatar);
+        chip.appendChild(nameSpan);
+        chip.appendChild(removeBtn);
         container.appendChild(chip);
     });
 }
 
-function setSelectedAssignees(emails, names) {
-    // Set assignees when editing a task
+// Rebuild the assignee picker from a task when editing. Prefer assigneeIds
+// (uid) — Telegram-login assignees have no email, so rebuilding from
+// assigneeEmail alone silently dropped them and a subsequent save wiped the
+// assignees. Falls back to email/name for legacy tasks without assigneeIds.
+function setSelectedAssignees(task) {
     selectedAssignees = [];
+    if (!task) { renderSelectedAssignees(); return; }
 
-    if (!emails || !names) return;
+    const ids = Array.isArray(task.assigneeIds) ? task.assigneeIds.filter(Boolean) : [];
+    const nameList = (task.assignee || '').split(',').map(n => n.trim()).filter(Boolean);
+    const emailList = (task.assigneeEmail || '').split(',').map(e => e.trim()).filter(Boolean);
 
-    const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
-    const nameList = names.split(',').map(n => n.trim()).filter(n => n);
-
-    emailList.forEach((email, index) => {
-        const user = state.users.find(u => (u.email || '').toLowerCase() === email.toLowerCase());
-        selectedAssignees.push({
-            id: user?.id || null,
-            email: email,
-            name: nameList[index] || email
+    if (ids.length > 0) {
+        ids.forEach((uid, index) => {
+            const user = state.users.find(u => u.id === uid);
+            const name = user
+                ? (`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.displayName || user.email || nameList[index] || 'Исполнитель')
+                : (nameList[index] || 'Исполнитель');
+            selectedAssignees.push({ id: uid, email: user?.email || emailList[index] || null, name });
         });
-    });
+    } else if (emailList.length > 0) {
+        emailList.forEach((email, index) => {
+            const user = state.users.find(u => (u.email || '').toLowerCase() === email.toLowerCase());
+            selectedAssignees.push({ id: user?.id || null, email, name: nameList[index] || email });
+        });
+    } else if (nameList.length > 0) {
+        // Oldest tasks: only names stored. Resolve to a user by full name if possible.
+        nameList.forEach(name => {
+            const user = state.users.find(u => `${u.firstName || ''} ${u.lastName || ''}`.trim() === name);
+            selectedAssignees.push({ id: user?.id || null, email: user?.email || null, name });
+        });
+    }
 
     renderSelectedAssignees();
 }
@@ -5599,7 +5632,10 @@ function setSelectedAssignees(emails, names) {
 function getSelectedAssignees() {
     return {
         names: selectedAssignees.map(a => a.name).join(', ') || 'Не назначен',
-        emails: selectedAssignees.map(a => a.email).join(',')
+        // Filter out null/empty emails (Telegram-login assignees have none) so we
+        // don't store stray "," segments in assigneeEmail. Identity is carried by
+        // assigneeIds; assigneeEmail is only a legacy convenience field.
+        emails: selectedAssignees.map(a => a.email).filter(Boolean).join(',')
     };
 }
 
@@ -6121,6 +6157,7 @@ async function fetchMyTasks() {
     if (!state.currentUser) return [];
 
     const myTasks = [];
+    const userUid = state.currentUser.uid;
     const userEmail = state.currentUser.email?.toLowerCase();
     const userFullName = state.currentUser.fullName ||
         `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
@@ -6145,13 +6182,18 @@ async function fetchMyTasks() {
                 const task = { id: doc.id, ...doc.data() };
                 let isAssignee = false;
 
-                // Check by email
-                if (userEmail && task.assigneeEmail) {
+                // Match by uid first (Telegram-login users have no email)
+                if (userUid && Array.isArray(task.assigneeIds) && task.assigneeIds.includes(userUid)) {
+                    isAssignee = true;
+                }
+
+                // Fallback: email (legacy tasks)
+                if (!isAssignee && userEmail && task.assigneeEmail) {
                     const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
                     isAssignee = assigneeEmails.map(e => e.trim()).includes(userEmail);
                 }
 
-                // Check by name if email didn't match
+                // Fallback: full name (oldest tasks)
                 if (!isAssignee && userFullName && task.assignee) {
                     const assigneeNames = task.assignee.split(',').map(n => n.trim());
                     isAssignee = assigneeNames.includes(userFullName);
@@ -6397,6 +6439,7 @@ function subscribeToMyTasks() {
 function updateMyTasksCountFromSnapshot(snapshot) {
     if (!state.currentUser || !elements.myTasksCount) return;
 
+    const userUid = state.currentUser.uid;
     const userEmail = state.currentUser.email?.toLowerCase();
     const userFullName = state.currentUser.fullName ||
         `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim();
@@ -6411,13 +6454,18 @@ function updateMyTasksCountFromSnapshot(snapshot) {
 
         let isAssignee = false;
 
-        // Check by email
-        if (userEmail && task.assigneeEmail) {
+        // Match by uid first (Telegram-login users have no email)
+        if (userUid && Array.isArray(task.assigneeIds) && task.assigneeIds.includes(userUid)) {
+            isAssignee = true;
+        }
+
+        // Fallback: email (legacy tasks)
+        if (!isAssignee && userEmail && task.assigneeEmail) {
             const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
             isAssignee = assigneeEmails.map(e => e.trim()).includes(userEmail);
         }
 
-        // Check by name if email didn't match
+        // Fallback: full name (oldest tasks)
         if (!isAssignee && userFullName && task.assignee) {
             const assigneeNames = task.assignee.split(',').map(n => n.trim());
             isAssignee = assigneeNames.includes(userFullName);
