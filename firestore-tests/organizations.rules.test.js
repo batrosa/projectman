@@ -176,6 +176,19 @@ describe("organizations privilege escalation", () => {
       await assertSucceeds(owner.collection("organizations").doc("org-owned").delete());
       await assertFails(admin.collection("organizations").doc("org-admin").delete());
     });
+
+    it("blocks reassigning ownerId (no silent org takeover) but allows editing other fields", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("adm").set({ organizationId: "orgX", orgRole: "admin" });
+        await ctx.firestore().collection("users").doc("ownr").set({ organizationId: "orgX", orgRole: "owner" });
+        await ctx.firestore().collection("organizations").doc("orgX").set({ ownerId: "ownr", name: "Org X", membersCount: 2 });
+      });
+      const adm = testEnv.authenticatedContext("adm").firestore();
+      const ownr = testEnv.authenticatedContext("ownr").firestore();
+      await assertFails(adm.collection("organizations").doc("orgX").update({ ownerId: "adm" }));      // admin can't take over
+      await assertFails(ownr.collection("organizations").doc("orgX").update({ ownerId: "someone" })); // even owner can't reassign via client
+      await assertSucceeds(ownr.collection("organizations").doc("orgX").update({ name: "Renamed" })); // normal edit still works
+    });
   });
 
   describe("organizations read (invite-code enumeration closed)", () => {
