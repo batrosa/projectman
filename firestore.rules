@@ -189,11 +189,10 @@ service cloud.firestore {
         && (resource.data.ownerId == request.auth.uid || isOrgOwnerOrAdmin(orgId))
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
-      // Удалять: только владелец организации. Admin может управлять организацией, но не удалять её.
-      allow delete: if request.auth != null && (
-        resource.data.ownerId == request.auth.uid ||
-        hasOrgRole(orgId, ['owner'])
-      );
+      // Удалять — ТОЛЬКО сервер (api/org 'deleteOrg', Admin SDK): удаление
+      // каскадит проекты/задачи/файлы и очищает участников. Клиентское удаление
+      // org-документа напрямую оставляло бы всё это сиротами, поэтому запрещено.
+      allow delete: if false;
     }
 
     // Коллекция Projects
@@ -260,12 +259,20 @@ service cloud.firestore {
             // No skipping the flow: can't jump straight from 'assigned' to
             // 'completed' (must pass through 'in_work' / "Взять в работу").
             && !(resource.data.subStatus == 'assigned' && request.resource.data.subStatus == 'completed')
-            // Completing REQUIRES at least one proof file. The UI already
-            // mandates a comment + ≥1 uploaded file (submitCompletionProof),
-            // so this only blocks a direct-SDK "completed" with no evidence.
+            // Completing REQUIRES a proof list that is non-empty AND bounded.
+            // The UI mandates a comment + 1..3 files (submitCompletionProof); the
+            // count cap stops a direct-SDK write from stuffing an unbounded array.
+            // Per-element URL/type/size validation isn't expressible in Firestore
+            // rules (no list iteration) — that stays at upload time
+            // (api/project-files) and in the render-side sanitizer.
             && (request.resource.data.subStatus != 'completed'
                 || (request.resource.data.completionProofs is list
-                    && request.resource.data.completionProofs.size() > 0))
+                    && request.resource.data.completionProofs.size() > 0
+                    && request.resource.data.completionProofs.size() <= 10))
+            // Bound attachments too (a reader may set them in in_work/completed).
+            && (!('attachments' in request.resource.data)
+                || !(request.resource.data.attachments is list)
+                || request.resource.data.attachments.size() <= 20)
             // No backdating: on completion the client writes serverTimestamp(),
             // which the emulator/server resolves to request.time. A direct-SDK
             // write with an arbitrary/backdated completedAt is rejected, so it

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit } from "./agent-chat.js";
+import { fetchWithTimeout } from "../lib/openrouter-config.js";
 
 const CONTEXT_CHAR_LIMIT = 45000;
 
@@ -445,9 +446,44 @@ function mockResponse() {
 // permission error, transient outage) at each respective call site.
 function makeFakeDb({ userDoc, projects = [], tasks = [], filesByProject = {}, userGetError, queryError } = {}) {
   const filesCalls = [];
+  const rateLimitDocs = new Map();
+  const docsSnapshot = (docs) => ({
+    size: docs.length,
+    docs: docs.map((doc) => ({ id: doc.id, data: () => doc })),
+  });
+  const query = (docsFactory) => {
+    const q = {
+      limit() {
+        return q;
+      },
+      async get() {
+        if (queryError) throw queryError;
+        return docsSnapshot(docsFactory());
+      },
+    };
+    return q;
+  };
   return {
     filesCalls,
+    async runTransaction(fn) {
+      const tx = {
+        async get(ref) {
+          return { exists: rateLimitDocs.has(ref.id), data: () => rateLimitDocs.get(ref.id) };
+        },
+        set(ref, value) {
+          rateLimitDocs.set(ref.id, value);
+        },
+      };
+      return fn(tx);
+    },
     collection(name) {
+      if (name === "agentRateLimits") {
+        return {
+          doc(id) {
+            return { id };
+          },
+        };
+      }
       if (name === "users") {
         return {
           doc(uid) {
@@ -463,12 +499,7 @@ function makeFakeDb({ userDoc, projects = [], tasks = [], filesByProject = {}, u
       if (name === "projects") {
         return {
           where(field, op, value) {
-            return {
-              async get() {
-                if (queryError) throw queryError;
-                return { docs: projects.map((p) => ({ id: p.id, data: () => p })) };
-              },
-            };
+            return query(() => projects.filter((p) => field !== "organizationId" || op !== "==" || p.organizationId === value));
           },
           doc(projectId) {
             return {
@@ -476,14 +507,11 @@ function makeFakeDb({ userDoc, projects = [], tasks = [], filesByProject = {}, u
                 if (sub !== "files") throw new Error(`unexpected subcollection ${sub}`);
                 return {
                   where(field, op, value) {
-                    return {
-                      async get() {
-                        filesCalls.push(projectId);
-                        if (queryError) throw queryError;
-                        const docs = filesByProject[projectId] || [];
-                        return { docs: docs.map((d) => ({ data: () => d })) };
-                      },
-                    };
+                    return query(() => {
+                      filesCalls.push(projectId);
+                      const docs = filesByProject[projectId] || [];
+                      return docs.filter((d) => field !== "extractionStatus" || op !== "==" || d.extractionStatus === value);
+                    });
                   },
                 };
               },
@@ -494,12 +522,11 @@ function makeFakeDb({ userDoc, projects = [], tasks = [], filesByProject = {}, u
       if (name === "tasks") {
         return {
           where(field, op, value) {
-            return {
-              async get() {
-                if (queryError) throw queryError;
-                return { docs: tasks.map((t) => ({ id: t.id, data: () => t })) };
-              },
-            };
+            return query(() => {
+              if (field === "projectId" && op === "in") return tasks.filter((t) => value.includes(t.projectId));
+              if (field === "organizationId" && op === "==") return tasks.filter((t) => t.organizationId === value);
+              return tasks;
+            });
           },
         };
       }
@@ -534,6 +561,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
   beforeEach(() => {
     process.env.OPENROUTER_API_KEY = "test-key";
     state.verifyIdToken = vi.fn(async () => ({ uid: "user-1" }));
+    fetchWithTimeout.mockClear();
   });
 
   it("returns a graceful HTTP 200 fallback when the user-doc lookup rejects", async () => {
@@ -579,6 +607,32 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
     expect(res.statusCode).toBe(200);
     expect(res.body.answer).toBe("AI answer");
+  });
+
+  it("sends the real ProjectMan capability map to the model before answering control-workflow questions", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1" },
+      projects: [{ id: "p1", name: "Абрау-Дюрсо", organizationId: "org-1" }],
+      tasks: [{ id: "t1", projectId: "p1", title: "Получить изменённый ГПЗУ", organizationId: "org-1" }],
+      filesByProject: {},
+    });
+    const res = mockResponse();
+    await handler(makeRequest({ message: "как контролить Абрау в ProjectMan?" }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
+    const [, options] = fetchWithTimeout.mock.calls[0];
+    const payload = JSON.parse(options.body);
+    const systemPrompt = payload.messages[0].content;
+
+    expect(systemPrompt).toContain("Карта реального функционала ProjectMan");
+    expect(systemPrompt).toContain("Статусы задач: «Задача поставлена», «В работе», «Завершена»");
+    expect(systemPrompt).toContain("нет drag-and-drop перетаскивания карточек");
+    expect(systemPrompt).toContain("Календарь показывает задачи по дедлайну");
+    expect(systemPrompt).toContain("В ProjectMan НЕТ");
+    expect(systemPrompt).toContain("конструктора отчётов/отчёта");
+    expect(systemPrompt).toContain("Outlook или Google Calendar");
+    expect(systemPrompt).toContain("Если пользователь просит функцию, которой нет");
   });
 
   it("queries each project's files subcollection (parallelized via Promise.all, not sequentially awaited per-project)", async () => {

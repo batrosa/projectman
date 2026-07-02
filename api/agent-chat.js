@@ -25,11 +25,24 @@ const RATE_LIMIT_MAX = 20; // requests per window per user
 const OFF_TOPIC_RESPONSE =
   "Я отвечаю только по ProjectMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
 
+const PROJECTMAN_CAPABILITY_GUIDE = [
+  "Карта реального функционала ProjectMan важнее общих знаний о системах управления проектами.",
+  "В ProjectMan есть: организации, роли owner/admin/moderator/employee, проекты, доступ пользователей к проектам, задачи, исполнители, дедлайн задачи, файлы задачи, файлы проекта, статусы задач, календарь по дедлайнам, раздел «Мои задачи», админ-панель, профиль/рейтинг, ИИ-агент и Telegram-уведомления при подключенном Telegram.",
+  "Статусы задач: «Задача поставлена», «В работе», «Завершена» (на проверке у руководителя), «Готово» (принята/архив). Статус меняют через бейдж/меню статуса задачи; нет drag-and-drop перетаскивания карточек.",
+  "Файлы: к задаче можно прикреплять до 2 файлов до 10 МБ; при завершении исполнитель добавляет комментарий о выполнении и 1-3 файла подтверждения; в «Файлы проекта» можно загружать md/xlsx/xlsm/pdf/docx до 10 МБ, их текст использует агент.",
+  "Календарь показывает задачи по дедлайну и список задач выбранного дня. В календаре нет фильтров по блоку/ответственному и нет синхронизации с Outlook или Google Calendar.",
+  "Уведомления: Telegram-уведомления о новых задачах, возврате на доработку, напоминаниях и просрочке при подключенном Telegram. Нет подписок, ежедневных дайджестов и пользовательских правил уведомлений.",
+  "В ProjectMan НЕТ: отдельного переключателя режима «Канбан», автоматической группировки задач по блокам, drag-and-drop смены статуса, отдельной плановой даты начала задачи, конструктора отчётов/отчёта «статус по блокам», чек-листов/подзадач, общего комментарного чата под задачей, подписок, daily digest, custom notification rules, Outlook/Google Calendar sync, планирования совещаний/стендапов внутри приложения.",
+  "Если пользователь спрашивает, как контролировать конкретный проект, предлагай только реальный workflow: разложить работу на проекты/задачи, при необходимости кодировать блоки в названии задачи или отдельными проектами, назначать исполнителей и дедлайны, прикреплять документы, смотреть «Мои задачи» и календарь по дедлайнам, менять статусы через меню статуса, проверять завершение по комментарию/файлам подтверждения, управлять доступами в админ-панели и использовать Telegram-уведомления.",
+  "Если пользователь просит функцию, которой нет, прямо скажи «в ProjectMan такой функции нет» и предложи ближайший реальный способ внутри текущего приложения.",
+].join(" ");
+
 const SYSTEM_PROMPT_RULES = [
   "Ты — ИИ Руководитель проекта, ассистент внутри системы управления задачами ProjectMan.",
   "На приветствия, благодарности и короткие обращения (например «привет», «здравствуйте», «спасибо», «ок») отвечай коротко, дружелюбно и по-человечески, и предлагай помощь по проектам и задачам. Это НЕ повод для отказа.",
   "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
   `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
+  PROJECTMAN_CAPABILITY_GUIDE,
   "По умолчанию отвечай кратко (1-3 тезиса), простым нетехническим языком. Но если пользователь просит подробности, список, таблицу или схему — дай полный, хорошо структурированный ответ и НЕ сокращай данные.",
   "Обычные ответы пиши обычным текстом или короткими пунктами. Таблицу (Markdown: строка заголовков, строка-разделитель | --- | --- |, строки данных) делай ТОЛЬКО когда она действительно уместна: когда перечисляешь НЕСКОЛЬКО (2+) однотипных объектов с общими полями — список задач с исполнителями/сроками/статусами, сравнение проектов и т.п. — ИЛИ когда пользователь прямо просит таблицу. НЕ оборачивай в таблицу один объект, короткий факт, приветствие или пояснение (например «что за задача X» про одну задачу — ответь обычным текстом, а не таблицей «поле—значение»). Для акцентов можно **жирный**, для простых перечней — списки. Ссылки [текст](url) и изображения не вставляй.",
   "НЕ рисуй псевдографику и ASCII-диаграммы (сетки из | и —, стрелочные таймлайны, «нарисованные» схемы) — в чате они не отображаются и выглядят сломанно. Блоки кода (```) используй только для настоящего кода/конфигов. Если просят «схему», «диаграмму», «график», «таймлайн» или «дорожную карту» — представь это Markdown-таблицей (например: Этап | Период | Статус) или структурированным списком по этапам/годам, а не рисунком из символов.",
@@ -219,12 +232,26 @@ export function accessibleProjectIdsFor(userData) {
   return null; // empty/absent = all projects (the default for new members)
 }
 
+// Bounded context reads — caps so a pathologically large org can't drive
+// unbounded Firestore reads. Set far above any realistic small-org size, so for
+// normal orgs everything is read (no behaviour change); only a huge org gets a
+// bounded sample (and it's logged).
+const MAX_CONTEXT_PROJECTS = 200;
+const MAX_CONTEXT_TASKS = 1500;
+const MAX_CONTEXT_FILES_PER_PROJECT = 30;
+
 async function loadOrganizationContext(db, organizationId, accessibleProjectIds = null) {
   // All queries here are single-field (`where(organizationId==)`,
   // `where(projectId in ...)`, `where(extractionStatus==)`), so Firestore's
   // automatic per-field index covers them — no firestore.indexes.json needed.
-  const projectsSnap = await db.collection("projects").where("organizationId", "==", organizationId).get();
+  const projectsSnap = await db.collection("projects")
+    .where("organizationId", "==", organizationId)
+    .limit(MAX_CONTEXT_PROJECTS)
+    .get();
   let projects = projectsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  if (projectsSnap.size >= MAX_CONTEXT_PROJECTS) {
+    console.warn(`agent-chat: project context capped at ${MAX_CONTEXT_PROJECTS} (org ${organizationId})`);
+  }
 
   // Restrict to the projects this user may see (null = no restriction).
   if (accessibleProjectIds !== null) {
@@ -242,10 +269,19 @@ async function loadOrganizationContext(db, organizationId, accessibleProjectIds 
   const idChunks = [];
   for (let i = 0; i < projectIds.length; i += 10) idChunks.push(projectIds.slice(i, i + 10));
   const taskSnaps = await Promise.all(
-    idChunks.map((chunk) => db.collection("tasks").where("projectId", "in", chunk).get())
+    idChunks.map((chunk) => db.collection("tasks").where("projectId", "in", chunk).limit(MAX_CONTEXT_TASKS).get())
   );
   const tasks = [];
-  taskSnaps.forEach((snap) => snap.docs.forEach((doc) => tasks.push({ id: doc.id, ...doc.data() })));
+  for (const snap of taskSnaps) {
+    for (const doc of snap.docs) {
+      if (tasks.length >= MAX_CONTEXT_TASKS) break;
+      tasks.push({ id: doc.id, ...doc.data() });
+    }
+    if (tasks.length >= MAX_CONTEXT_TASKS) break;
+  }
+  if (tasks.length >= MAX_CONTEXT_TASKS) {
+    console.warn(`agent-chat: task context capped at ${MAX_CONTEXT_TASKS} (org ${organizationId})`);
+  }
 
   // Parallelized across projects (was a sequential for-await loop, serializing
   // N Firestore round-trips for N projects). Latency matters here: this
@@ -258,6 +294,7 @@ async function loadOrganizationContext(db, organizationId, accessibleProjectIds 
       db
         .collection("projects").doc(project.id).collection("files")
         .where("extractionStatus", "==", "done")
+        .limit(MAX_CONTEXT_FILES_PER_PROJECT)
         .get()
     )
   );
@@ -540,11 +577,24 @@ function cleanAnswer(text) {
     .trim();
 }
 
+// A chat message + short history is a few KB; cap the accumulated body well
+// above that so an oversized/streamed request can't grow the buffer unbounded.
+// (Vercel also caps request bodies, but this is explicit and fails fast.)
+const MAX_BODY_BYTES = 256 * 1024;
+
 async function parseJsonBody(request) {
   if (request.body && typeof request.body === "object") return request.body;
-  if (typeof request.body === "string") return JSON.parse(request.body || "{}");
+  if (typeof request.body === "string") {
+    if (Buffer.byteLength(request.body, "utf8") > MAX_BODY_BYTES) throw new Error("Request body too large");
+    return JSON.parse(request.body || "{}");
+  }
   const chunks = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let total = 0;
+  for await (const chunk of request) {
+    total += chunk.length;
+    if (total > MAX_BODY_BYTES) throw new Error("Request body too large");
+    chunks.push(Buffer.from(chunk));
+  }
   const text = Buffer.concat(chunks).toString("utf8");
   return text ? JSON.parse(text) : {};
 }

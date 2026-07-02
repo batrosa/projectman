@@ -300,7 +300,11 @@ describe("project and task organization permissions", () => {
     });
     // Empty list → blocked (no evidence).
     await assertFails(reader.collection("tasks").doc("t-noproof").update(completePayload([])));
-    // A non-empty proof list → allowed.
+    // Unbounded list → blocked (count cap, > 10).
+    await assertFails(reader.collection("tasks").doc("t-noproof").update(
+      completePayload(Array.from({ length: 11 }, (_, i) => `https://res.cloudinary.com/dwoa1lqz1/p${i}.pdf`))
+    ));
+    // A non-empty, bounded proof list → allowed.
     await assertSucceeds(reader.collection("tasks").doc("t-noproof").update(
       completePayload(["https://res.cloudinary.com/dwoa1lqz1/proof.pdf"])
     ));

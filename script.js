@@ -659,26 +659,13 @@ async function deleteOrganization() {
         throw new Error('Только владелец может удалить организацию');
     }
 
-    const orgId = state.organization.id;
-
-    // Remove all users from this organization
-    const usersSnapshot = await db.collection('users').where('organizationId', '==', orgId).get();
-    const batch = db.batch();
-
-    usersSnapshot.forEach(doc => {
-        batch.update(doc.ref, { organizationId: null, orgRole: null });
-    });
-
-    // Delete the organization document
-    batch.delete(db.collection('organizations').doc(orgId));
-
-    await batch.commit();
-
-    // Clear local state
-    state.organization = null;
-    state.orgRole = null;
-    state.currentUser.organizationId = null;
-    state.currentUser.orgRole = null;
+    // Server-side cascade (api/org 'deleteOrg', Admin SDK): deletes every
+    // project + its tasks + its files, clears all members, then removes the org
+    // doc. The old client-side batch orphaned projects/tasks/files (and couldn't
+    // reach other projects' files subcollections). Reload for a clean state —
+    // the server has cleared our own membership too.
+    await callOrgApi('deleteOrg');
+    window.location.reload();
 }
 
 // Regenerate invite code (invalidates old code). Done server-side (api/org):

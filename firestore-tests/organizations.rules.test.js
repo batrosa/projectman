@@ -157,7 +157,7 @@ describe("organizations privilege escalation", () => {
       await assertFails(joiner.collection("organizations").doc("some-org").update({ membersCount: 5 }));
     });
 
-    it("allows owner but blocks admin from deleting the organization", async () => {
+    it("blocks client-side org deletion entirely — deletion is server-only (api/org cascade)", async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         await ctx.firestore().collection("users").doc("owner1").set({ role: "reader", organizationId: "org-owned", orgRole: "owner" });
         await ctx.firestore().collection("users").doc("admin1").set({ role: "reader", organizationId: "org-admin", orgRole: "admin" });
@@ -167,7 +167,9 @@ describe("organizations privilege escalation", () => {
 
       const owner = testEnv.authenticatedContext("owner1").firestore();
       const admin = testEnv.authenticatedContext("admin1").firestore();
-      await assertSucceeds(owner.collection("organizations").doc("org-owned").delete());
+      // Even the owner can't delete the org doc directly now — api/org 'deleteOrg'
+      // (Admin SDK) does it, so the projects/tasks/files cascade + member cleanup run.
+      await assertFails(owner.collection("organizations").doc("org-owned").delete());
       await assertFails(admin.collection("organizations").doc("org-admin").delete());
     });
 

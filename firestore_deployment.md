@@ -37,9 +37,9 @@ firebase deploy --only firestore:rules
   `organizationId`, `allowedProjects`, `telegramChatId`, и игровые счётчики
   `totalXP`/`level`/`completedTasksCount`/`onTimeTasksCount`/`noRevisionTasksCount`.
 - **organizations/{orgId}**: `get` — только участник; `list` запрещён (закрывает
-  перебор inviteCode); `create` — только сервер (`api/org`); `update` — владелец/
-  админ и только `name`/`settings` (ownerId неизменяем; `inviteCode`/`plan`/
-  `membersCount` меняет только сервер).
+  перебор inviteCode); `create` и `delete` — только сервер (`api/org`); `update`
+  — владелец/админ и ТОЛЬКО поле `name` (ownerId неизменяем; `inviteCode`/`plan`/
+  `membersCount`/`settings` меняет только сервер через Admin SDK).
 - **projects/{projectId}**: чтение — участник организации проекта; запись
   (создание/редактирование самого проекта) — только `owner`/`admin` организации.
 - **tasks/{taskId}**: чтение — по организации + доступу к проекту; запись —

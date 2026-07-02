@@ -243,5 +243,70 @@ export default async function handler(request, response) {
     }
   }
 
+  if (action === "deleteOrg") {
+    // Owner-only cascade delete. Was client-side (deleteOrganization in
+    // script.js) and only cleared users + deleted the org doc, orphaning every
+    // project/task/file. Do the full cascade server-side (Admin SDK).
+    let userData;
+    try {
+      const userSnap = await db.collection("users").doc(decoded.uid).get();
+      userData = userSnap.exists ? userSnap.data() : null;
+    } catch (error) {
+      console.error("org deleteOrg: load caller failed", error);
+      return response.status(500).json({ error: "Не удалось проверить пользователя" });
+    }
+    const orgId = userData && userData.organizationId;
+    if (!orgId) return response.status(400).json({ error: "Вы не состоите в организации" });
+    if (userData.orgRole !== "owner") {
+      return response.status(403).json({ error: "Только владелец может удалить организацию" });
+    }
+
+    try {
+      const projectsSnap = await db.collection("projects").where("organizationId", "==", orgId).get();
+
+      // Collect every doc to delete: each project's files subcollection, its
+      // tasks (top-level collection keyed by projectId), and the project doc.
+      const deleteRefs = [];
+      for (const projDoc of projectsSnap.docs) {
+        const filesSnap = await projDoc.ref.collection("files").get();
+        filesSnap.docs.forEach((d) => deleteRefs.push(d.ref));
+        const tasksSnap = await db.collection("tasks").where("projectId", "==", projDoc.id).get();
+        tasksSnap.docs.forEach((d) => deleteRefs.push(d.ref));
+        deleteRefs.push(projDoc.ref);
+      }
+      deleteRefs.push(db.collection("organizations").doc(orgId));
+
+      const membersSnap = await db.collection("users").where("organizationId", "==", orgId).get();
+
+      // Commit in chunks well under Firestore's 500-ops/batch limit. Delete the
+      // data + org doc FIRST, then clear members LAST — so a partial failure
+      // leaves the owner still an owner able to retry, rather than orphaned.
+      const CHUNK = 450;
+      let batch = db.batch();
+      let ops = 0;
+      const flush = async () => {
+        if (ops > 0) { await batch.commit(); batch = db.batch(); ops = 0; }
+      };
+      for (const ref of deleteRefs) {
+        batch.delete(ref);
+        if (++ops >= CHUNK) await flush();
+      }
+      for (const memberDoc of membersSnap.docs) {
+        batch.set(
+          memberDoc.ref,
+          { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
+          { merge: true }
+        );
+        if (++ops >= CHUNK) await flush();
+      }
+      await flush();
+
+      return response.status(200).json({ ok: true, deletedProjects: projectsSnap.size, clearedMembers: membersSnap.size });
+    } catch (error) {
+      console.error("org deleteOrg: cascade failed", error);
+      return response.status(500).json({ error: "Не удалось удалить организацию" });
+    }
+  }
+
   return response.status(400).json({ error: "Unknown action" });
 }
