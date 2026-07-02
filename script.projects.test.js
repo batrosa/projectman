@@ -104,8 +104,8 @@ describe("role permission helpers", () => {
     expect(getFn("canAccessAdmin")()).toBe(canAdmin);
   });
 
-  it("uses the reader-facing label for the existing employee role value", () => {
-    expect(getFn("getRoleName")("employee")).toBe("Читатель");
-    expect(getFn("getRoleName")("reader")).toBe("Читатель");
+  it("labels the worker role (employee/reader) as Исполнитель", () => {
+    expect(getFn("getRoleName")("employee")).toBe("Исполнитель");
+    expect(getFn("getRoleName")("reader")).toBe("Исполнитель");
   });
 });

@@ -1170,10 +1170,10 @@ function updateOrgUI() {
         owner: 'Владелец',
         admin: 'Администратор',
         moderator: 'Модератор',
-        employee: 'Сотрудник'
+        employee: 'Исполнитель'
     };
     if (elements.orgDropdownRole) {
-        elements.orgDropdownRole.textContent = roleNames[state.orgRole] || 'Сотрудник';
+        elements.orgDropdownRole.textContent = roleNames[state.orgRole] || 'Исполнитель';
     }
 
     // Invite code (only for admin+)
@@ -1203,10 +1203,10 @@ function getRoleName(role) {
         owner: 'Владелец',
         admin: 'Администратор',
         moderator: 'Модератор',
-        employee: 'Читатель',
-        reader: 'Читатель'
+        employee: 'Исполнитель',
+        reader: 'Исполнитель'
     };
-    return names[role] || 'Читатель';
+    return names[role] || 'Исполнитель';
 }
 
 // Permission system
@@ -5171,8 +5171,8 @@ function renderUsersList() {
             owner: 'Владелец',
             admin: 'Админ',
             moderator: 'Модератор',
-            employee: 'Читатель',
-            reader: 'Читатель'
+            employee: 'Исполнитель',
+            reader: 'Исполнитель'
         };
 
         // Role selector - only show if user can change this role
@@ -5185,7 +5185,7 @@ function renderUsersList() {
                 <select class="role-select" data-user-id="${user.id}" data-current-role="${userRole}">
                     ${isOwner ? `<option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>` : ''}
                     <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
-                    <option value="employee" ${userRole === 'employee' || userRole === 'reader' ? 'selected' : ''}>Читатель</option>
+                    <option value="employee" ${userRole === 'employee' || userRole === 'reader' ? 'selected' : ''}>Исполнитель</option>
                 </select>
             `;
         } else {
@@ -6167,12 +6167,12 @@ const ACCESS_ROLE_LABELS = {
     owner: 'Владелец',
     admin: 'Администратор',
     moderator: 'Модератор',
-    employee: 'Сотрудник',
-    reader: 'Наблюдатель',
+    employee: 'Исполнитель',
+    reader: 'Исполнитель',
 };
 
 function accessRoleLabel(orgRole) {
-    return ACCESS_ROLE_LABELS[orgRole] || 'Сотрудник';
+    return ACCESS_ROLE_LABELS[orgRole] || 'Исполнитель';
 }
 
 // owner/admin see every project by role — access list doesn't apply to them.
