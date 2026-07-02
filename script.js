@@ -3301,65 +3301,29 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         playClickSound();
         console.log("Status updated to:", newSubStatus);
 
-        // Award XP when task is moved to done (archive)
+        // Award XP when the task is approved/archived. XP + per-user stats are
+        // credited SERVER-SIDE (api/award-xp): the Admin SDK writes the now
+        // rule-locked stats fields, the award is transactional + idempotent
+        // (task.xpProcessed), and wasOnTime is computed on the server from the
+        // task's server-set completedAt so it can't be forged. (Previously this
+        // ran on the manager's client, which let any client self-credit XP.)
         if (newSubStatus === 'done') {
             try {
-                const taskDoc = await db.collection('tasks').doc(taskId).get();
-                if (taskDoc.exists) {
-                    const task = taskDoc.data();
-
-                    // Check if completed on time (use completedAt, not current time)
-                    let deadlineDate = null;
-                    if (task.deadline) {
-                        deadlineDate = new Date(task.deadline);
-                        // Set deadline to end of day (23:59:59) for fair comparison
-                        deadlineDate.setHours(23, 59, 59, 999);
-                    }
-
-                    let completedDate = new Date(); // fallback to now
-
-                    // Get the actual completion date
-                    if (task.completedAt) {
-                        if (task.completedAt.toDate) {
-                            completedDate = task.completedAt.toDate();
-                        } else {
-                            completedDate = new Date(task.completedAt);
-                        }
-                    }
-
-                    const wasOnTime = deadlineDate ? completedDate <= deadlineDate : true;
-
-                    // Check if was returned for revision
-                    const wasReturned = task.wasReturned || task.revisionReason ? true : false;
-
-                    // Update completedOnTime field
-                    await db.collection('tasks').doc(taskId).update({
-                        completedOnTime: wasOnTime
+                const currentUser = firebase.auth().currentUser;
+                const idToken = currentUser ? await currentUser.getIdToken() : null;
+                if (idToken) {
+                    const res = await fetch('/api/award-xp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+                        body: JSON.stringify({ taskId })
                     });
-
-                    // Award XP/stats to each assignee. Resolve by uid
-                    // (assigneeIds) first — Telegram-login users have no email,
-                    // so the old email-only match recorded nothing in their
-                    // profile ("личный кабинет"). Email is a legacy fallback.
-                    const assigneeUids = Array.isArray(task.assigneeIds) ? task.assigneeIds.filter(Boolean) : [];
-                    if (assigneeUids.length > 0) {
-                        for (const uid of assigneeUids) {
-                            await awardXP(uid, taskId, wasOnTime, wasReturned);
-                        }
-                    } else if (task.assigneeEmail) {
-                        const assigneeEmails = task.assigneeEmail.toLowerCase().split(',');
-                        for (const email of assigneeEmails) {
-                            const user = state.users.find(u =>
-                                u.email?.toLowerCase() === email.trim()
-                            );
-                            if (user) {
-                                await awardXP(user.id, taskId, wasOnTime, wasReturned);
-                            }
-                        }
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        console.error('award-xp failed:', res.status, err);
                     }
                 }
             } catch (error) {
-                console.error('Error awarding XP:', error);
+                console.error('Error awarding XP (server):', error);
             }
         }
     }).catch(error => {
@@ -5784,49 +5748,14 @@ function calculateXPProgress(currentXP) {
     return Math.floor((xpInCurrentLevel / xpNeededForNext) * 100);
 }
 
-async function awardXP(userId, taskId, wasOnTime, wasReturned) {
-    if (!userId) return;
-
-    let xpToAward = XP_CONFIG.baseTaskXP;
-
-    if (wasOnTime) {
-        xpToAward += XP_CONFIG.onTimeBonus;
-    }
-
-    if (wasReturned) {
-        xpToAward -= XP_CONFIG.revisionPenalty;
-    }
-
-    // Minimum 1 XP
-    xpToAward = Math.max(1, xpToAward);
-
-    try {
-        const userRef = db.collection('users').doc(userId);
-        const userDoc = await userRef.get();
-
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-            const currentXP = userData.totalXP || 0;
-            const newXP = currentXP + xpToAward;
-            const newLevel = getLevelFromXP(newXP);
-
-            // Increment task counters (persists even if task is deleted)
-            const completedTasks = (userData.completedTasksCount || 0) + 1;
-            const onTimeTasks = wasOnTime ? (userData.onTimeTasksCount || 0) + 1 : (userData.onTimeTasksCount || 0);
-            const noRevisionTasks = !wasReturned ? (userData.noRevisionTasksCount || 0) + 1 : (userData.noRevisionTasksCount || 0);
-
-            await userRef.update({
-                totalXP: newXP,
-                level: newLevel.level,
-                completedTasksCount: completedTasks,
-                onTimeTasksCount: onTimeTasks,
-                noRevisionTasksCount: noRevisionTasks
-            });
-        }
-    } catch (error) {
-        console.error('Error awarding XP:', error);
-    }
-}
+// XP / stats awarding moved SERVER-SIDE — see api/award-xp.js, called from the
+// task-approval flow (updateTaskSubStatus, newSubStatus === 'done'). It runs
+// under the Admin SDK because the users rules now lock
+// totalXP/level/completedTasksCount/onTimeTasksCount/noRevisionTasksCount
+// against client writes. Do NOT reintroduce a client-side writer: it would fail
+// the rules and could double-credit (the server award is transactional +
+// idempotent via task.xpProcessed). getLevelFromXP/getNextLevelXP below stay —
+// they are read-only helpers used to render level/progress in the UI.
 
 // ========== TELEGRAM NOTIFICATIONS ==========
 
