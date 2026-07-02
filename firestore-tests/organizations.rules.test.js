@@ -49,14 +49,16 @@ describe("organizations privilege escalation", () => {
       );
     });
 
-    it("allows the real createOrganization() write shape (organizationId + orgRole:'owner' + email + displayName) when the caller actually owns the referenced org", async () => {
+    it("blocks a client self-service org create via update (organizationId + orgRole:'owner') — create is server-only now (api/org)", async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         await ctx.firestore().collection("users").doc("founder").set({ role: "reader" });
         await ctx.firestore().collection("organizations").doc("new-org").set({ ownerId: "founder", name: "New Org" });
       });
 
       const founder = testEnv.authenticatedContext("founder").firestore();
-      await assertSucceeds(
+      // Even the real owner can no longer self-write org membership from the
+      // client — api/org 'create' assigns organizationId+orgRole server-side.
+      await assertFails(
         founder.collection("users").doc("founder").update({
           organizationId: "new-org",
           orgRole: "owner",
@@ -112,13 +114,15 @@ describe("organizations privilege escalation", () => {
       );
     });
 
-    it("allows the real createOrganization() write shape via create() when the caller actually owns the referenced org and their user doc doesn't exist yet", async () => {
+    it("blocks a client self-service org create via create() (fresh user doc carrying org fields) — create is server-only now", async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         await ctx.firestore().collection("organizations").doc("new-org-2").set({ ownerId: "founder2", name: "New Org 2" });
       });
 
       const founder2 = testEnv.authenticatedContext("founder2").firestore();
-      await assertSucceeds(
+      // A fresh user doc may not carry org fields — membership is granted
+      // server-side (api/org), so this create is rejected.
+      await assertFails(
         founder2.collection("users").doc("founder2").set({
           organizationId: "new-org-2", orgRole: "owner", email: "founder2@example.com", displayName: "Founder 2",
         })
@@ -177,7 +181,22 @@ describe("organizations privilege escalation", () => {
       const ownr = testEnv.authenticatedContext("ownr").firestore();
       await assertFails(adm.collection("organizations").doc("orgX").update({ ownerId: "adm" }));      // admin can't take over
       await assertFails(ownr.collection("organizations").doc("orgX").update({ ownerId: "someone" })); // even owner can't reassign via client
-      await assertSucceeds(ownr.collection("organizations").doc("orgX").update({ name: "Renamed" })); // normal edit still works
+      await assertSucceeds(ownr.collection("organizations").doc("orgX").update({ name: "Renamed" })); // name edit still works
+      await assertSucceeds(ownr.collection("organizations").doc("orgX").update({ settings: { maxUsers: 50 } })); // settings edit ok
+      // Server-managed fields can no longer be forged from the client.
+      await assertFails(ownr.collection("organizations").doc("orgX").update({ inviteCode: "HACKED" }));
+      await assertFails(ownr.collection("organizations").doc("orgX").update({ plan: "enterprise" }));
+      await assertFails(ownr.collection("organizations").doc("orgX").update({ membersCount: 999 }));
+    });
+
+    it("blocks a client from creating an organizations doc directly (create is server-only)", async () => {
+      const creator = testEnv.authenticatedContext("creator1").firestore();
+      // Even naming yourself owner no longer works — api/org is the only path.
+      await assertFails(
+        creator.collection("organizations").doc("brand-new-org").set({
+          ownerId: "creator1", name: "Mine", inviteCode: "MINE01", plan: "enterprise", membersCount: 1,
+        })
+      );
     });
   });
 

@@ -25,31 +25,13 @@ service cloud.firestore {
       ]));
     }
 
-    // Функция: Проверка, что пользователь ещё не состоит в организации
-    function wasNotYetInOrg() {
-      return !('organizationId' in resource.data) || resource.data.organizationId == null;
-    }
-
-    // Функция: Самостоятельное создание организации (пользователь должен реально быть владельцем целевого документа organizations)
-    function isSelfServiceOrgCreate() {
-      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
-      return changedKeys.hasOnly(['organizationId', 'orgRole', 'email', 'displayName'])
-        && request.resource.data.orgRole == 'owner'
-        && wasNotYetInOrg()
-        && exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
-        && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerId == request.auth.uid;
-    }
-
-    // Функция: Тот же сценарий создания организации, но при СОЗДАНИИ документа users/{uid}
-    // (set(..., {merge:true}) на несуществующий документ Firestore трактует как create, а не update —
-    // без этой функции createOrganization() на "свежем" users-документе полностью обходил бы isSelfServiceOrgCreate()).
-    function isSelfServiceOrgCreateAtDocCreation() {
-      return request.resource.data.keys().hasOnly(['organizationId', 'orgRole', 'email', 'displayName', 'role'])
-        && (!('role' in request.resource.data) || request.resource.data.role == 'reader')
-        && request.resource.data.orgRole == 'owner'
-        && exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
-        && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerId == request.auth.uid;
-    }
+    // NOTE: self-service org creation (isSelfServiceOrgCreate /
+    // isSelfServiceOrgCreateAtDocCreation / wasNotYetInOrg) was REMOVED.
+    // Creating an organization is server-only now (api/org 'create', Admin SDK):
+    // it generates a unique inviteCode, sets membersCount/plan/settings, and
+    // assigns the owner's organizationId+orgRole server-side. The client no
+    // longer writes org membership itself, so the client can't self-grant
+    // orgRole:'owner' or fabricate an organizations doc.
 
     // Функция: Проверка прав на проект
     function canViewProject(projectId) {
@@ -142,27 +124,24 @@ service cloud.firestore {
       // Поэтому разрешим читать список пользователей всем авторизованным)
       allow read: if request.auth != null;
       
-      // Создавать профиль может только сам пользователь при регистрации (и роль должна быть 'reader' или отсутствовать),
-      // ИЛИ это самостоятельное создание организации на ещё не существующем документе (см. isSelfServiceOrgCreateAtDocCreation).
-      allow create: if request.auth != null && request.auth.uid == userId && (
-        (!request.resource.data.keys().hasAny(['organizationId', 'orgRole'])
-          && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader'))
-        || isSelfServiceOrgCreateAtDocCreation()
-      );
+      // Создавать профиль может только сам пользователь при регистрации (роль
+      // 'reader' или отсутствует, БЕЗ орг-полей). Создание организации теперь
+      // серверное (api/org), поэтому org-поля при клиентском создании профиля
+      // запрещены — это закрывает само-присвоение orgRole:'owner' на «свежем»
+      // документе users.
+      allow create: if request.auth != null && request.auth.uid == userId
+        && !request.resource.data.keys().hasAny(['organizationId', 'orgRole'])
+        && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader');
       
-      // Обновлять: Владелец (но БЕЗ смены роли/оргполей, кроме явных сценариев join/leave/create) ИЛИ Админ (все поля)
-      // NOTE: self-service JOIN was removed — a user can no longer set their own
-      // organizationId client-side (that let anyone join any org without the
-      // invite code). Joining now goes through api/join-org (Admin SDK). LEAVE
-      // and REMOVE are also server-side now (api/org), so self-service leave was
-      // removed too — otherwise a client could null its organizationId directly,
-      // skipping the membersCount decrement and allowedProjects cleanup.
-      // Owner-create-org remains self-service (isSelfServiceOrgCreate).
-      // NOTE: manager-writes-stats (isOrgUserStatsUpdate) was removed — XP/stats
-      // are now credited only by the server (api/award-xp, Admin SDK), so no
-      // client (not even a moderator) may write totalXP/level/*Count.
+      // Обновлять: сам пользователь (но БЕЗ защищённых полей —
+      // notUpdatingRestrictedFields) ИЛИ менеджер орг (orgRole/allowedProjects,
+      // isOrgUserManagerUpdate) ИЛИ Админ. Все «оргоперации» клиента убраны и
+      // теперь только серверные: JOIN/LEAVE/REMOVE (api/join-org, api/org),
+      // create-org (api/org), начисление XP/stats (api/award-xp). Клиент не
+      // может ни присвоить себе orgRole/organizationId, ни накрутить XP, ни
+      // сменить telegramChatId.
       allow update: if (request.auth != null && request.auth.uid == userId
-                         && (notUpdatingRestrictedFields() || isSelfServiceOrgCreate()))
+                         && notUpdatingRestrictedFields())
                     || isOrgUserManagerUpdate()
                     || isAdmin();
 
@@ -185,16 +164,20 @@ service cloud.firestore {
       // серверные (api/org, api/join-org) через Admin SDK.
       allow get: if isOrgMember(orgId) || isAdmin();
       allow list: if false;
-      // Создать может только тот, кто указывает себя владельцем
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      // Обновлять: только владелец/админ организации и БЕЗ переназначения
-      // ownerId (исключает «тихий» захват). membersCount меняется ТОЛЬКО
-      // сервером (api/org, api/join-org через Admin SDK), поэтому клиентского
-      // правила «шаг ±1» больше нет — оно позволяло любому участнику крутить
-      // счётчик.
+      // Создание организации — ТОЛЬКО сервер (api/org 'create', Admin SDK): он
+      // генерирует уникальный inviteCode, выставляет membersCount/plan/settings
+      // и назначает владельца. Клиентский create раньше позволял сфабриковать
+      // орг-документ с любым inviteCode/plan/membersCount в обход этой логики.
+      allow create: if false;
+      // Обновлять: владелец/админ организации, БЕЗ переназначения ownerId
+      // («тихий» захват) и ТОЛЬКО поля name/settings. Серверные поля
+      // (inviteCode, plan, membersCount, createdAt) меняются лишь через Admin SDK
+      // (api/org, api/join-org) — иначе владелец мог бы сам выдать себе план,
+      // подобрать inviteCode или накрутить membersCount.
       allow update: if request.auth != null
         && (resource.data.ownerId == request.auth.uid || isOrgOwnerOrAdmin(orgId))
-        && request.resource.data.ownerId == resource.data.ownerId;
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'settings']);
       // Удалять: только владелец организации. Admin может управлять организацией, но не удалять её.
       allow delete: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||
