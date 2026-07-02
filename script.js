@@ -8298,25 +8298,186 @@ function truncateAgentChatHistory(history) {
     return history.slice(-AGENT_CHAT_MAX_HISTORY_TURNS);
 }
 
-// Renders one line of the agent's answer as safe DOM nodes: text via
-// `.textContent` (never innerHTML), newlines via one `<br>`-per-line-break
-// element. This is the ENTIRE extent of the "markdown-like formatting" this
-// UI applies (per the plan's manual-verification note #2) — no markdown
-// parsing, no HTML tag interpretation of any kind, because the source text is
-// LLM output that could be influenced by data inside the org's own
-// tasks/files (indirect prompt injection: a task title or uploaded document
-// could contain text designed to look like an instruction to the model, and
-// while the system prompt constrains the model's behavior, the model's
-// *output* is not a trusted input to the DOM). Splitting on "\n" and using
-// textContent per segment means there is no code path here that ever
-// interprets attacker-influenced text as markup, no matter what characters
-// (<, >, &, backticks, asterisks, etc.) appear in it.
+// Renders plain text as safe DOM nodes: text via `.textContent` (never
+// innerHTML), newlines via one `<br>` element. Used for user/pending/error
+// bubbles, which are never Markdown.
 function renderAgentChatText(container, text) {
     const lines = String(text ?? '').split('\n');
     lines.forEach((line, index) => {
         container.appendChild(document.createTextNode(line));
         if (index < lines.length - 1) container.appendChild(document.createElement('br'));
     });
+}
+
+// ── Safe minimal Markdown renderer for the agent's answers ──────────────────
+// The agent's output can be INFLUENCED by org data (indirect prompt injection
+// via task titles / uploaded file text), so we must never treat it as trusted
+// markup. This renderer NEVER builds an HTML string from model text: every
+// piece of model text reaches the DOM only through `.textContent` /
+// createTextNode, and we only ever create a fixed whitelist of structural
+// elements (table/thead/tbody/tr/th/td, ul/ol/li, strong/em/code, pre, div,
+// br). There is therefore no code path that interprets model text as markup —
+// `<script>`, `onerror=`, `javascript:` etc. are inert no matter what. Links
+// are not rendered as anchors (cleanAnswer already flattens [text](url) → text),
+// which removes the only remaining URL/attribute-injection surface.
+// Supports: GFM tables, fenced code blocks, #-headings, -/*/•/numbered lists,
+// **bold**, *italic*, `inline code`, and paragraphs.
+function isMarkdownTableSeparator(line) {
+    // A row of dash-runs split by pipes, e.g. "| --- | :---: | ---: |".
+    return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line)
+        || /^\s*\|\s*:?-{2,}:?\s*\|\s*$/.test(line); // single-column table
+}
+
+function splitMarkdownTableRow(line) {
+    let s = line.trim();
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|')) s = s.slice(0, -1);
+    return s.split('|').map((c) => c.trim());
+}
+
+// Parse inline **bold** / __bold__ / *italic* / _italic_ / `code` into DOM
+// nodes appended to `parent`. Everything else is plain text. No innerHTML.
+function appendAgentInline(parent, text) {
+    const str = String(text ?? '');
+    const re = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_)/g;
+    let last = 0;
+    for (const m of str.matchAll(re)) {
+        if (m.index > last) parent.appendChild(document.createTextNode(str.slice(last, m.index)));
+        const tok = m[0];
+        if (tok.startsWith('`')) {
+            const el = document.createElement('code');
+            el.className = 'agent-md-code';
+            el.textContent = tok.slice(1, -1);
+            parent.appendChild(el);
+        } else if (tok.startsWith('**') || tok.startsWith('__')) {
+            const el = document.createElement('strong');
+            el.textContent = tok.slice(2, -2);
+            parent.appendChild(el);
+        } else {
+            const el = document.createElement('em');
+            el.textContent = tok.slice(1, -1);
+            parent.appendChild(el);
+        }
+        last = m.index + tok.length;
+    }
+    if (last < str.length) parent.appendChild(document.createTextNode(str.slice(last)));
+}
+
+function buildAgentMarkdownTable(header, rows) {
+    const wrap = document.createElement('div');
+    wrap.className = 'agent-md-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'agent-md-table';
+
+    const thead = document.createElement('thead');
+    const htr = document.createElement('tr');
+    header.forEach((cell) => {
+        const th = document.createElement('th');
+        appendAgentInline(th, cell);
+        htr.appendChild(th);
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((cells) => {
+        const tr = document.createElement('tr');
+        for (let c = 0; c < header.length; c += 1) {
+            const td = document.createElement('td');
+            appendAgentInline(td, cells[c] != null ? cells[c] : '');
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    wrap.appendChild(table);
+    return wrap;
+}
+
+function isAgentMarkdownBlockStart(lines, i) {
+    const line = lines[i];
+    return /^\s*```/.test(line)
+        || (line.includes('|') && i + 1 < lines.length && isMarkdownTableSeparator(lines[i + 1]))
+        || /^(#{1,6})\s+/.test(line)
+        || /^\s*([-*•]|\d+[.)])\s+/.test(line);
+}
+
+function renderAgentChatMarkdown(container, text) {
+    const lines = String(text ?? '').split('\n');
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i];
+
+        // Fenced code block
+        if (/^\s*```/.test(line)) {
+            const code = [];
+            i += 1;
+            while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i += 1; }
+            i += 1; // skip closing fence
+            const pre = document.createElement('pre');
+            pre.className = 'agent-md-pre';
+            const codeEl = document.createElement('code');
+            codeEl.textContent = code.join('\n');
+            pre.appendChild(codeEl);
+            container.appendChild(pre);
+            continue;
+        }
+
+        // GFM table (header line followed by a separator line)
+        if (line.includes('|') && i + 1 < lines.length && isMarkdownTableSeparator(lines[i + 1])) {
+            const header = splitMarkdownTableRow(line);
+            i += 2;
+            const rows = [];
+            while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+                rows.push(splitMarkdownTableRow(lines[i]));
+                i += 1;
+            }
+            container.appendChild(buildAgentMarkdownTable(header, rows));
+            continue;
+        }
+
+        // Heading
+        const h = line.match(/^(#{1,6})\s+(.*)$/);
+        if (h) {
+            const el = document.createElement('div');
+            el.className = 'agent-md-heading';
+            appendAgentInline(el, h[2]);
+            container.appendChild(el);
+            i += 1;
+            continue;
+        }
+
+        // List (bullet or numbered) — collect consecutive items
+        if (/^\s*([-*•]|\d+[.)])\s+/.test(line)) {
+            const ordered = /^\s*\d+[.)]\s+/.test(line);
+            const listEl = document.createElement(ordered ? 'ol' : 'ul');
+            listEl.className = 'agent-md-list';
+            while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) {
+                const li = document.createElement('li');
+                appendAgentInline(li, lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, ''));
+                listEl.appendChild(li);
+                i += 1;
+            }
+            container.appendChild(listEl);
+            continue;
+        }
+
+        // Blank line — skip (paragraphs are separated visually via CSS margins)
+        if (line.trim() === '') { i += 1; continue; }
+
+        // Paragraph: gather consecutive plain lines until the next block/blank
+        const para = document.createElement('div');
+        para.className = 'agent-md-p';
+        let first = true;
+        while (i < lines.length && lines[i].trim() !== '' && !isAgentMarkdownBlockStart(lines, i)) {
+            if (!first) para.appendChild(document.createElement('br'));
+            appendAgentInline(para, lines[i]);
+            first = false;
+            i += 1;
+        }
+        container.appendChild(para);
+    }
 }
 
 function appendAgentChatMessage(role, text) {
@@ -8326,7 +8487,13 @@ function appendAgentChatMessage(role, text) {
 
     const bubble = document.createElement('div');
     bubble.className = `agent-chat-message agent-chat-message-${role}`;
-    renderAgentChatText(bubble, text);
+    // Only the agent's answers get Markdown (tables/lists/etc.); user, pending
+    // and error bubbles are short, app- or user-authored plain text.
+    if (role === 'assistant') {
+        renderAgentChatMarkdown(bubble, text);
+    } else {
+        renderAgentChatText(bubble, text);
+    }
     elements.agentChatMessages.appendChild(bubble);
     elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
     return bubble;

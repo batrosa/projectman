@@ -34,6 +34,19 @@ describe("cleanAnswer", () => {
   it("coerces non-string truthy input via String()", () => {
     expect(cleanAnswer(123)).toBe("123");
   });
+
+  it("preserves markdown tables, lists and bold (frontend renders them safely)", () => {
+    const md = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n- пункт\n\n**итог**";
+    const out = cleanAnswer(md);
+    expect(out).toContain("| A | B |");
+    expect(out).toContain("| --- | --- |");
+    expect(out).toContain("- пункт");
+    expect(out).toContain("**итог**");
+  });
+
+  it("still flattens markdown links to their text only", () => {
+    expect(cleanAnswer("см. [отчёт](https://example.com/x)")).toBe("см. отчёт");
+  });
 });
 
 describe("normalizeHistory", () => {

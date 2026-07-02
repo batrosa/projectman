@@ -9,6 +9,10 @@ import { buildOpenRouterModels, openRouterModelBody, fetchWithTimeout } from "..
 const CONTEXT_CHAR_LIMIT = 45000;
 const MAX_HISTORY_TURNS = 8;
 const MAX_MESSAGE_CHARS = 4000;
+// Output-token cap for the model reply. Was 900, which truncated long answers
+// mid-word (e.g. a 20-row project table). 2000 comfortably fits a detailed
+// Markdown table without a large cost/latency hit.
+const MAX_OUTPUT_TOKENS = 2000;
 const OFF_TOPIC_RESPONSE =
   "Я отвечаю только по ProjectMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
 
@@ -17,8 +21,8 @@ const SYSTEM_PROMPT_RULES = [
   "На приветствия, благодарности и короткие обращения (например «привет», «здравствуйте», «спасибо», «ок») отвечай коротко, дружелюбно и по-человечески, и предлагай помощь по проектам и задачам. Это НЕ повод для отказа.",
   "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
   `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
-  "Отвечай коротко и по делу: 1-3 тезиса по умолчанию, простым не техническим языком.",
-  "Пиши обычным человеческим текстом. НИКОГДА не используй markdown и технические символы: без ** * _ ` # ~, без markdown-списков и markdown-ссылок. Если нужен список — просто пиши пунктами с новой строки или через запятую.",
+  "По умолчанию отвечай кратко (1-3 тезиса), простым нетехническим языком. Но если пользователь просит подробности, список, таблицу или схему — дай полный, хорошо структурированный ответ и НЕ сокращай данные.",
+  "Для оформления используй Markdown. Табличные данные (объекты со сроками/статусами/суммами, сравнения, перечни задач по колонкам) ОБЯЗАТЕЛЬНО оформляй Markdown-таблицей: строка заголовков, затем строка-разделитель из дефисов (| --- | --- |), затем строки данных. Для перечислений используй списки (- пункт или 1. пункт), для акцентов — **жирный**. НЕ вставляй ссылки вида [текст](url) и изображения.",
   "НИКОГДА не показывай технические идентификаторы, коды или ID документов. Проекты, задачи и людей называй только их человеческими именами.",
   "Ты знаешь все задачи, сроки и статусы всей организации, а не только открытый экран — не проси открыть раздел или выбрать проект, если данные уже есть ниже.",
   "Если факта нет в данных — прямо скажи, что этого пока нет в системе. Не выдумывай.",
@@ -117,7 +121,7 @@ export default async function handler(request, response) {
       const apiResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${openRouterKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...openRouterModelBody([model]), temperature: 0.2, max_tokens: 900, messages }),
+        body: JSON.stringify({ ...openRouterModelBody([model]), temperature: 0.2, max_tokens: MAX_OUTPUT_TOKENS, messages }),
       });
 
       if (!apiResponse.ok) {
@@ -445,18 +449,12 @@ function cleanAnswer(text) {
   return String(text)
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/в предоставленном контексте/gi, "в данных проекта")
-    // Strip markdown/technical symbols so the plain-text chat UI never shows
-    // raw ** _ ` # ~ or markdown link/heading syntax (the frontend renders
-    // answers via textContent, not markdown). Belt-and-suspenders on top of
-    // the system-prompt "plain text only" instruction.
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) -> text
-    .replace(/(\*\*|__)(.*?)\1/g, "$2")       // **bold**/__bold__ -> bold
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1$2") // *italic* -> italic
-    .replace(/`+/g, "")                        // inline/code backticks
-    .replace(/~~/g, "")                         // strikethrough
-    .replace(/^#{1,6}\s+/gm, "")               // # headings
-    .replace(/^\s*[-*]\s+/gm, "• ")            // md bullets -> plain bullet
-    .replace(/[ \t]{2,}/g, " ")
+    // Flatten markdown links to their text only: the chat never shows clickable
+    // URLs (this also removes the sole link/URL injection surface for the
+    // frontend renderer and avoids leaking any id-like link target). All OTHER
+    // markdown — tables, lists, **bold**, `code`, headings — is intentionally
+    // PRESERVED and rendered safely by the frontend (see renderAgentChatMarkdown).
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .trim();
 }
 
