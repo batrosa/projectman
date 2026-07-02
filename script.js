@@ -7808,13 +7808,16 @@ function closeDayTasksModal() {
 
 // ========== GLOBAL AI AGENT CHAT (Task 15) ==========
 //
-// Client for POST /api/agent-chat (Task 14). That endpoint deliberately reads
-// ALL projects/tasks/files for the caller's organization via the Admin SDK,
-// bypassing the per-user `allowedProjects` restriction — "everyone in the org
-// sees everything via the agent" is an explicit design decision, so this UI
-// does not scope the chat to the currently open project, and the client-side
-// history is intentionally NOT reset when the user switches projects (see
-// agentChatState below — nothing here reads state.activeProjectId).
+// Client for POST /api/agent-chat (Task 14). That endpoint reads the caller's
+// ACCESSIBLE projects/tasks/files via the Admin SDK and answers only from them:
+// an owner/admin (or a member with no allowedProjects restriction) sees the
+// whole organization, while a restricted member is scoped to their
+// allowedProjects — the agent RESPECTS per-user access, it does not bypass it
+// (see accessibleProjectIdsFor in api/agent-chat.js). The chat spans the
+// caller's whole accessible scope rather than one project, so this UI does not
+// scope the chat to the currently open project, and the client-side history is
+// intentionally NOT reset when the user switches projects (see agentChatState
+// below — nothing here reads state.activeProjectId).
 //
 // Response shape actually returned by api/agent-chat.js (verified by reading
 // the file directly, not assumed from the plan text):

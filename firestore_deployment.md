@@ -24,15 +24,50 @@ firebase init firestore
 firebase deploy --only firestore:rules
 ```
 
-## Что делают эти правила?
+## Что делают эти правила (актуальная модель)
 
-- **users/{userId}**: Каждый пользователь может читать и записывать только свой собственный документ
-- **projects/{projectId}**: Все аутентифицированные пользователи могут читать и писать проекты
-- **tasks/{taskId}**: Все аутентифицированные пользователи могут читать и писать задачи
+Модель — многоарендная (по организациям) с ролями и покомпонентными замками.
+Роли в организации: `owner` / `admin` / `moderator` / `employee` (+ legacy `reader`).
+Видимость проектов сужается полем `users.allowedProjects` (пусто/нет = все проекты).
 
-## Важно!
+- **users/{userId}**: читать может любой авторизованный (нужно для списка
+  исполнителей); писать — только сам пользователь и только НЕзащищённые поля.
+  Защищены (пишет лишь сервер через Admin SDK): `role`, `orgRole`,
+  `organizationId`, `allowedProjects`, `telegramChatId`, и игровые счётчики
+  `totalXP`/`level`/`completedTasksCount`/`onTimeTasksCount`/`noRevisionTasksCount`.
+- **organizations/{orgId}**: `get` — только участник; `list` запрещён (закрывает
+  перебор inviteCode); `create` — только сервер (`api/org`); `update` — владелец/
+  админ и только `name`/`settings` (ownerId неизменяем; `inviteCode`/`plan`/
+  `membersCount` меняет только сервер).
+- **projects/{projectId}**: чтение — участник организации проекта; запись —
+  owner/admin или moderator с доступом к проекту (`canManageProject`).
+- **tasks/{taskId}**: чтение — по организации + доступу к проекту; запись —
+  менеджеры проекта, плюс узкий carve-out для исполнителя своей задачи (взять в
+  работу / завершить) с проверкой перехода статуса, обязательным подтверждением
+  и серверным `completedAt` (без бэкдейта).
+- **projects/{projectId}/files/{fileId}**: чтение — по доступу к проекту; запись
+  — только сервер (`api/project-files`).
 
-После развертывания правил приложение будет:
-- ✅ Автоматически входить в систему при следующем посещении
-- ✅ Запоминать выбранную роль (Admin/Reader)
-- ✅ Сохранять данные пользователя в Firestore
+Серверные операции (Admin SDK, в обход правил): создание/вступление/выход/
+удаление участника в организации (`api/org`, `api/join-org`), начисление XP
+(`api/award-xp`), метаданные файлов (`api/project-files`), Telegram-уведомления
+(`api/notify-telegram`).
+
+## Порядок деплоя (важно)
+
+Сначала выкатывай клиент (Vercel), потом правила — иначе ужесточённое правило
+ударит по старому клиенту. Команды:
+
+```bash
+# 1) клиент + api → Vercel (git push в main запускает деплой)
+git push origin main
+
+# 2) правила → Firebase
+npx firebase deploy --only firestore:rules --project projectman-96d3c
+```
+
+Перед деплоем правил гоняй эмулятор:
+
+```bash
+PATH=/opt/homebrew/opt/openjdk/bin:$PATH npm run test:rules
+```
