@@ -30,8 +30,9 @@ firebase deploy --only firestore:rules
 Роли в организации: `owner` / `admin` / `moderator` / `employee` (+ legacy `reader`).
 Видимость проектов сужается полем `users.allowedProjects` (пусто/нет = все проекты).
 
-- **users/{userId}**: читать может любой авторизованный (нужно для списка
-  исполнителей); писать — только сам пользователь и только НЕзащищённые поля.
+- **users/{userId}**: читать — сам пользователь свой док И участники ТОЙ ЖЕ
+  организации (для списка исполнителей/коллег) + Админ; межарендное чтение
+  закрыто. Писать — только сам пользователь и только НЕзащищённые поля.
   Защищены (пишет лишь сервер через Admin SDK): `role`, `orgRole`,
   `organizationId`, `allowedProjects`, `telegramChatId`, и игровые счётчики
   `totalXP`/`level`/`completedTasksCount`/`onTimeTasksCount`/`noRevisionTasksCount`.
@@ -39,12 +40,13 @@ firebase deploy --only firestore:rules
   перебор inviteCode); `create` — только сервер (`api/org`); `update` — владелец/
   админ и только `name`/`settings` (ownerId неизменяем; `inviteCode`/`plan`/
   `membersCount` меняет только сервер).
-- **projects/{projectId}**: чтение — участник организации проекта; запись —
-  owner/admin или moderator с доступом к проекту (`canManageProject`).
+- **projects/{projectId}**: чтение — участник организации проекта; запись
+  (создание/редактирование самого проекта) — только `owner`/`admin` организации.
 - **tasks/{taskId}**: чтение — по организации + доступу к проекту; запись —
-  менеджеры проекта, плюс узкий carve-out для исполнителя своей задачи (взять в
-  работу / завершить) с проверкой перехода статуса, обязательным подтверждением
-  и серверным `completedAt` (без бэкдейта).
+  `owner`/`admin` ИЛИ `moderator` с доступом к проекту (`canManageProject`),
+  плюс узкий carve-out для исполнителя своей задачи (взять в работу / завершить)
+  с проверкой перехода статуса, обязательным подтверждением и серверным
+  `completedAt` (без бэкдейта).
 - **projects/{projectId}/files/{fileId}**: чтение — по доступу к проекту; запись
   — только сервер (`api/project-files`).
 

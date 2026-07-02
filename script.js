@@ -1813,9 +1813,15 @@ function setupRealtimeListeners() {
         console.error("Error listening to projects:", error);
     });
 
-    // Listen for Users (filtered by organization)
-    // We listen to ALL users and filter client-side to avoid index requirements
-    usersListenerUnsubscribe = db.collection('users').onSnapshot(snapshot => {
+    // Listen for Users — SCOPED to the caller's organization. The Firestore
+    // rules restrict user reads to same-org members (+ self), so a broad
+    // collection read would now fail wholesale. Scoping changes nothing visible:
+    // state.users was already client-filtered to orgId below. No org yet
+    // (onboarding) → read only our own doc, which self-read always allows.
+    const usersQuery = orgId
+        ? db.collection('users').where('organizationId', '==', orgId)
+        : db.collection('users').where(firebase.firestore.FieldPath.documentId(), '==', state.currentUser?.uid || '__none__');
+    usersListenerUnsubscribe = usersQuery.onSnapshot(snapshot => {
         const users = [];
         const seenIds = new Set(); // Prevent duplicates
 

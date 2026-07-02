@@ -109,3 +109,37 @@ describe("users doc — XP/stats are server-only", () => {
     }));
   });
 });
+
+describe("users doc — reads are scoped to the same organization", () => {
+  it("lets a member read another member of the SAME org (assignee list), but NOT a member of another org", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("a1").set({ organizationId: "orgA", orgRole: "employee", email: "a1@x.com" });
+      await ctx.firestore().collection("users").doc("a2").set({ organizationId: "orgA", orgRole: "employee", email: "a2@x.com", telegramChatId: "111" });
+      await ctx.firestore().collection("users").doc("b1").set({ organizationId: "orgB", orgRole: "employee", email: "b1@x.com", telegramChatId: "222" });
+    });
+
+    const a1 = testEnv.authenticatedContext("a1").firestore();
+    await assertSucceeds(a1.collection("users").doc("a2").get()); // same org → ok
+    await assertFails(a1.collection("users").doc("b1").get());    // other org → denied (no cross-tenant PII)
+  });
+
+  it("always lets a user read their OWN doc, even with no organization", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("solo").set({ organizationId: null, orgRole: null, email: "solo@x.com" });
+      await ctx.firestore().collection("users").doc("member").set({ organizationId: "orgA", orgRole: "employee" });
+    });
+
+    const solo = testEnv.authenticatedContext("solo").firestore();
+    await assertSucceeds(solo.collection("users").doc("solo").get()); // self → ok
+    await assertFails(solo.collection("users").doc("member").get());  // no org → can't read others
+  });
+
+  it("blocks a totally unrelated authed user from reading an org member's doc", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("victim").set({ organizationId: "orgA", orgRole: "owner", telegramChatId: "999", email: "victim@x.com" });
+    });
+    // "stranger" has no user doc at all → myOrgId() resolves to null → denied.
+    const stranger = testEnv.authenticatedContext("stranger").firestore();
+    await assertFails(stranger.collection("users").doc("victim").get());
+  });
+});
