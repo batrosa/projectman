@@ -225,9 +225,18 @@ service cloud.firestore {
     match /tasks/{taskId} {
       // Чтение: Админ или если есть доступ к проекту (тут сложно проверить проект без лишнего get, 
       // но мы проверим через поле projectId в самой задаче)
+      // Read: managers by org OR by the project's org (hasProjectOrgRole). A
+      // plain member (employee/reader) may read a task if they can view its
+      // PROJECT and that project is in their org. We check the PROJECT's org
+      // (projectBelongsToOrg), not the task's own organizationId, because some
+      // tasks may lack/have-stale organizationId — keying off the task field
+      // made the whole per-project query fail for a reader while it worked for a
+      // moderator (who reads via the project). The task-org branch is kept too
+      // for orphan tasks whose project was deleted.
       allow read: if isAdmin()
         || hasOrgRole(resource.data.organizationId, ['owner', 'admin', 'moderator'])
         || hasProjectOrgRole(resource.data.projectId, ['owner', 'admin', 'moderator'])
+        || (canViewProject(resource.data.projectId) && projectBelongsToOrg(resource.data.projectId, myOrgId()))
         || (isOrgMember(resource.data.organizationId) && canViewProject(resource.data.projectId));
       
       // Запись: 

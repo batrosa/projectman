@@ -300,4 +300,20 @@ describe("project and task organization permissions", () => {
     // ...but the forbidden project's TASKS stay gated by canViewProject:
     await assertFails(restricted.collection("tasks").where("projectId", "==", "p-forbidden").get());
   });
+
+  it("lets a reader read an allowed project's tasks even when a task is MISSING organizationId (was: moderator OK, reader error)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("rdr").set({ organizationId: "org-t", orgRole: "employee", allowedProjects: ["p-ok"] });
+      await ctx.firestore().collection("projects").doc("p-ok").set({ organizationId: "org-t", name: "OK" });
+      await ctx.firestore().collection("projects").doc("p-no").set({ organizationId: "org-t", name: "NoAccess" });
+      // Tasks deliberately WITHOUT an organizationId field (legacy / other create path):
+      await ctx.firestore().collection("tasks").doc("t-ok").set({ projectId: "p-ok", title: "no org field" });
+      await ctx.firestore().collection("tasks").doc("t-no").set({ projectId: "p-no", title: "forbidden" });
+    });
+    const rdr = testEnv.authenticatedContext("rdr").firestore();
+    // Reader loads tasks of an allowed project despite the missing task.organizationId:
+    await assertSucceeds(rdr.collection("tasks").where("projectId", "==", "p-ok").get());
+    // ...still cannot read tasks of a project outside their allowedProjects:
+    await assertFails(rdr.collection("tasks").where("projectId", "==", "p-no").get());
+  });
 });
