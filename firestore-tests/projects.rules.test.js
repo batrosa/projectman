@@ -190,7 +190,7 @@ describe("project and task organization permissions", () => {
       completedBy: "Reader",
       completionComment: "Done",
       completionProof: null,
-      completionProofs: [],
+      completionProofs: ["https://res.cloudinary.com/dwoa1lqz1/proof.pdf"],
       revisionReason: null,
       revisionReturnedBy: null,
       revisionReturnedAt: null,
@@ -259,6 +259,49 @@ describe("project and task organization permissions", () => {
       takenToWorkAt: "2026-07-02T05:00:00.000Z",
       takenToWorkBy: "Reader",
     }));
+  });
+
+  it("blocks a reader from marking a task 'completed' with NO proof (empty completionProofs)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("reader1").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "employee",
+        allowedProjects: ["p1"],
+      });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "Own", organizationId: "org-1" });
+      // Task already in work, so the only thing left to reject is the empty proof.
+      await ctx.firestore().collection("tasks").doc("t-noproof").set({
+        projectId: "p1",
+        organizationId: "org-1",
+        title: "In work",
+        status: "in-progress",
+        subStatus: "in_work",
+        assigneeCompleted: false,
+        assigneeIds: ["reader1"],
+      });
+    });
+
+    const reader = testEnv.authenticatedContext("reader1").firestore();
+    const completePayload = (proofs) => ({
+      status: "in-progress",
+      subStatus: "completed",
+      assigneeCompleted: true,
+      completedAt: "2026-07-02T05:00:00.000Z",
+      completedBy: "Reader",
+      completionComment: "Done",
+      completionProof: null,
+      completionProofs: proofs,
+      revisionReason: null,
+      revisionReturnedBy: null,
+      revisionReturnedAt: null,
+    });
+    // Empty list → blocked (no evidence).
+    await assertFails(reader.collection("tasks").doc("t-noproof").update(completePayload([])));
+    // A non-empty proof list → allowed.
+    await assertSucceeds(reader.collection("tasks").doc("t-noproof").update(
+      completePayload(["https://res.cloudinary.com/dwoa1lqz1/proof.pdf"])
+    ));
   });
 
   it("blocks a reader from SKIPPING the flow (assigned → completed directly, without going through in_work)", async () => {

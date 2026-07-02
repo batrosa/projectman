@@ -259,6 +259,12 @@ service cloud.firestore {
             // No skipping the flow: can't jump straight from 'assigned' to
             // 'completed' (must pass through 'in_work' / "Взять в работу").
             && !(resource.data.subStatus == 'assigned' && request.resource.data.subStatus == 'completed')
+            // Completing REQUIRES at least one proof file. The UI already
+            // mandates a comment + ≥1 uploaded file (submitCompletionProof),
+            // so this only blocks a direct-SDK "completed" with no evidence.
+            && (request.resource.data.subStatus != 'completed'
+                || (request.resource.data.completionProofs is list
+                    && request.resource.data.completionProofs.size() > 0))
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'status',
               'assigneeCompleted',
