@@ -1854,6 +1854,30 @@ function setupRealtimeListeners() {
         });
         state.users = users;
         console.log('Users loaded:', users.length, 'for org:', orgId); // Debug
+
+        // Live-apply role/access changes to the CURRENT user without a re-login:
+        // if an owner/admin changed our orgRole or allowedProjects via the
+        // control panel, refresh state and re-apply UI permissions immediately.
+        if (state.currentUser) {
+            const me = users.find(u => u.id === state.currentUser.uid);
+            if (me) {
+                const newOrgRole = me.orgRole || 'employee';
+                const newRole = me.role || 'reader';
+                const changed = newOrgRole !== state.orgRole
+                    || newRole !== state.currentUser.role
+                    || JSON.stringify(me.allowedProjects || []) !== JSON.stringify(state.currentUser.allowedProjects || []);
+                state.orgRole = newOrgRole;
+                state.role = newRole;
+                state.currentUser.orgRole = newOrgRole;
+                state.currentUser.role = newRole;
+                state.currentUser.allowedProjects = me.allowedProjects || [];
+                if (changed) {
+                    applyRoleRestrictions();
+                    renderBoard();
+                }
+            }
+        }
+
         // Re-render projects and admin panel if user's access changes
         renderProjects();
         renderUsersList(); // Update admin panel - users list
@@ -4731,23 +4755,41 @@ async function loadUserRole(user) {
             // Set state orgRole
             state.orgRole = state.currentUser.orgRole;
 
-            // Load organization if user has one
+            // Load organization if user has one. Retry on transient read
+            // errors: right after a fresh Telegram sign-in the auth token can
+            // take a moment to propagate, and a single failed read here used to
+            // dump a real member onto the "join organization" screen (where
+            // re-entering the code then said "you're already in this org").
             if (userData.organizationId) {
-                try {
-                    const org = await getOrganization(userData.organizationId);
-                    if (org) {
-                        state.organization = org;
-                    } else {
-                        // Organization was deleted, clear user's org
-                        state.currentUser.organizationId = null;
-                        await db.collection('users').doc(user.uid).set({
-                            organizationId: null,
-                            orgRole: null
-                        }, { merge: true });
+                let org = null;
+                let readError = false;
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        org = await getOrganization(userData.organizationId);
+                        readError = false;
+                        break; // definitive result (org object or null)
+                    } catch (orgError) {
+                        readError = true;
+                        console.error(`Error loading organization (attempt ${attempt}/3):`, orgError);
+                        if (attempt < 3) await new Promise(r => setTimeout(r, 400 * attempt));
                     }
-                } catch (orgError) {
-                    console.error("Error loading organization:", orgError);
                 }
+
+                if (org) {
+                    state.organization = org;
+                } else if (!readError) {
+                    // The org document genuinely doesn't exist (deleted) — only
+                    // then clear membership. Never clear on a read error.
+                    state.currentUser.organizationId = null;
+                    await db.collection('users').doc(user.uid).set({
+                        organizationId: null,
+                        orgRole: null
+                    }, { merge: true });
+                }
+                // If readError persisted after retries, keep organizationId set
+                // and leave state.organization null; continueToAppOrOrg handles
+                // it without sending a known member to the join screen.
+                state.orgLoadFailed = Boolean(state.currentUser.organizationId && !state.organization);
             }
         }
 
@@ -4779,11 +4821,28 @@ async function loadUserRole(user) {
 
 // Continuation after the profile-name gate: route to org selection or the app.
 function continueToAppOrOrg() {
-    // Check if user needs to select/create organization
-    if (!state.currentUser.organizationId || !state.organization) {
+    // No organization at all → org selection screen (correct).
+    if (!state.currentUser.organizationId) {
         showOrgSelectionScreen();
         return;
     }
+
+    // Member whose organization failed to load (transient read error after a
+    // fresh sign-in). Do NOT send them to the join screen — that shows
+    // "you're already in this org". Retry once via a full reload; a
+    // sessionStorage guard prevents an infinite reload loop.
+    if (!state.organization) {
+        if (state.orgLoadFailed && !sessionStorage.getItem('orgReloadTried')) {
+            sessionStorage.setItem('orgReloadTried', '1');
+            setTimeout(() => window.location.reload(), 600);
+            return;
+        }
+        showOrgSelectionScreen();
+        return;
+    }
+
+    // Success — clear the reload guard and enter the app.
+    sessionStorage.removeItem('orgReloadTried');
 
     // User has organization, proceed to app
     finishAuth(state.currentUser.role);

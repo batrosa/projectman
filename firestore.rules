@@ -56,7 +56,14 @@ service cloud.firestore {
     // Функция: Проверка прав на проект
     function canViewProject(projectId) {
       let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-      return userData.allowedProjects == null || userData.allowedProjects.size() == 0 || projectId in userData.allowedProjects;
+      // A member with no explicit allow-list sees ALL projects by default;
+      // access is narrowed only when an admin sets allowedProjects. The
+      // !('allowedProjects' in userData) guard covers freshly joined members
+      // whose document has no allowedProjects field yet.
+      return !('allowedProjects' in userData)
+        || userData.allowedProjects == null
+        || userData.allowedProjects.size() == 0
+        || projectId in userData.allowedProjects;
     }
 
     // Функция: Проверка роли пользователя именно в указанной организации
