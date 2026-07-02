@@ -4617,6 +4617,10 @@ window.onTelegramAuth = async function onTelegramAuth(telegramUser) {
         } else if (elements.loginError) {
             elements.loginError.textContent = '';
         }
+        // Force LOCAL (IndexedDB) persistence at sign-in time so the session
+        // survives a full browser close — a belt-and-suspenders on top of the
+        // init-time setPersistence, in case that one raced or failed.
+        await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
         await firebase.auth().signInWithCustomToken(data.token);
     } catch (error) {
         console.error('Telegram login failed', error);
@@ -4708,6 +4712,7 @@ async function pollTelegramBotLogin(code, expiresAt, attemptId) {
         if (data.status === 'pending') continue;
         if (res.ok && data.ok && data.status === 'confirmed' && data.token) {
             setLoginErrorMessage('');
+            await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
             await firebase.auth().signInWithCustomToken(data.token);
             return;
         }
