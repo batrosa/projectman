@@ -3238,7 +3238,12 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
     // but new UI relies on subStatus mostly.
     if (newSubStatus === 'completed') {
         updates.assigneeCompleted = true;
-        updates.completedAt = new Date().toISOString();
+        // Server timestamp (not client Date) so the completion time can't be
+        // backdated via a direct SDK write — the rules enforce
+        // completedAt == request.time for the reader carve-out. All readers of
+        // completedAt (formatDateTime, parseDateValue, on-time calc) already
+        // handle Firestore Timestamps, so this is a transparent type change.
+        updates.completedAt = firebase.firestore.FieldValue.serverTimestamp();
 
         const completedByName = state.currentUser ?
             `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : 'Исполнитель';
