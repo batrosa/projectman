@@ -272,6 +272,40 @@ body {
     -webkit-text-fill-color: transparent;
 }
 
+.project-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+}
+
+.project-title-row h1 {
+    margin-bottom: 0;
+}
+
+/* Edit-project pencil — mirrors the task-card edit icon (subtle, hover to primary) */
+.edit-project-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.35rem;
+    font-size: 1.05rem;
+    line-height: 1;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, background 0.2s;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.edit-project-btn:hover {
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.12);
+}
+
 body.light-mode .project-info h1 {
     background: linear-gradient(to right, #0f172a, #475569);
     background-clip: text;

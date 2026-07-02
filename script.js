@@ -1504,6 +1504,7 @@ const elements = {
     emptyState: document.getElementById('empty-state'),
     projectTitle: document.getElementById('project-title'),
     projectDesc: document.getElementById('project-desc'),
+    editProjectBtn: document.getElementById('edit-project-btn'),
     addTaskBtn: document.getElementById('add-task-btn'),
     deleteProjectBtn: document.getElementById('delete-project-btn'),
 
@@ -2289,6 +2290,68 @@ async function deleteProject(id) {
     }
 }
 
+// Switch the (shared) project modal between "create" and "edit" appearance.
+function setProjectModalMode(mode) {
+    const modal = elements.projectModal;
+    if (!modal) return;
+    const title = modal.querySelector('.project-modal-title');
+    const subtitle = modal.querySelector('.project-modal-subtitle');
+    const icon = modal.querySelector('.project-modal-icon i');
+    const submitBtn = modal.querySelector('button[type="submit"]');
+    const isEdit = mode === 'edit';
+
+    if (title) title.textContent = isEdit ? 'Редактировать проект' : 'Новый проект';
+    if (subtitle) subtitle.textContent = isEdit
+        ? 'Измените название, описание или срок'
+        : 'Создайте проект для организации задач';
+    if (icon) icon.className = isEdit ? 'fa-solid fa-pen' : 'fa-solid fa-folder-plus';
+    if (submitBtn) {
+        submitBtn.textContent = '';
+        const ic = document.createElement('i');
+        ic.className = isEdit ? 'fa-solid fa-check' : 'fa-solid fa-plus';
+        submitBtn.appendChild(ic);
+        submitBtn.appendChild(document.createTextNode(isEdit ? ' Сохранить' : ' Создать проект'));
+    }
+}
+
+// Open the project modal pre-filled to EDIT an existing project.
+function openEditProjectModal(project) {
+    if (!project) return;
+    document.getElementById('p-id').value = project.id;
+    document.getElementById('p-name').value = project.name || '';
+    document.getElementById('p-desc').value = project.description || '';
+
+    const hasDeadlineCb = document.getElementById('p-has-deadline');
+    const deadlineGroup = document.getElementById('p-deadline-group');
+    const deadlineInput = document.getElementById('p-deadline');
+    if (project.deadline) {
+        if (hasDeadlineCb) hasDeadlineCb.checked = true;
+        if (deadlineGroup) deadlineGroup.classList.add('active');
+        if (deadlineInput) deadlineInput.value = String(project.deadline).slice(0, 10);
+    } else {
+        if (hasDeadlineCb) hasDeadlineCb.checked = false;
+        if (deadlineGroup) deadlineGroup.classList.remove('active');
+        if (deadlineInput) deadlineInput.value = '';
+    }
+
+    setProjectModalMode('edit');
+    elements.projectModal.classList.add('active');
+    closeSidebarOnMobile();
+}
+
+// Update an existing project (name/description/deadline). Owner/admin only —
+// the Firestore rule allows the update as long as organizationId is unchanged.
+function updateProject(id, { name, description, deadline }) {
+    if (!canManageProjects()) {
+        return Promise.reject(new Error('Недостаточно прав для редактирования проекта'));
+    }
+    return db.collection('projects').doc(id).update({
+        name: name,
+        description: description || '',
+        deadline: deadline || null,
+    });
+}
+
 function updateTask(id, data) {
     // Check permission - owner, admin, or moderator can update tasks
     if (!canManageTasks()) {
@@ -2404,6 +2467,7 @@ function renderBoard() {
         elements.projectDesc.textContent = 'или создайте новый';
         elements.addTaskBtn.disabled = true;
         elements.deleteProjectBtn.style.display = 'none';
+        if (elements.editProjectBtn) elements.editProjectBtn.style.display = 'none';
         if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'none';
         return;
     }
@@ -2447,6 +2511,13 @@ function renderBoard() {
         playClickSound();
         deleteProject(activeProject.id);
     } : null;
+    if (elements.editProjectBtn) {
+        elements.editProjectBtn.style.display = canManageProjects() ? 'inline-flex' : 'none';
+        elements.editProjectBtn.onclick = canManageProjects() ? () => {
+            playClickSound();
+            openEditProjectModal(activeProject);
+        } : null;
+    }
     if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'inline-flex';
 
     // Clear lists
@@ -4076,6 +4147,9 @@ function setupEventListeners() {
         playClickSound();
         closeSidebarOnMobile();
         elements.projectForm.reset();
+        document.getElementById('p-id').value = ''; // Clear ID for new project
+        document.getElementById('p-deadline-group').classList.remove('active');
+        setProjectModalMode('create');
         elements.projectModal.classList.add('active');
     });
 
@@ -4221,27 +4295,35 @@ function setupEventListeners() {
     elements.projectForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         playClickSound();
+        const projectId = document.getElementById('p-id').value;
+        const isEdit = !!projectId;
         const name = document.getElementById('p-name').value;
         const desc = document.getElementById('p-desc').value;
         const hasDeadline = document.getElementById('p-has-deadline').checked;
         const deadline = hasDeadline ? document.getElementById('p-deadline').value : null;
         const submitBtn = elements.projectForm.querySelector('button[type="submit"]');
+        const label = isEdit ? 'Сохранить' : 'Создать проект';
 
-        if (submitBtn) setButtonLoading(submitBtn, true, 'Создать проект');
+        if (submitBtn) setButtonLoading(submitBtn, true, label);
 
         try {
-            await createProject(name, desc, deadline);
+            if (isEdit) {
+                await updateProject(projectId, { name, description: desc, deadline });
+            } else {
+                await createProject(name, desc, deadline);
+            }
 
             // Reset form only after Firestore accepts the write.
             elements.projectModal.classList.remove('active');
             elements.projectForm.reset();
+            document.getElementById('p-id').value = '';
             document.getElementById('p-has-deadline').checked = false;
             document.getElementById('p-deadline-group').classList.remove('active');
         } catch (error) {
-            console.error("Error creating project:", error);
-            alert("❌ Ошибка при создании проекта:\n\n" + (error.message || error));
+            console.error("Error saving project:", error);
+            alert("❌ Ошибка при сохранении проекта:\n\n" + (error.message || error));
         } finally {
-            if (submitBtn) setButtonLoading(submitBtn, false, 'Создать проект');
+            if (submitBtn) setButtonLoading(submitBtn, false, label);
         }
     });
 

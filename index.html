@@ -17,8 +17,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=51.0" as="style">
-    <link rel="stylesheet" href="style.css?v=51.0">
+    <link rel="preload" href="style.css?v=52.0" as="style">
+    <link rel="stylesheet" href="style.css?v=52.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=44.0" defer></script>
+    <script src="script.js?v=45.0" defer></script>
 </head>
 
 <body>
@@ -879,7 +879,12 @@
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="project-info" id="active-project-info">
-                    <h1 id="project-title">Выберите проект</h1>
+                    <div class="project-title-row">
+                        <h1 id="project-title">Выберите проект</h1>
+                        <button id="edit-project-btn" class="edit-project-btn" title="Редактировать проект" style="display: none;">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                    </div>
                     <p id="project-desc">или создайте новый, чтобы начать работу</p>
                 </div>
                 <div class="actions">
@@ -991,6 +996,7 @@
             <p class="project-modal-subtitle">Создайте проект для организации задач</p>
 
             <form id="project-form" class="project-modal-form">
+                <input type="hidden" id="p-id">
                 <div class="project-form-group">
                     <label for="p-name">
                         <i class="fa-solid fa-pen"></i>
