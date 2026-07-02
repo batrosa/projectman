@@ -8211,7 +8211,11 @@ async function handleAgentChatSubmit(event) {
             // actually processed it — resending it later as prior "history"
             // context would misrepresent what the agent has seen.
             agentChatState.history.pop();
-            auth.signOut().catch((e) => console.error('agent-chat: signOut after 401 failed', e));
+            // Use the full logout() path (not a bare auth.signOut()) so presence
+            // heartbeat + Firestore listeners are torn down — otherwise they kept
+            // running after sign-out. Small delay so the notice is readable before
+            // logout() reloads the page back to the login screen.
+            setTimeout(() => { logout(); }, 1500);
         } else if (status === 400) {
             // Validation error from a well-formed client call "shouldn't"
             // happen, but defend anyway (e.g. a future server-side change

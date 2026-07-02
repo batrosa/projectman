@@ -233,10 +233,12 @@ async function extractInBackground(fileRef, { filename, url, mimeType }) {
     if (!isAllowedFileUrl(url)) {
       throw new Error("Blocked non-Cloudinary file URL");
     }
-    const fileResponse = await fetch(url);
-    if (!fileResponse.ok) throw new Error(`Failed to download file: ${fileResponse.status}`);
-    const arrayBuffer = await fileResponse.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    // Enforce the REAL file size server-side. validateUpload() only sees the
+    // client-declared sizeBytes; the actual Cloudinary asset could be larger.
+    // downloadCapped streams with a hard cap and aborts once exceeded, so an
+    // oversized asset can't exhaust the function's memory.
+    const buffer = await downloadCapped(url, MAX_FILE_BYTES);
+    const base64 = buffer.toString("base64");
 
     const result = await extractMaterialText({ filename, contentType: mimeType || "", base64 });
     await fileRef.update({
@@ -253,6 +255,42 @@ async function extractInBackground(fileRef, { filename, url, mimeType }) {
       extractionWarnings: [String(error.message || error)],
     });
   }
+}
+
+// Download a URL into a Buffer, enforcing a hard byte cap. Rejects early on a
+// too-large Content-Length, then streams and aborts the moment the accumulated
+// size exceeds maxBytes — so a lying/absent Content-Length can't still load an
+// unbounded body into memory.
+async function downloadCapped(url, maxBytes) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
+
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error(`File exceeds ${maxBytes} bytes (declared ${declared})`);
+  }
+
+  if (!res.body || typeof res.body.getReader !== "function") {
+    // No streaming body available — fall back to a buffered read, still capped.
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
+    return buf;
+  }
+
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try { await reader.cancel(); } catch { /* best-effort abort */ }
+      throw new Error(`File exceeds ${maxBytes} bytes (streamed)`);
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
 }
 
 async function parseJsonBody(request) {

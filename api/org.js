@@ -177,11 +177,16 @@ export default async function handler(request, response) {
       return response.status(403).json({ error: "Владелец не может покинуть организацию" });
     }
     try {
-      await db.collection("users").doc(decoded.uid).set(
+      // Atomic: clear membership + membersCount-- in one batch so a partial
+      // failure can't desync the counter from actual membership.
+      const batch = db.batch();
+      batch.set(
+        db.collection("users").doc(decoded.uid),
         { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
         { merge: true }
       );
-      await db.collection("organizations").doc(orgId).update({ membersCount: FieldValue.increment(-1) });
+      batch.update(db.collection("organizations").doc(orgId), { membersCount: FieldValue.increment(-1) });
+      await batch.commit();
       return response.status(200).json({ ok: true });
     } catch (error) {
       console.error("org leave: write failed", error);
@@ -222,11 +227,15 @@ export default async function handler(request, response) {
       return response.status(403).json({ error: "Администратор не может удалить другого администратора" });
     }
     try {
-      await db.collection("users").doc(targetUid).set(
+      // Atomic: clear the target's membership + membersCount-- in one batch.
+      const batch = db.batch();
+      batch.set(
+        db.collection("users").doc(targetUid),
         { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
         { merge: true }
       );
-      await db.collection("organizations").doc(orgId).update({ membersCount: FieldValue.increment(-1) });
+      batch.update(db.collection("organizations").doc(orgId), { membersCount: FieldValue.increment(-1) });
+      await batch.commit();
       return response.status(200).json({ ok: true });
     } catch (error) {
       console.error("org removeMember: write failed", error);

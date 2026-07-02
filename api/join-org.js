@@ -75,15 +75,20 @@ export default async function handler(request, response) {
   const orgData = orgDoc.data() || {};
 
   try {
-    await db.collection("users").doc(decoded.uid).set(
+    // Atomic: membership + membersCount++ in one WriteBatch, so a partial
+    // failure can't leave the user in the org without the count (or vice versa).
+    const batch = db.batch();
+    batch.set(
+      db.collection("users").doc(decoded.uid),
       // Clear any stale per-project restriction from a previous org so it can't
       // follow the user in and hide/scramble access in the new org.
       { organizationId: orgDoc.id, orgRole: "employee", allowedProjects: FieldValue.delete() },
       { merge: true }
     );
-    await db.collection("organizations").doc(orgDoc.id).update({
+    batch.update(db.collection("organizations").doc(orgDoc.id), {
       membersCount: FieldValue.increment(1),
     });
+    await batch.commit();
   } catch (error) {
     console.error("join-org: failed to write membership", error);
     return response.status(500).json({ error: "Не удалось вступить в организацию" });

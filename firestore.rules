@@ -179,14 +179,16 @@ service cloud.firestore {
       // орг-документ с любым inviteCode/plan/membersCount в обход этой логики.
       allow create: if false;
       // Обновлять: владелец/админ организации, БЕЗ переназначения ownerId
-      // («тихий» захват) и ТОЛЬКО поля name/settings. Серверные поля
-      // (inviteCode, plan, membersCount, createdAt) меняются лишь через Admin SDK
-      // (api/org, api/join-org) — иначе владелец мог бы сам выдать себе план,
-      // подобрать inviteCode или накрутить membersCount.
+      // («тихий» захват) и ТОЛЬКО поле name. Всё остальное — server-only через
+      // Admin SDK (api/org, api/join-org): inviteCode, plan, membersCount,
+      // createdAt И settings (settings.maxUsers задаётся при создании орг и
+      // менять его с клиента нельзя — иначе владелец обходит собственный лимит
+      // участников; единственный клиентский писатель settings, updateOrgLimit,
+      // мёртв и не вызывается).
       allow update: if request.auth != null
         && (resource.data.ownerId == request.auth.uid || isOrgOwnerOrAdmin(orgId))
         && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'settings']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
       // Удалять: только владелец организации. Admin может управлять организацией, но не удалять её.
       allow delete: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||

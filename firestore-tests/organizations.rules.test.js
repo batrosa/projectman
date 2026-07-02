@@ -182,8 +182,9 @@ describe("organizations privilege escalation", () => {
       await assertFails(adm.collection("organizations").doc("orgX").update({ ownerId: "adm" }));      // admin can't take over
       await assertFails(ownr.collection("organizations").doc("orgX").update({ ownerId: "someone" })); // even owner can't reassign via client
       await assertSucceeds(ownr.collection("organizations").doc("orgX").update({ name: "Renamed" })); // name edit still works
-      await assertSucceeds(ownr.collection("organizations").doc("orgX").update({ settings: { maxUsers: 50 } })); // settings edit ok
-      // Server-managed fields can no longer be forged from the client.
+      // Server-managed fields (incl. settings — settings.maxUsers self-bypass)
+      // can no longer be written from the client; only api/org (Admin SDK).
+      await assertFails(ownr.collection("organizations").doc("orgX").update({ settings: { maxUsers: 999 } }));
       await assertFails(ownr.collection("organizations").doc("orgX").update({ inviteCode: "HACKED" }));
       await assertFails(ownr.collection("organizations").doc("orgX").update({ plan: "enterprise" }));
       await assertFails(ownr.collection("organizations").doc("orgX").update({ membersCount: 999 }));
