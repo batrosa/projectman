@@ -17,8 +17,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=55.0" as="style">
-    <link rel="stylesheet" href="style.css?v=55.0">
+    <link rel="preload" href="style.css?v=56.0" as="style">
+    <link rel="stylesheet" href="style.css?v=56.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -856,10 +856,11 @@
                     <i class="fa-solid fa-list-check"></i> <span>Мои задачи</span>
                     <span id="my-tasks-count" class="my-tasks-count" style="display: none;">0</span>
                 </button>
-                <!-- Global AI agent entry point: visible to every authenticated user
-                     regardless of role/orgRole, per the "everyone in the org can access
-                     the agent" design decision from Task 14 (api/agent-chat.js) — this
-                     footer block is not touched by applyRoleRestrictions(). -->
+                <!-- Global AI agent entry point: available to EVERY role incl.
+                     Исполнитель (read-only). NB: `.secondary-btn` is hidden in
+                     read-only mode by CSS, so #agent-chat-btn MUST stay in the
+                     `body.read-only` exceptions list in style.css or readers lose
+                     the agent (that was a real bug). -->
                 <button id="agent-chat-btn" class="secondary-btn" style="width: 100%; justify-content: center;">
                     <i class="fa-solid fa-robot"></i> <span>ИИ-агент</span>
                 </button>
