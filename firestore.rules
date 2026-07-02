@@ -265,6 +265,12 @@ service cloud.firestore {
             && (request.resource.data.subStatus != 'completed'
                 || (request.resource.data.completionProofs is list
                     && request.resource.data.completionProofs.size() > 0))
+            // No backdating: on completion the client writes serverTimestamp(),
+            // which the emulator/server resolves to request.time. A direct-SDK
+            // write with an arbitrary/backdated completedAt is rejected, so it
+            // can't forge an on-time completion (wasOnTime → on-time XP bonus).
+            && (request.resource.data.subStatus != 'completed'
+                || request.resource.data.completedAt == request.time)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'status',
               'assigneeCompleted',

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
+import { serverTimestamp } from "@firebase/firestore";
 import { readFileSync } from "node:fs";
 
 let testEnv;
@@ -186,7 +187,8 @@ describe("project and task organization permissions", () => {
       status: "in-progress",
       subStatus: "completed",
       assigneeCompleted: true,
-      completedAt: "2026-07-02T01:00:00.000Z",
+      // Must be a server timestamp (== request.time) — see the no-backdate rule.
+      completedAt: serverTimestamp(),
       completedBy: "Reader",
       completionComment: "Done",
       completionProof: null,
@@ -287,7 +289,7 @@ describe("project and task organization permissions", () => {
       status: "in-progress",
       subStatus: "completed",
       assigneeCompleted: true,
-      completedAt: "2026-07-02T05:00:00.000Z",
+      completedAt: serverTimestamp(),
       completedBy: "Reader",
       completionComment: "Done",
       completionProof: null,
@@ -302,6 +304,51 @@ describe("project and task organization permissions", () => {
     await assertSucceeds(reader.collection("tasks").doc("t-noproof").update(
       completePayload(["https://res.cloudinary.com/dwoa1lqz1/proof.pdf"])
     ));
+  });
+
+  it("blocks a reader from BACKDATING completedAt (must equal server time, not a client-chosen value)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("reader1").set({
+        role: "reader",
+        organizationId: "org-1",
+        orgRole: "employee",
+        allowedProjects: ["p1"],
+      });
+      await ctx.firestore().collection("projects").doc("p1").set({ name: "Own", organizationId: "org-1" });
+      await ctx.firestore().collection("tasks").doc("t-backdate").set({
+        projectId: "p1",
+        organizationId: "org-1",
+        title: "In work",
+        status: "in-progress",
+        subStatus: "in_work",
+        assigneeCompleted: false,
+        assigneeIds: ["reader1"],
+      });
+    });
+
+    const reader = testEnv.authenticatedContext("reader1").firestore();
+    const base = {
+      status: "in-progress",
+      subStatus: "completed",
+      assigneeCompleted: true,
+      completedBy: "Reader",
+      completionComment: "Done",
+      completionProof: null,
+      completionProofs: ["https://res.cloudinary.com/dwoa1lqz1/proof.pdf"],
+      revisionReason: null,
+      revisionReturnedBy: null,
+      revisionReturnedAt: null,
+    };
+    // A client-chosen (backdated) completedAt is rejected — it is not request.time.
+    await assertFails(reader.collection("tasks").doc("t-backdate").update({
+      ...base,
+      completedAt: "2020-01-01T00:00:00.000Z",
+    }));
+    // A real server timestamp (resolves to request.time) is accepted.
+    await assertSucceeds(reader.collection("tasks").doc("t-backdate").update({
+      ...base,
+      completedAt: serverTimestamp(),
+    }));
   });
 
   it("blocks a reader from SKIPPING the flow (assigned → completed directly, without going through in_work)", async () => {
@@ -325,13 +372,13 @@ describe("project and task organization permissions", () => {
     });
 
     const reader = testEnv.authenticatedContext("reader1").firestore();
-    // All "allowed" keys, so the ONLY reason this fails is the new no-skip guard
-    // (old subStatus 'assigned' → new subStatus 'completed').
+    // All "allowed" keys + valid proof + server timestamp, so the ONLY reason
+    // this fails is the new no-skip guard (old 'assigned' → new 'completed').
     await assertFails(reader.collection("tasks").doc("t-skip").update({
       status: "in-progress",
       subStatus: "completed",
       assigneeCompleted: true,
-      completedAt: "2026-07-02T05:00:00.000Z",
+      completedAt: serverTimestamp(),
       completedBy: "Reader",
       completionComment: "Done fast",
       completionProof: null,
