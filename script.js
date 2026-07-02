@@ -1613,6 +1613,13 @@ function init() {
                             }
                         });
                     });
+
+                    // Periodic update check (every hour). MUST be inside this
+                    // .then so `registration` is in scope — the old version ran
+                    // registration.update() from an outer setInterval where
+                    // `registration` was undefined, throwing a ReferenceError,
+                    // so the hourly auto-update never actually worked.
+                    setInterval(() => { registration.update(); }, 60 * 60 * 1000);
                 })
                 .catch(err => {
                     console.log('ServiceWorker registration failed: ', err);
@@ -1622,11 +1629,6 @@ function init() {
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 window.location.reload();
             });
-
-            // Periodic update check (every hour)
-            setInterval(() => {
-                registration.update();
-            }, 60 * 60 * 1000);
         });
     }
 }
@@ -3911,18 +3913,18 @@ async function updateMyPresence() {
     }
 }
 
+// Named so stopPresenceHeartbeat can remove them — anonymous listeners couldn't
+// be removed, so each start/stop/start cycle used to pile up duplicate handlers.
+function onPresenceVisibilityChange() {
+    if (document.visibilityState === 'visible') updateMyPresence();
+}
+
 function startPresenceHeartbeat() {
-    if (presenceIntervalId) return;
+    if (presenceIntervalId) return; // already running — don't double-add
     // Do an immediate update, then keep alive
     updateMyPresence();
     presenceIntervalId = setInterval(updateMyPresence, PRESENCE_HEARTBEAT_MS);
-
-    // Also update when tab becomes visible again
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            updateMyPresence();
-        }
-    });
+    document.addEventListener('visibilitychange', onPresenceVisibilityChange);
     window.addEventListener('focus', updateMyPresence);
 }
 
@@ -3931,6 +3933,8 @@ function stopPresenceHeartbeat() {
         clearInterval(presenceIntervalId);
         presenceIntervalId = null;
     }
+    document.removeEventListener('visibilitychange', onPresenceVisibilityChange);
+    window.removeEventListener('focus', updateMyPresence);
 }
 
 // Drag and Drop - DISABLED
@@ -5489,10 +5493,12 @@ function handleAssigneeSearch(e) {
     const dropdown = document.getElementById('assignee-dropdown');
     if (!searchInput || !dropdown) return;
 
-    // Enable scrolling inside dropdown on mobile
-    dropdown.addEventListener('touchmove', (e) => {
-        e.stopPropagation();
-    }, { passive: true });
+    // Enable scrolling inside dropdown on mobile. Bind ONCE — handleAssigneeSearch
+    // runs on every input/focus, and a fresh listener each time piled up.
+    if (dropdown.dataset.touchmoveBound !== '1') {
+        dropdown.addEventListener('touchmove', (e) => { e.stopPropagation(); }, { passive: true });
+        dropdown.dataset.touchmoveBound = '1';
+    }
 
     const query = searchInput.value.toLowerCase().trim();
 
