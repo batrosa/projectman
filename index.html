@@ -17,8 +17,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=52.0" as="style">
-    <link rel="stylesheet" href="style.css?v=52.0">
+    <link rel="preload" href="style.css?v=53.0" as="style">
+    <link rel="stylesheet" href="style.css?v=53.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=45.0" defer></script>
+    <script src="script.js?v=46.0" defer></script>
 </head>
 
 <body>
@@ -1861,55 +1861,17 @@
 
                 <!-- Project Access Tab -->
                 <div id="admin-access-tab" class="admin-tab-content">
-                    <div style="margin-bottom: 1.5rem;">
-                        <h3 style="margin-bottom: 0.5rem;">Управление доступом к проектам</h3>
+                    <div style="margin-bottom: 1.25rem;">
+                        <h3 style="margin-bottom: 0.5rem;">Доступ к проектам</h3>
                         <p style="color: var(--text-secondary); font-size: 0.9rem;">
-                            Выберите пользователя и настройте, какие проекты он может видеть
+                            Нажмите на проект, чтобы увидеть, кто из участников его видит.
+                            Кнопками «Добавить» / «Убрать» перемещайте участников между списками.
+                            Владельцы и администраторы видят все проекты по своей роли.
                         </p>
                     </div>
 
-                    <div class="form-group">
-                        <label for="access-user-select">Пользователь</label>
-                        <select id="access-user-select"
-                            style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); color: var(--text); font-size: 0.95rem;">
-                            <option value="">Выберите пользователя...</option>
-                        </select>
-                    </div>
-
-                    <div id="user-access-info" style="display: none;">
-                        <div
-                            style="background: var(--bg-secondary); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;">
-                            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                                <div class="avatar" style="width: 48px; height: 48px; font-size: 1.2rem;"
-                                    id="selected-user-avatar">AB</div>
-                                <div>
-                                    <h4 id="selected-user-name" style="margin: 0;">Имя Фамилия</h4>
-                                    <p id="selected-user-email"
-                                        style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
-                                        email@example.com</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                                <input type="checkbox" id="allow-all-projects" style="width: auto;">
-                                <span>Доступ ко всем проектам</span>
-                            </label>
-                        </div>
-
-                        <div id="project-selection" style="display: block;">
-                            <label style="margin-bottom: 0.75rem; display: block; font-weight: 500;">Доступные
-                                проекты:</label>
-                            <div id="projects-checkboxes" class="projects-checkboxes">
-                                <!-- Project checkboxes will be loaded here -->
-                            </div>
-                        </div>
-
-                        <button id="save-access-btn" class="primary-btn"
-                            style="width: 100%; justify-content: center; margin-top: 1.5rem;">
-                            <i class="fa-solid fa-save"></i> Сохранить настройки доступа
-                        </button>
+                    <div id="project-access-list" class="project-access-list">
+                        <!-- Project access accordion is rendered here -->
                     </div>
                 </div>
 

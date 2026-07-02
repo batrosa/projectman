@@ -1571,11 +1571,7 @@ const elements = {
     adminPanelModal: document.getElementById('admin-panel-modal'),
     usersList: document.getElementById('users-list'),
     usersCount: document.getElementById('users-count'),
-    accessUserSelect: document.getElementById('access-user-select'),
-    allowAllProjects: document.getElementById('allow-all-projects'),
-    projectsCheckboxes: document.getElementById('projects-checkboxes'),
-    saveAccessBtn: document.getElementById('save-access-btn'),
-    userAccessInfo: document.getElementById('user-access-info'),
+    projectAccessList: document.getElementById('project-access-list'),
 
     // Admin Panel - Logins / Online
     loginUsersList: document.getElementById('login-users-list'),
@@ -1915,7 +1911,7 @@ function setupRealtimeListeners() {
         // Re-render projects and admin panel if user's access changes
         renderProjects();
         renderUsersList(); // Update admin panel - users list
-        updateAccessUserSelect(); // Update admin panel - access dropdown
+        renderProjectAccessTab(); // Update admin panel - project access (by project)
         renderLoginHistoryTab(); // Update admin panel - logins/online
         renderAdminUsersStatsPanel(); // Update admin panel - users stats
     }, error => {
@@ -4569,6 +4565,9 @@ function setupEventListeners() {
             document.getElementById(`admin-${tabName}-tab`).classList.add('active');
 
             // Ensure tab-specific content is fresh
+            if (tabName === 'access') {
+                renderProjectAccessTab();
+            }
             if (tabName === 'logins') {
                 renderLoginHistoryTab();
             }
@@ -4617,64 +4616,8 @@ function setupEventListeners() {
         });
     }
 
-    // Access user select
-    if (elements.accessUserSelect) {
-        elements.accessUserSelect.addEventListener('change', (e) => {
-            const userId = e.target.value;
-            if (userId) {
-                elements.userAccessInfo.style.display = 'block';
-
-                const user = state.users.find(u => u.id === userId);
-                if (user) {
-                    const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
-                    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Без имени';
-
-                    const avatarEl = document.getElementById('selected-user-avatar');
-                    if (user.profilePhotoUrl) {
-                        avatarEl.innerHTML = `<img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
-                        avatarEl.style.overflow = 'hidden';
-                    } else {
-                        avatarEl.textContent = initials.toUpperCase() || 'U';
-                        avatarEl.style.overflow = '';
-                    }
-                    document.getElementById('selected-user-name').textContent = fullName;
-                    document.getElementById('selected-user-email').textContent = user.email;
-
-                    const hasAllAccess = !user.allowedProjects || user.allowedProjects.length === 0;
-                    elements.allowAllProjects.checked = hasAllAccess;
-
-                    // Always hide project list by default, show only when admin unchecks
-                    elements.projectsCheckboxes.parentElement.style.display = hasAllAccess ? 'none' : 'block';
-
-                    renderProjectCheckboxes(userId);
-                }
-            } else {
-                elements.userAccessInfo.style.display = 'none';
-            }
-        });
-    }
-
-    // Allow all projects checkbox
-    if (elements.allowAllProjects) {
-        elements.allowAllProjects.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                elements.projectsCheckboxes.parentElement.style.display = 'none';
-            } else {
-                elements.projectsCheckboxes.parentElement.style.display = 'block';
-                // Uncheck all project checkboxes when toggling off "all projects"
-                const checkboxes = elements.projectsCheckboxes.querySelectorAll('input[type="checkbox"]');
-                checkboxes.forEach(cb => cb.checked = false);
-            }
-        });
-    }
-
-    // Save access button
-    if (elements.saveAccessBtn) {
-        elements.saveAccessBtn.addEventListener('click', () => {
-            playClickSound();
-            saveUserAccess();
-        });
-    }
+    // Project access tab is organized by project; it renders on tab-open and on
+    // every users snapshot (see renderProjectAccessTab / the users listener).
 }
 
 
@@ -5171,9 +5114,8 @@ function setupAdminPanel() {
     // Just render if we have users
     if (state.users.length > 0) {
         renderUsersList();
-        updateAccessUserSelect();
+        renderProjectAccessTab();
         renderLoginHistoryTab();
-        renderAdminUsersStatsPanel();
         renderAdminUsersStatsPanel();
     }
 }
@@ -6203,87 +6145,241 @@ function checkReminders(tasks) {
     });
 }
 
-function updateAccessUserSelect() {
-    if (!elements.accessUserSelect) return;
+// ========================================
+// PROJECT ACCESS CONTROL (organized BY PROJECT)
+// ========================================
+// Model: users/{uid}.allowedProjects is the list of project ids a member may
+// see. An ABSENT or EMPTY array means "all projects" (default for freshly
+// joined members). owner/admin always see everything by role (see
+// getFilteredProjects + firestore rules), so their array is irrelevant and we
+// don't manage them here.
+//
+// Because [] already means "all", we can't express "no access at all" with an
+// empty array — clearing a member's last project would flip them to full
+// access. We store a sentinel id (matches no real project) to mean "none".
+const NO_ACCESS_SENTINEL = '__no_access__';
 
-    elements.accessUserSelect.innerHTML = '<option value="">Выберите пользователя...</option>';
+// Which project rows are expanded — preserved across live re-renders so the
+// accordion doesn't collapse every time an access change streams back.
+const expandedAccessProjects = new Set();
 
-    state.users.forEach(user => {
-        let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
-        if (!fullName && user.displayName) fullName = user.displayName;
-        if (!fullName && user.email) fullName = user.email.split('@')[0];
-        if (!fullName) fullName = 'Без имени';
+const ACCESS_ROLE_LABELS = {
+    owner: 'Владелец',
+    admin: 'Администратор',
+    moderator: 'Модератор',
+    employee: 'Сотрудник',
+    reader: 'Наблюдатель',
+};
 
-        const option = document.createElement('option');
-        option.value = user.id;
-        option.textContent = `${fullName} (${user.email || 'нет email'})`;
-        elements.accessUserSelect.appendChild(option);
-    });
+function accessRoleLabel(orgRole) {
+    return ACCESS_ROLE_LABELS[orgRole] || 'Сотрудник';
 }
 
-function renderProjectCheckboxes(selectedUserId) {
-    if (!elements.projectsCheckboxes) return;
+// owner/admin see every project by role — access list doesn't apply to them.
+function hasFullAccessByRole(user) {
+    return ['owner', 'admin'].includes(user.orgRole);
+}
 
-    const user = state.users.find(u => u.id === selectedUserId);
+// Does this member currently have access to the given project?
+function userHasProjectAccess(user, projectId) {
+    if (hasFullAccessByRole(user)) return true;
+    const ap = user.allowedProjects;
+    if (!Array.isArray(ap) || ap.length === 0) return true; // empty/absent = all
+    return ap.includes(projectId);
+}
+
+// A member's effective EXPLICIT list of real project ids: expands the "all"
+// default into every current project id and drops the sentinel + stale ids.
+function effectiveAllowedIds(user) {
+    const ap = user.allowedProjects;
+    if (!Array.isArray(ap) || ap.length === 0) {
+        return state.projects.map(p => p.id); // "all" -> explicit full list
+    }
+    return ap.filter(id => id !== NO_ACCESS_SENTINEL && state.projects.some(p => p.id === id));
+}
+
+async function writeAllowedProjects(userId, ids) {
+    try {
+        // set-merge touching only allowedProjects satisfies isOrgUserManagerUpdate.
+        await db.collection('users').doc(userId).set({ allowedProjects: ids }, { merge: true });
+        // The users onSnapshot listener re-renders the tab automatically.
+    } catch (error) {
+        console.error('Error updating project access:', error);
+        alert('Ошибка при изменении доступа: ' + (error.message || error));
+    }
+}
+
+async function grantProjectAccess(userId, projectId) {
+    const user = state.users.find(u => u.id === userId);
     if (!user) return;
+    const ids = effectiveAllowedIds(user);
+    if (!ids.includes(projectId)) ids.push(projectId);
+    await writeAllowedProjects(userId, ids);
+}
 
-    elements.projectsCheckboxes.innerHTML = '';
+async function revokeProjectAccess(userId, projectId) {
+    const user = state.users.find(u => u.id === userId);
+    if (!user) return;
+    let ids = effectiveAllowedIds(user).filter(id => id !== projectId);
+    // An empty list would read back as "all" — store the sentinel to mean "none".
+    if (ids.length === 0) ids = [NO_ACCESS_SENTINEL];
+    await writeAllowedProjects(userId, ids);
+}
+
+function accessUserDisplayName(user) {
+    let name = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!name && user.displayName) name = user.displayName;
+    if (!name && user.email) name = user.email.split('@')[0];
+    return name || 'Без имени';
+}
+
+function accessUserInitials(user) {
+    const init = (((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '')).toUpperCase();
+    return init || (accessUserDisplayName(user)[0] || 'U').toUpperCase();
+}
+
+// One member row (avatar + name + role + action) built via DOM — never
+// innerHTML with user-controlled data.
+function buildAccessMemberRow(user, projectId, mode) {
+    const row = document.createElement('div');
+    row.className = 'access-member-row';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'access-member-avatar';
+    if (user.profilePhotoUrl) {
+        const img = document.createElement('img');
+        img.src = sanitizeAttachmentUrl(user.profilePhotoUrl);
+        img.alt = '';
+        avatar.appendChild(img);
+    } else {
+        avatar.textContent = accessUserInitials(user);
+    }
+    row.appendChild(avatar);
+
+    const info = document.createElement('div');
+    info.className = 'access-member-info';
+    const nm = document.createElement('div');
+    nm.className = 'access-member-name';
+    nm.textContent = accessUserDisplayName(user);
+    const role = document.createElement('div');
+    role.className = 'access-member-role';
+    role.textContent = accessRoleLabel(user.orgRole);
+    info.appendChild(nm);
+    info.appendChild(role);
+    row.appendChild(info);
+
+    if (mode === 'full') {
+        const badge = document.createElement('span');
+        badge.className = 'access-full-badge';
+        badge.textContent = 'полный доступ';
+        row.appendChild(badge);
+    } else {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = mode === 'has' ? 'access-remove-btn' : 'access-add-btn';
+        btn.textContent = mode === 'has' ? '− Убрать' : '+ Добавить';
+        btn.onclick = () => {
+            playClickSound();
+            if (mode === 'has') revokeProjectAccess(user.id, projectId);
+            else grantProjectAccess(user.id, projectId);
+        };
+        row.appendChild(btn);
+    }
+    return row;
+}
+
+function buildAccessColumn(kind, members, projectId) {
+    const col = document.createElement('div');
+    col.className = 'access-col';
+
+    const head = document.createElement('div');
+    head.className = 'access-col-head ' + (kind === 'has' ? 'has' : 'no');
+    head.textContent = (kind === 'has' ? 'Есть доступ' : 'Нет доступа') + ` (${members.length})`;
+    col.appendChild(head);
+
+    if (members.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'access-col-empty';
+        empty.textContent = kind === 'has' ? 'Никто' : 'Все имеют доступ';
+        col.appendChild(empty);
+        return col;
+    }
+
+    members.forEach(u => {
+        const mode = kind === 'has' ? (hasFullAccessByRole(u) ? 'full' : 'has') : 'add';
+        col.appendChild(buildAccessMemberRow(u, projectId, mode));
+    });
+    return col;
+}
+
+// Render the whole "Доступ к проектам" tab: one accordion row per project, each
+// expanding into "has access" / "no access" columns.
+function renderProjectAccessTab() {
+    const container = elements.projectAccessList;
+    if (!container) return;
+    container.innerHTML = '';
 
     if (state.projects.length === 0) {
-        elements.projectsCheckboxes.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">Нет доступных проектов</p>';
+        const p = document.createElement('p');
+        p.className = 'access-empty';
+        p.textContent = 'В организации пока нет проектов.';
+        container.appendChild(p);
         return;
     }
 
-    const allowedProjects = user.allowedProjects || [];
-    // Only check projects that are explicitly in the allowedProjects array
-    // If user has all access (empty array), checkboxes will be unchecked when "all projects" is toggled off
+    const members = [...state.users].sort((a, b) =>
+        accessUserDisplayName(a).localeCompare(accessUserDisplayName(b), 'ru'));
 
     state.projects.forEach(project => {
-        // Only check if project is explicitly in the list (not when hasAllAccess)
-        const isChecked = allowedProjects.includes(project.id);
+        const withAccess = [];
+        const withoutAccess = [];
+        members.forEach(u => {
+            if (userHasProjectAccess(u, project.id)) withAccess.push(u);
+            else withoutAccess.push(u);
+        });
 
-        const item = document.createElement('div');
-        item.className = 'project-checkbox-item';
-        item.innerHTML = `
-            <input type="checkbox" id="project-${project.id}" ${isChecked ? 'checked' : ''} data-project-id="${project.id}">
-            <label for="project-${project.id}">${escapeHtml(project.name)}</label>
-        `;
-        elements.projectsCheckboxes.appendChild(item);
-    });
-}
+        const isOpen = expandedAccessProjects.has(project.id);
+        const card = document.createElement('div');
+        card.className = 'access-project-card';
 
-async function saveUserAccess() {
-    const selectedUserId = elements.accessUserSelect.value;
-    if (!selectedUserId) {
-        alert('Выберите пользователя');
-        return;
-    }
+        const header = document.createElement('button');
+        header.type = 'button';
+        header.className = 'access-project-header' + (isOpen ? ' open' : '');
 
-    const allowAll = elements.allowAllProjects.checked;
-    let allowedProjects = [];
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'access-project-title';
+        const chev = document.createElement('i');
+        chev.className = 'fa-solid fa-chevron-right access-chevron';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'access-project-name';
+        nameSpan.textContent = project.name;
+        titleWrap.appendChild(chev);
+        titleWrap.appendChild(nameSpan);
 
-    if (!allowAll) {
-        // Get checked projects
-        const checkboxes = elements.projectsCheckboxes.querySelectorAll('input[type="checkbox"]:checked');
-        allowedProjects = Array.from(checkboxes).map(cb => cb.dataset.projectId);
+        const count = document.createElement('span');
+        count.className = 'access-project-count';
+        count.textContent = `${withAccess.length} из ${members.length}`;
 
-        if (allowedProjects.length === 0) {
-            if (!confirm('Вы не выбрали ни одного проекта. Пользователь не сможет видеть никакие проекты. Продолжить?')) {
-                return;
-            }
+        header.appendChild(titleWrap);
+        header.appendChild(count);
+        header.onclick = () => {
+            playClickSound();
+            if (expandedAccessProjects.has(project.id)) expandedAccessProjects.delete(project.id);
+            else expandedAccessProjects.add(project.id);
+            renderProjectAccessTab();
+        };
+        card.appendChild(header);
+
+        if (isOpen) {
+            const body = document.createElement('div');
+            body.className = 'access-project-body';
+            body.appendChild(buildAccessColumn('has', withAccess, project.id));
+            body.appendChild(buildAccessColumn('no', withoutAccess, project.id));
+            card.appendChild(body);
         }
-    }
 
-    try {
-        await db.collection('users').doc(selectedUserId).set({
-            allowedProjects: allowedProjects
-        }, { merge: true });
-
-        alert('Настройки доступа сохранены!');
-    } catch (error) {
-        console.error('Error saving access:', error);
-        alert('Ошибка при сохранении: ' + error.message);
-    }
+        container.appendChild(card);
+    });
 }
 
 // ========================================

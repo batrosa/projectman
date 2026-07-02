@@ -306,6 +306,213 @@ body {
     background: rgba(99, 102, 241, 0.12);
 }
 
+/* ===== Project access control (admin panel — organized by project) ===== */
+.project-access-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.access-empty,
+.access-col-empty {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 0.35rem 0.1rem;
+}
+
+.access-project-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--card-bg);
+}
+
+.access-project-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-primary);
+    font: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.access-project-header:hover {
+    background: rgba(99, 102, 241, 0.06);
+}
+
+.access-project-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.access-chevron {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+.access-project-header.open .access-chevron {
+    transform: rotate(90deg);
+}
+
+.access-project-name {
+    font-weight: 600;
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.access-project-count {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: var(--bg-color);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+}
+
+.access-project-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    padding: 0 1.25rem 1.25rem;
+}
+
+.access-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.access-col-head {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding-bottom: 0.35rem;
+    border-bottom: 2px solid var(--border);
+}
+
+.access-col-head.has {
+    color: var(--success);
+    border-color: rgba(16, 185, 129, 0.35);
+}
+
+.access-col-head.no {
+    color: var(--text-secondary);
+}
+
+.access-member-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem;
+    border-radius: 10px;
+    background: var(--bg-color);
+}
+
+.access-member-avatar {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+    overflow: hidden;
+}
+
+.access-member-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.access-member-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.access-member-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.access-member-role {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.access-add-btn,
+.access-remove-btn {
+    flex-shrink: 0;
+    border: none;
+    border-radius: 8px;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.access-add-btn {
+    background: rgba(99, 102, 241, 0.14);
+    color: var(--primary);
+}
+
+.access-add-btn:hover {
+    background: var(--primary);
+    color: #fff;
+}
+
+.access-remove-btn {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger);
+}
+
+.access-remove-btn:hover {
+    background: var(--danger);
+    color: #fff;
+}
+
+.access-full-badge {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--success);
+    background: rgba(16, 185, 129, 0.14);
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+}
+
+@media (max-width: 640px) {
+    .access-project-body {
+        grid-template-columns: 1fr;
+    }
+}
+
 body.light-mode .project-info h1 {
     background: linear-gradient(to right, #0f172a, #475569);
     background-clip: text;
