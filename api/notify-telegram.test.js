@@ -123,42 +123,34 @@ describe("POST /api/notify-telegram", () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it("allows a legacy caller with no organization to notify a legacy recipient with no organization (self-assignment, pre-org accounts)", async () => {
+  it("rejects (403) a caller who has no organization", async () => {
     state.db = makeFakeDb({
       [CALLER_UID]: {},
       recipient_no_org: { telegramChatId: "555" },
     });
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, result: { message_id: 7 } }),
-    }));
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const res = mockResponse();
     await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "555", text: "hello" } }, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ ok: true, messageId: 7 });
+    expect(res.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("allows a no-organization caller to notify a recipient who belongs to an organization (org membership not required)", async () => {
+  it("rejects (403) a no-organization caller even when the recipient has an organization", async () => {
     state.db = makeFakeDb({
       [CALLER_UID]: {},
       recipient_in_org: { organizationId: CALLER_ORG, telegramChatId: "123" },
     });
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, result: { message_id: 5 } }),
-    }));
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const res = mockResponse();
     await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "123", text: "hello" } }, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("validates required fields before calling Telegram", async () => {
@@ -187,20 +179,16 @@ describe("POST /api/notify-telegram", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("allows notifying a recipient in a different organization (org membership no longer required)", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, result: { message_id: 9 } }),
-    }));
+  it("rejects (403) notifying a recipient in a DIFFERENT organization (tenant isolation)", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const res = mockResponse();
     await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "999", text: "hello" } }, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ ok: true, messageId: 9 });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toMatchObject({ ok: false, error: "Recipient is not in your organization" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("returns Telegram error details when sendMessage is rejected", async () => {

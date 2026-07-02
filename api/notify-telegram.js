@@ -36,9 +36,11 @@ export default async function handler(request, response) {
         return response.status(401).json({ error: 'Unauthorized' });
     }
 
+    let callerOrgId = null;
     try {
         const userDoc = await adminDb().collection('users').doc(decoded.uid).get();
         if (!userDoc.exists) return response.status(403).json({ error: 'Unknown caller' });
+        callerOrgId = userDoc.data().organizationId || null;
     } catch (error) {
         console.error('notify-telegram: failed to load caller user doc', error);
         return response.status(500).json({ ok: false, error: 'Failed to verify caller' });
@@ -57,15 +59,13 @@ export default async function handler(request, response) {
         return response.status(400).json({ error: 'chatId and text are required' });
     }
 
-    // Anti-open-relay guard: the caller (already authenticated + confirmed to be
-    // a real ProjectMan user above) may only message a Telegram chatId that
-    // belongs to a *registered* ProjectMan user. We deliberately do NOT require
-    // the recipient to share the caller's organizationId. In production the vast
-    // majority of real team members were never migrated into an organization
-    // (organizationId is null on their accounts) while the owner logs in under a
-    // Telegram account tied to a different org id — so an org-equality check
-    // silently 403'd every task/status notification. Requiring a known
-    // recipient still prevents relaying arbitrary text to unknown chat ids.
+    // Anti-open-relay + tenant isolation: the caller may only message a Telegram
+    // chatId that belongs to a registered ProjectMan user IN THE CALLER'S OWN
+    // organization. Every legitimate notification targets an org member (task
+    // assignee, task creator, or the caller themselves), so this is the correct
+    // scope and stops an authenticated user from relaying text to members of
+    // OTHER organizations. (The old "any registered user" rule was a workaround
+    // for legacy null-org accounts; the org data is now clean.)
     let recipientSnap;
     try {
         recipientSnap = await adminDb()
@@ -79,6 +79,10 @@ export default async function handler(request, response) {
     }
     if (recipientSnap.empty) {
         return response.status(403).json({ ok: false, error: 'Unknown recipient' });
+    }
+    const recipientOrgId = recipientSnap.docs[0].data().organizationId || null;
+    if (!callerOrgId || recipientOrgId !== callerOrgId) {
+        return response.status(403).json({ ok: false, error: 'Recipient is not in your organization' });
     }
 
     const parseMode = body.parseMode ? String(body.parseMode) : undefined;
