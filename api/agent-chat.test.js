@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { cleanAnswer, normalizeHistory, compactContext } from "./agent-chat.js";
+import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor } from "./agent-chat.js";
 
 const CONTEXT_CHAR_LIMIT = 45000;
 
@@ -655,5 +655,31 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(res.body.answer).toContain("Не удалось загрузить данные организации");
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
+  });
+});
+
+describe("accessibleProjectIdsFor", () => {
+  it("returns null (all projects) for owner and admin regardless of allowedProjects", () => {
+    expect(accessibleProjectIdsFor({ orgRole: "owner", allowedProjects: ["p1"] })).toBeNull();
+    expect(accessibleProjectIdsFor({ orgRole: "admin", allowedProjects: ["__no_access__"] })).toBeNull();
+  });
+
+  it("returns null when userData is missing", () => {
+    expect(accessibleProjectIdsFor(null)).toBeNull();
+    expect(accessibleProjectIdsFor(undefined)).toBeNull();
+  });
+
+  it("treats empty/absent allowedProjects as all projects (null)", () => {
+    expect(accessibleProjectIdsFor({ orgRole: "employee" })).toBeNull();
+    expect(accessibleProjectIdsFor({ orgRole: "employee", allowedProjects: [] })).toBeNull();
+  });
+
+  it("restricts a member to their explicit project list", () => {
+    expect(accessibleProjectIdsFor({ orgRole: "employee", allowedProjects: ["p1", "p2"] })).toEqual(["p1", "p2"]);
+  });
+
+  it("drops the sentinel: a lone sentinel means access to NO projects ([])", () => {
+    expect(accessibleProjectIdsFor({ orgRole: "employee", allowedProjects: ["__no_access__"] })).toEqual([]);
+    expect(accessibleProjectIdsFor({ orgRole: "reader", allowedProjects: ["p1", "__no_access__"] })).toEqual(["p1"]);
   });
 });

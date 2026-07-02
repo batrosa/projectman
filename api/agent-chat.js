@@ -13,6 +13,9 @@ const MAX_MESSAGE_CHARS = 4000;
 // mid-word (e.g. a 20-row project table). 2000 comfortably fits a detailed
 // Markdown table without a large cost/latency hit.
 const MAX_OUTPUT_TOKENS = 2000;
+// Mirrors the frontend access model (see script.js): users.allowedProjects with
+// an empty/absent array means "all projects"; a lone sentinel id means "none".
+const NO_ACCESS_SENTINEL = "__no_access__";
 const OFF_TOPIC_RESPONSE =
   "Я отвечаю только по ProjectMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
 
@@ -22,9 +25,9 @@ const SYSTEM_PROMPT_RULES = [
   "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
   `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
   "По умолчанию отвечай кратко (1-3 тезиса), простым нетехническим языком. Но если пользователь просит подробности, список, таблицу или схему — дай полный, хорошо структурированный ответ и НЕ сокращай данные.",
-  "Для оформления используй Markdown. Табличные данные (объекты со сроками/статусами/суммами, сравнения, перечни задач по колонкам) ОБЯЗАТЕЛЬНО оформляй Markdown-таблицей: строка заголовков, затем строка-разделитель из дефисов (| --- | --- |), затем строки данных. Для перечислений используй списки (- пункт или 1. пункт), для акцентов — **жирный**. НЕ вставляй ссылки вида [текст](url) и изображения.",
+  "Обычные ответы пиши обычным текстом или короткими пунктами. Таблицу (Markdown: строка заголовков, строка-разделитель | --- | --- |, строки данных) делай ТОЛЬКО когда она действительно уместна: когда перечисляешь НЕСКОЛЬКО (2+) однотипных объектов с общими полями — список задач с исполнителями/сроками/статусами, сравнение проектов и т.п. — ИЛИ когда пользователь прямо просит таблицу. НЕ оборачивай в таблицу один объект, короткий факт, приветствие или пояснение (например «что за задача X» про одну задачу — ответь обычным текстом, а не таблицей «поле—значение»). Для акцентов можно **жирный**, для простых перечней — списки. Ссылки [текст](url) и изображения не вставляй.",
   "НИКОГДА не показывай технические идентификаторы, коды или ID документов. Проекты, задачи и людей называй только их человеческими именами.",
-  "Ты знаешь все задачи, сроки и статусы всей организации, а не только открытый экран — не проси открыть раздел или выбрать проект, если данные уже есть ниже.",
+  "Ты видишь ТОЛЬКО проекты, к которым у пользователя есть доступ (они перечислены ниже в данных), и их задачи — не проси открыть раздел или выбрать проект, если данные уже есть. Если пользователь спрашивает про проект, которого НЕТ в этих данных, — вежливо ответь, что у него нет доступа к этому проекту или такого проекта нет среди его проектов; НЕ раскрывай по нему никаких данных и не придумывай их.",
   "Если факта нет в данных — прямо скажи, что этого пока нет в системе. Не выдумывай.",
   "Никогда не придумывай кнопки, разделы, статусы или функции, которых нет в приложении.",
   "Не говори «в предоставленном контексте» — говори «в данных проекта» или «в системе».",
@@ -70,9 +73,12 @@ export default async function handler(request, response) {
   // still enforced verbatim by the prompt for real off-topic questions.
   const db = adminDb();
   let organizationId;
+  let accessibleProjectIds = null; // null = all projects (owner/admin or unrestricted)
   try {
     const userDoc = await db.collection("users").doc(decoded.uid).get();
-    organizationId = userDoc.exists ? userDoc.data().organizationId : null;
+    const userData = userDoc.exists ? userDoc.data() : null;
+    organizationId = userData ? userData.organizationId : null;
+    accessibleProjectIds = accessibleProjectIdsFor(userData);
   } catch (error) {
     console.error("agent-chat: failed to load user doc", error);
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
@@ -80,10 +86,14 @@ export default async function handler(request, response) {
   if (!organizationId) {
     return response.status(200).json({ ok: true, answer: "Вы пока не состоите ни в одной организации — агенту нечего показать." });
   }
+  // Restricted member with access to NO projects: don't even call the model.
+  if (Array.isArray(accessibleProjectIds) && accessibleProjectIds.length === 0) {
+    return response.status(200).json({ ok: true, answer: "У вас пока нет доступа ни к одному проекту в этой организации — обратитесь к владельцу или администратору." });
+  }
 
   let context;
   try {
-    context = await loadOrganizationContext(db, organizationId);
+    context = await loadOrganizationContext(db, organizationId, accessibleProjectIds);
   } catch (error) {
     console.error("agent-chat: failed to load organization context", error);
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
@@ -149,7 +159,23 @@ export default async function handler(request, response) {
   });
 }
 
-async function loadOrganizationContext(db, organizationId) {
+// Which project ids this user may see, mirroring the app's access model:
+//   owner/admin                    -> null  (all projects)
+//   allowedProjects empty/absent   -> null  (all projects, the default)
+//   allowedProjects = [ids...]     -> those ids (sentinel entry dropped)
+//   allowedProjects = [sentinel]   -> []     (no access to any project)
+// `null` means "no filtering"; an array (even empty) means "restrict to these".
+export function accessibleProjectIdsFor(userData) {
+  if (!userData) return null;
+  if (["owner", "admin"].includes(userData.orgRole)) return null;
+  const allowed = userData.allowedProjects;
+  if (Array.isArray(allowed) && allowed.length > 0) {
+    return allowed.filter((id) => id !== NO_ACCESS_SENTINEL);
+  }
+  return null; // empty/absent = all projects (the default for new members)
+}
+
+async function loadOrganizationContext(db, organizationId, accessibleProjectIds = null) {
   // Single-field equality `where("organizationId", "==", ...)` on each
   // collection uses Firestore's automatic per-field index — composite
   // indexes are only required when a query combines multiple `where`
@@ -162,8 +188,18 @@ async function loadOrganizationContext(db, organizationId) {
     db.collection("tasks").where("organizationId", "==", organizationId).get(),
   ]);
 
-  const projects = projectsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const tasks = tasksSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  let projects = projectsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  let tasks = tasksSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+  // Restrict to the projects this user may see (null = no restriction). Tasks
+  // and the file text below are all keyed off this filtered project set, so a
+  // restricted member's agent context never contains a project they lack access
+  // to — the agent literally has no data to answer about it.
+  if (accessibleProjectIds !== null) {
+    const allowedSet = new Set(accessibleProjectIds);
+    projects = projects.filter((p) => allowedSet.has(p.id));
+    tasks = tasks.filter((t) => allowedSet.has(t.projectId));
+  }
 
   // Parallelized across projects (was a sequential for-await loop, serializing
   // N Firestore round-trips for N projects). Latency matters here: this
