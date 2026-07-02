@@ -150,8 +150,12 @@ service cloud.firestore {
       );
       
       // Обновлять: Владелец (но БЕЗ смены роли/оргполей, кроме явных сценариев join/leave/create) ИЛИ Админ (все поля)
+      // NOTE: self-service JOIN was removed — a user can no longer set their own
+      // organizationId client-side (that let anyone join any org without the
+      // invite code). Joining now goes through api/join-org (Admin SDK), which
+      // validates the code. Leave and owner-create-org remain self-service.
       allow update: if (request.auth != null && request.auth.uid == userId
-                         && (notUpdatingRestrictedFields() || isSelfServiceOrgJoin() || isSelfServiceOrgLeave() || isSelfServiceOrgCreate()))
+                         && (notUpdatingRestrictedFields() || isSelfServiceOrgLeave() || isSelfServiceOrgCreate()))
                     || isOrgUserManagerUpdate()
                     || isOrgUserStatsUpdate()
                     || isAdmin();

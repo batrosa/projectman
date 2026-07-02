@@ -628,50 +628,33 @@ async function joinOrganization(inviteCode) {
 
     const code = inviteCode.toUpperCase().trim();
 
-    // Find organization by invite code
-    const snapshot = await db.collection('organizations').where('inviteCode', '==', code).get();
+    // Joining is validated SERVER-SIDE (api/join-org) with the Admin SDK: the
+    // invite code is checked there and membership is granted there. The client
+    // can no longer self-assign organizationId (the Firestore rule that allowed
+    // it was removed), which closes the "join any org without the code" hole.
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) throw new Error('Не авторизован');
+    const idToken = await currentUser.getIdToken();
 
-    if (snapshot.empty) {
-        throw new Error('Организация не найдена');
+    const response = await fetch('/api/join-org', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ inviteCode: code }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(result.error || 'Не удалось вступить в организацию');
     }
 
-    const orgDoc = snapshot.docs[0];
-    const orgData = orgDoc.data();
-
-    // Check if already member - fetch fresh data from Firestore
-    const userDoc = await db.collection('users').doc(state.currentUser.uid).get();
-    const userData = userDoc.exists ? userDoc.data() : {};
-
-    if (userData.organizationId === orgDoc.id) {
-        throw new Error('Вы уже в этой организации');
-    }
-
-    // Check if user is in another organization (one org per user)
-    if (userData.organizationId && userData.organizationId !== orgDoc.id) {
-        throw new Error('Вы уже состоите в другой организации. Сначала покиньте её.');
-    }
-
-    // Self-service join: write ONLY organizationId + orgRole. The Firestore
-    // rule (isSelfServiceOrgJoin) rejects the write if any other key changes.
-    // Previously we also set `email` (null for Telegram-login users) and name
-    // fields here, which triggered "Missing or insufficient permissions". The
-    // real name is already captured by the post-registration name gate.
-    await db.collection('users').doc(state.currentUser.uid).set({
-        organizationId: orgDoc.id,
-        orgRole: 'employee'
-    }, { merge: true });
+    const org = result.organization;
 
     // Reflect membership in local state
-    state.currentUser.organizationId = orgDoc.id;
+    state.currentUser.organizationId = org.id;
     state.currentUser.orgRole = 'employee';
     state.orgRole = 'employee';
 
-    // Increment members count
-    await db.collection('organizations').doc(orgDoc.id).update({
-        membersCount: firebase.firestore.FieldValue.increment(1)
-    });
-
-    return { id: orgDoc.id, ...orgData };
+    return org;
 }
 
 // Leave organization (for non-owners)

@@ -32,14 +32,16 @@ describe("organizations privilege escalation", () => {
       );
     });
 
-    it("allows a user to self-join an org with orgRole=employee only", async () => {
+    it("blocks client-side self-join: a user cannot set their own organizationId (join is server-only now)", async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         await ctx.firestore().collection("users").doc("newbie").set({ role: "reader" });
-        await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org" });
+        await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", inviteCode: "ABC123" });
       });
 
       const newbie = testEnv.authenticatedContext("newbie").firestore();
-      await assertSucceeds(
+      // Direct self-assignment of organizationId is denied — joining must go
+      // through api/join-org (Admin SDK), which validates the invite code.
+      await assertFails(
         newbie.collection("users").doc("newbie").update({
           organizationId: "some-org",
           orgRole: "employee",
