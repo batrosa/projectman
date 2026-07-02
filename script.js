@@ -2831,7 +2831,7 @@ function createTaskCard(task) {
     let currentSubStatus = task.subStatus || 'assigned';
 
     // Get assignees list for avatars later
-    const assignees = task.assignee.split(',').map(name => name.trim()).filter(name => name.length > 0);
+    const assignees = (task.assignee || '').split(',').map(name => name.trim()).filter(name => name.length > 0);
 
     // Migration logic
     if (!task.subStatus) {
@@ -8052,10 +8052,12 @@ async function notifyCalendarParticipants(evt) {
     const participants = evt.participantIds.map(id => state.users.find(u => u.id === id)).filter(Boolean);
     const dateStr = new Date(evt.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long' });
 
-    const message = `📅 <b>Новая встреча: ${evt.title}</b>\n\n` +
-        `🗓 <b>Когда:</b> ${dateStr} в ${evt.time}\n` +
-        `👥 <b>Участники:</b> ${participants.map(u => getUserDisplayName(u)).join(', ')}\n` +
-        (evt.description ? `\n💬 <b>Описание:</b> ${evt.description}` : '');
+    // parse_mode is HTML, so escape user-entered title/description/names — an
+    // unescaped <, & or tag breaks the send or distorts the message.
+    const message = `📅 <b>Новая встреча: ${escapeHtmlForTelegram(evt.title)}</b>\n\n` +
+        `🗓 <b>Когда:</b> ${escapeHtmlForTelegram(dateStr)} в ${escapeHtmlForTelegram(evt.time)}\n` +
+        `👥 <b>Участники:</b> ${escapeHtmlForTelegram(participants.map(u => getUserDisplayName(u)).join(', '))}\n` +
+        (evt.description ? `\n💬 <b>Описание:</b> ${escapeHtmlForTelegram(evt.description)}` : '');
 
     participants.forEach(u => {
         if (u.id !== state.currentUser?.uid && u.telegramChatId) {
