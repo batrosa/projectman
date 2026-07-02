@@ -3988,6 +3988,16 @@ function setupEventListeners() {
     // Organization event listeners
     setupOrgEventListeners();
 
+    // Name-setup (post-registration) screen
+    const nameSetupForm = document.getElementById('name-setup-form');
+    if (nameSetupForm) nameSetupForm.addEventListener('submit', handleNameSetupSubmit);
+    const nameSetupLogout = document.getElementById('name-setup-logout');
+    if (nameSetupLogout) nameSetupLogout.addEventListener('click', () => {
+        const overlay = document.getElementById('name-setup-overlay');
+        if (overlay) overlay.style.display = 'none';
+        logout();
+    });
+
     // Telegram login button -> reliable bot deep-link flow (opens the bot,
     // user taps Start, site finishes login by polling). Replaces the fragile
     // oauth.telegram.org phone-confirmation flow.
@@ -4714,6 +4724,7 @@ async function loadUserRole(user) {
             state.currentUser.allowedProjects = userData.allowedProjects || [];
             state.currentUser.telegramChatId = userData.telegramChatId || null;
             state.currentUser.telegramUsername = userData.telegramUsername || null;
+            state.currentUser.profileCompleted = userData.profileCompleted === true;
 
             // Set state orgRole
             state.orgRole = state.currentUser.orgRole;
@@ -4753,9 +4764,21 @@ async function loadUserRole(user) {
         // Even on error, we proceed with default 'reader' role to unblock UI
     }
 
+    // Gate: require a real first/last name before granting access. Telegram
+    // registration seeds the name from the Telegram nickname, which for many
+    // people is not their real name — so force a one-time confirmation.
+    if (!state.currentUser.profileCompleted) {
+        showNameSetupScreen(user.uid);
+        return;
+    }
+
+    continueToAppOrOrg();
+}
+
+// Continuation after the profile-name gate: route to org selection or the app.
+function continueToAppOrOrg() {
     // Check if user needs to select/create organization
     if (!state.currentUser.organizationId || !state.organization) {
-        // Show organization selection screen
         showOrgSelectionScreen();
         return;
     }
@@ -4816,6 +4839,95 @@ function hideAuthScreen() {
 
     // Hide loading screen
     hideLoadingScreen();
+}
+
+// uid whose profile the name-setup screen is currently collecting a name for.
+let nameSetupUid = null;
+
+// Blocking screen shown after Telegram registration until the user provides a
+// real first/last name. Access to the rest of the app is gated on this.
+function showNameSetupScreen(uid) {
+    nameSetupUid = uid;
+    hideLoadingScreen();
+
+    if (elements.authOverlay) elements.authOverlay.style.display = 'none';
+    if (elements.orgOverlay) elements.orgOverlay.style.display = 'none';
+    const appContainer = document.getElementById('app-container');
+    if (appContainer) appContainer.style.display = 'none';
+
+    const overlay = document.getElementById('name-setup-overlay');
+    const firstInput = document.getElementById('name-setup-first');
+    const lastInput = document.getElementById('name-setup-last');
+    const errorEl = document.getElementById('name-setup-error');
+
+    if (errorEl) errorEl.style.display = 'none';
+    // Prefill with whatever Telegram provided so the user can just correct it.
+    if (firstInput) firstInput.value = state.currentUser?.firstName || '';
+    if (lastInput) lastInput.value = state.currentUser?.lastName || '';
+
+    if (overlay) overlay.style.display = 'flex';
+    if (firstInput) firstInput.focus();
+}
+
+async function handleNameSetupSubmit(e) {
+    e.preventDefault();
+
+    const firstInput = document.getElementById('name-setup-first');
+    const lastInput = document.getElementById('name-setup-last');
+    const errorEl = document.getElementById('name-setup-error');
+    const submitBtn = document.querySelector('#name-setup-form button[type="submit"]');
+
+    const first = (firstInput?.value || '').trim();
+    const last = (lastInput?.value || '').trim();
+
+    if (first.length < 2 || last.length < 2) {
+        if (errorEl) {
+            errorEl.textContent = 'Введите имя и фамилию (минимум 2 символа каждое).';
+            errorEl.style.display = 'block';
+        }
+        return;
+    }
+
+    const uid = nameSetupUid || firebase.auth().currentUser?.uid;
+    if (!uid) return;
+
+    const originalBtnHtml = submitBtn ? submitBtn.innerHTML : null;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
+    }
+
+    try {
+        await db.collection('users').doc(uid).set({
+            firstName: first,
+            lastName: last,
+            displayName: `${first} ${last}`,
+            profileCompleted: true
+        }, { merge: true });
+
+        state.currentUser.firstName = first;
+        state.currentUser.lastName = last;
+        state.currentUser.fullName = `${first} ${last}`;
+        state.currentUser.profileCompleted = true;
+
+        const overlay = document.getElementById('name-setup-overlay');
+        if (overlay) overlay.style.display = 'none';
+        nameSetupUid = null;
+
+        playClickSound();
+        continueToAppOrOrg();
+    } catch (err) {
+        console.error('Name setup failed:', err);
+        if (errorEl) {
+            errorEl.textContent = 'Не удалось сохранить. Попробуйте ещё раз.';
+            errorEl.style.display = 'block';
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            if (originalBtnHtml) submitBtn.innerHTML = originalBtnHtml;
+        }
+    }
 }
 
 async function logout() {

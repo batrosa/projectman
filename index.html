@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=32.0" defer></script>
+    <script src="script.js?v=33.0" defer></script>
 </head>
 
 <body>
@@ -661,6 +661,40 @@
     </div>
 
     <!-- Organization Selection Overlay -->
+    <!-- Name setup (shown right after Telegram registration, before app access) -->
+    <div id="name-setup-overlay" class="login-overlay" style="display: none;">
+        <div id="name-setup-screen" class="login-card" style="max-width: 450px;">
+            <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
+                <i class="fa-solid fa-layer-group"></i> ProjectMan
+            </div>
+            <h2 style="text-align: center;">Как вас зовут?</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
+                Укажите настоящие имя и фамилию — так вас будут видеть коллеги в задачах.
+            </p>
+
+            <form id="name-setup-form">
+                <div class="form-group">
+                    <label for="name-setup-first">Имя *</label>
+                    <input type="text" id="name-setup-first" required placeholder="Иван" maxlength="40" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="name-setup-last">Фамилия *</label>
+                    <input type="text" id="name-setup-last" required placeholder="Иванов" maxlength="40" autocomplete="off">
+                </div>
+                <p id="name-setup-error"
+                    style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1rem; display: none;"></p>
+                <button type="submit" class="primary-btn" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-check"></i> Продолжить
+                </button>
+            </form>
+
+            <button id="name-setup-logout" class="secondary-btn"
+                style="width: 100%; justify-content: center; margin-top: 1.5rem;">
+                <i class="fa-solid fa-right-from-bracket"></i> Выйти из аккаунта
+            </button>
+        </div>
+    </div>
+
     <div id="org-overlay" class="login-overlay" style="display: none;">
         <!-- Choose: Create or Join -->
         <div id="org-choice-screen" class="login-card" style="max-width: 450px;">
