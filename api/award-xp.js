@@ -18,8 +18,8 @@
 //     completedAt (a serverTimestamp — see script.js), so it can't be forged.
 //
 // Only a manager of the task's project (owner/admin, or a moderator whose
-// allowedProjects includes the project) may trigger the award, and only once
-// the assignee has actually submitted the task (assigneeCompleted === true).
+// allowedProjects includes the project) may trigger the award, and only for a
+// task that was actually completed (it has a completedAt timestamp).
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -197,9 +197,13 @@ export default async function handler(request, response) {
       if (fresh.xpProcessed === true) {
         return { ok: true, alreadyProcessed: true };
       }
-      // The assignee must have actually submitted the task.
-      if (fresh.assigneeCompleted !== true) {
-        return { status: 409, error: "Task is not completed by the assignee" };
+      // The task must actually have been completed. We gate on completedAt (set
+      // when the assignee submits, an unforgeable serverTimestamp, and preserved
+      // through approval) rather than assigneeCompleted — the approval write
+      // flips assigneeCompleted back to false, so it is not a reliable signal
+      // here. No completedAt → the task was never completed → award nothing.
+      if (!fresh.completedAt) {
+        return { status: 409, error: "Task has no completion timestamp" };
       }
 
       const wasOnTime = computeWasOnTime(toDate(fresh.completedAt), fresh.deadline);
