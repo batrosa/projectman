@@ -315,5 +315,11 @@ service cloud.firestore {
     // telegramCodes — legacy-инфраструктура старого подключения по коду. Больше
     // не используется (вход и привязка идут через bot deep-link, см.
     // lib/telegram-bot-login.js). Коллекция закрыта полностью (default deny).
+
+    // auditLogs — server-side audit trail для критичных операций организации
+    // (`api/org`). Клиент не должен читать или подделывать audit-записи.
+    match /auditLogs/{logId} {
+      allow read, write: if false;
+    }
   }
 }

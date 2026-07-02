@@ -9,6 +9,7 @@ import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing 0/O, 1/I
 const MAX_ORG_NAME = 80;
+const AUDIT_LOG_COLLECTION = "auditLogs";
 
 async function parseJsonBody(request) {
   if (request.body && typeof request.body === "object") return request.body;
@@ -23,6 +24,21 @@ function randomCode() {
   let code = "";
   for (let i = 0; i < 6; i += 1) code += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
   return code;
+}
+
+async function writeAuditLog(db, { action, actorUid, organizationId = null, targetUid = null, metadata = {} }) {
+  try {
+    await db.collection(AUDIT_LOG_COLLECTION).add({
+      action,
+      actorUid,
+      organizationId,
+      targetUid,
+      metadata,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("org audit log failed", { action, actorUid, organizationId, targetUid, error });
+  }
 }
 
 // Server-side uniqueness check (the client can no longer query organizations).
@@ -124,6 +140,12 @@ export default async function handler(request, response) {
         { organizationId: orgRef.id, orgRole: "owner" },
         { merge: true }
       );
+      await writeAuditLog(db, {
+        action: "org.create",
+        actorUid: decoded.uid,
+        organizationId: orgRef.id,
+        metadata: { name },
+      });
       return response.status(200).json({
         ok: true,
         organization: { id: orgRef.id, name, inviteCode, ownerId: decoded.uid, membersCount: 1, settings: orgData.settings },
@@ -151,6 +173,11 @@ export default async function handler(request, response) {
     try {
       const inviteCode = await generateUniqueCode(db);
       await db.collection("organizations").doc(orgId).update({ inviteCode });
+      await writeAuditLog(db, {
+        action: "org.regenerateInviteCode",
+        actorUid: decoded.uid,
+        organizationId: orgId,
+      });
       return response.status(200).json({ ok: true, inviteCode });
     } catch (error) {
       console.error("org regen: write failed", error);
@@ -187,6 +214,12 @@ export default async function handler(request, response) {
       );
       batch.update(db.collection("organizations").doc(orgId), { membersCount: FieldValue.increment(-1) });
       await batch.commit();
+      await writeAuditLog(db, {
+        action: "org.leave",
+        actorUid: decoded.uid,
+        organizationId: orgId,
+        targetUid: decoded.uid,
+      });
       return response.status(200).json({ ok: true });
     } catch (error) {
       console.error("org leave: write failed", error);
@@ -236,6 +269,13 @@ export default async function handler(request, response) {
       );
       batch.update(db.collection("organizations").doc(orgId), { membersCount: FieldValue.increment(-1) });
       await batch.commit();
+      await writeAuditLog(db, {
+        action: "org.removeMember",
+        actorUid: decoded.uid,
+        organizationId: orgId,
+        targetUid,
+        metadata: { targetRole: targetData.orgRole || null },
+      });
       return response.status(200).json({ ok: true });
     } catch (error) {
       console.error("org removeMember: write failed", error);
@@ -300,6 +340,13 @@ export default async function handler(request, response) {
         if (++ops >= CHUNK) await flush();
       }
       await flush();
+
+      await writeAuditLog(db, {
+        action: "org.delete",
+        actorUid: decoded.uid,
+        organizationId: orgId,
+        metadata: { deletedProjects: projectsSnap.size, clearedMembers: membersSnap.size },
+      });
 
       return response.status(200).json({ ok: true, deletedProjects: projectsSnap.size, clearedMembers: membersSnap.size });
     } catch (error) {

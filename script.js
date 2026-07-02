@@ -4059,32 +4059,41 @@ function setupEventListeners() {
     }
 
     // Modals
-    elements.addProjectBtn.addEventListener('click', () => {
-        playClickSound();
-        closeSidebarOnMobile();
-        elements.projectForm.reset();
-        document.getElementById('p-id').value = ''; // Clear ID for new project
-        document.getElementById('p-deadline-group').classList.remove('active');
-        setProjectModalMode('create');
-        elements.projectModal.classList.add('active');
-    });
+    if (elements.addProjectBtn && elements.projectForm && elements.projectModal) {
+        elements.addProjectBtn.addEventListener('click', () => {
+            playClickSound();
+            closeSidebarOnMobile();
+            elements.projectForm.reset();
+            const projectIdInput = document.getElementById('p-id');
+            const deadlineGroup = document.getElementById('p-deadline-group');
+            if (projectIdInput) projectIdInput.value = ''; // Clear ID for new project
+            if (deadlineGroup) deadlineGroup.classList.remove('active');
+            setProjectModalMode('create');
+            elements.projectModal.classList.add('active');
+        });
+    }
 
-    elements.addTaskBtn.addEventListener('click', () => {
-        playClickSound();
-        elements.taskForm.reset();
-        document.getElementById('t-id').value = ''; // Clear ID for new task
-        elements.taskModal.querySelector('h2').textContent = 'Новая задача'; // Reset title
-        // Set default date to today
-        document.getElementById('t-deadline').valueAsDate = new Date();
-        populateAssigneeDropdown();
+    if (elements.addTaskBtn && elements.taskForm && elements.taskModal) {
+        elements.addTaskBtn.addEventListener('click', () => {
+            playClickSound();
+            elements.taskForm.reset();
+            const taskIdInput = document.getElementById('t-id');
+            const taskDeadlineInput = document.getElementById('t-deadline');
+            const taskTitle = elements.taskModal.querySelector('h2');
+            if (taskIdInput) taskIdInput.value = ''; // Clear ID for new task
+            if (taskTitle) taskTitle.textContent = 'Новая задача'; // Reset title
+            // Set default date to today
+            if (taskDeadlineInput) taskDeadlineInput.valueAsDate = new Date();
+            populateAssigneeDropdown();
 
-        // Reset attachments
-        pendingAttachments = [];
-        renderAttachmentsList();
-        updateAddAttachmentBtn();
+            // Reset attachments
+            pendingAttachments = [];
+            renderAttachmentsList();
+            updateAddAttachmentBtn();
 
-        elements.taskModal.classList.add('active');
-    });
+            elements.taskModal.classList.add('active');
+        });
+    }
 
     // File attachment handlers
     const fileInput = document.getElementById('file-input');
@@ -4094,7 +4103,7 @@ function setupEventListeners() {
         fileInput.addEventListener('change', handleFileSelect);
     }
 
-    if (addAttachmentBtn) {
+    if (addAttachmentBtn && fileInput) {
         addAttachmentBtn.addEventListener('click', () => {
             playClickSound();
             fileInput.click();
@@ -4110,7 +4119,7 @@ function setupEventListeners() {
         completionFileInput.addEventListener('change', handleCompletionFileSelect);
     }
 
-    if (addCompletionFileBtn) {
+    if (addCompletionFileBtn && completionFileInput) {
         addCompletionFileBtn.addEventListener('click', () => {
             playClickSound();
             completionFileInput.click();
@@ -4128,10 +4137,12 @@ function setupEventListeners() {
     }
 
     // Help button
-    elements.helpBtn.addEventListener('click', () => {
-        playClickSound();
-        elements.helpModal.classList.add('active');
-    });
+    if (elements.helpBtn && elements.helpModal) {
+        elements.helpBtn.addEventListener('click', () => {
+            playClickSound();
+            elements.helpModal.classList.add('active');
+        });
+    }
 
     // Project files button — opens the "Файлы проекта" modal (project-level
     // documents, distinct from per-task attachments)
@@ -4183,7 +4194,7 @@ function setupEventListeners() {
         projectHasDeadline.addEventListener('change', (e) => {
             if (e.target.checked) {
                 projectDeadlineGroup.classList.add('active');
-                if (!projectDeadlineInput.value) {
+                if (projectDeadlineInput && !projectDeadlineInput.value) {
                     // Set default deadline to 1 month from now
                     const defaultDate = new Date();
                     defaultDate.setMonth(defaultDate.getMonth() + 1);
@@ -4208,40 +4219,45 @@ function setupEventListeners() {
     }
 
     // Forms
-    elements.projectForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        playClickSound();
-        const projectId = document.getElementById('p-id').value;
-        const isEdit = !!projectId;
-        const name = document.getElementById('p-name').value;
-        const desc = document.getElementById('p-desc').value;
-        const hasDeadline = document.getElementById('p-has-deadline').checked;
-        const deadline = hasDeadline ? document.getElementById('p-deadline').value : null;
-        const submitBtn = elements.projectForm.querySelector('button[type="submit"]');
-        const label = isEdit ? 'Сохранить' : 'Создать проект';
+    if (elements.projectForm && elements.projectModal) {
+        elements.projectForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            playClickSound();
+            const projectId = document.getElementById('p-id')?.value || '';
+            const isEdit = !!projectId;
+            const name = document.getElementById('p-name')?.value || '';
+            const desc = document.getElementById('p-desc')?.value || '';
+            const hasDeadline = document.getElementById('p-has-deadline')?.checked || false;
+            const deadline = hasDeadline ? (document.getElementById('p-deadline')?.value || null) : null;
+            const submitBtn = elements.projectForm.querySelector('button[type="submit"]');
+            const label = isEdit ? 'Сохранить' : 'Создать проект';
 
-        if (submitBtn) setButtonLoading(submitBtn, true, label);
+            if (submitBtn) setButtonLoading(submitBtn, true, label);
 
-        try {
-            if (isEdit) {
-                await updateProject(projectId, { name, description: desc, deadline });
-            } else {
-                await createProject(name, desc, deadline);
+            try {
+                if (isEdit) {
+                    await updateProject(projectId, { name, description: desc, deadline });
+                } else {
+                    await createProject(name, desc, deadline);
+                }
+
+                // Reset form only after Firestore accepts the write.
+                elements.projectModal.classList.remove('active');
+                elements.projectForm.reset();
+                const projectIdInput = document.getElementById('p-id');
+                const hasDeadlineInput = document.getElementById('p-has-deadline');
+                const deadlineGroup = document.getElementById('p-deadline-group');
+                if (projectIdInput) projectIdInput.value = '';
+                if (hasDeadlineInput) hasDeadlineInput.checked = false;
+                if (deadlineGroup) deadlineGroup.classList.remove('active');
+            } catch (error) {
+                console.error("Error saving project:", error);
+                alert("❌ Ошибка при сохранении проекта:\n\n" + (error.message || error));
+            } finally {
+                if (submitBtn) setButtonLoading(submitBtn, false, label);
             }
-
-            // Reset form only after Firestore accepts the write.
-            elements.projectModal.classList.remove('active');
-            elements.projectForm.reset();
-            document.getElementById('p-id').value = '';
-            document.getElementById('p-has-deadline').checked = false;
-            document.getElementById('p-deadline-group').classList.remove('active');
-        } catch (error) {
-            console.error("Error saving project:", error);
-            alert("❌ Ошибка при сохранении проекта:\n\n" + (error.message || error));
-        } finally {
-            if (submitBtn) setButtonLoading(submitBtn, false, label);
-        }
-    });
+        });
+    }
 
     // Logic
     function createProject(name, description, deadline = null) {
@@ -4343,43 +4359,45 @@ function setupEventListeners() {
 
     // Event Listeners
     // ...
-    elements.taskForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        playClickSound();
+    if (elements.taskForm) {
+        elements.taskForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            playClickSound();
 
-        // Find submit button (may be outside form with form="task-form" attribute)
-        const submitBtn = document.querySelector('button[form="task-form"]') ||
-            elements.taskForm.querySelector('button[type="submit"]');
+            // Find submit button (may be outside form with form="task-form" attribute)
+            const submitBtn = document.querySelector('button[form="task-form"]') ||
+                elements.taskForm.querySelector('button[type="submit"]');
 
-        const title = document.getElementById('t-title').value;
-        const description = document.getElementById('t-description').value;
-        const taskId = document.getElementById('t-id').value;
+            const title = document.getElementById('t-title')?.value || '';
+            const description = document.getElementById('t-description')?.value || '';
+            const taskId = document.getElementById('t-id')?.value || '';
 
-        // Get selected assignees from new picker
-        const { names: assignee, emails: assigneeEmail } = getSelectedAssignees();
+            // Get selected assignees from new picker
+            const { names: assignee, emails: assigneeEmail } = getSelectedAssignees();
 
-        const deadline = document.getElementById('t-deadline').value;
-        const status = document.getElementById('t-status').value;
+            const deadline = document.getElementById('t-deadline')?.value || '';
+            const status = document.getElementById('t-status')?.value || '';
 
-        if (taskId) {
-            // Prepare attachments (filter out any still uploading)
-            const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
+            if (taskId) {
+                // Prepare attachments (filter out any still uploading)
+                const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
 
-            // Update existing task
-            await updateTask(taskId, {
-                title,
-                description,
-                assignee,
-                assigneeEmail,
-                assigneeIds: selectedAssignees.map(a => a.id).filter(Boolean),
-                deadline,
-                attachments // Include attachments when updating
-            });
-        } else {
-            // Create new task
-            await createTask(title, assignee, deadline, status, assigneeEmail, description);
-        }
-    });
+                // Update existing task
+                await updateTask(taskId, {
+                    title,
+                    description,
+                    assignee,
+                    assigneeEmail,
+                    assigneeIds: selectedAssignees.map(a => a.id).filter(Boolean),
+                    deadline,
+                    attachments // Include attachments when updating
+                });
+            } else {
+                // Create new task
+                await createTask(title, assignee, deadline, status, assigneeEmail, description);
+            }
+        });
+    }
 
     setupDragAndDrop();
 
@@ -4429,11 +4447,13 @@ function setupEventListeners() {
     }
 
     // Mobile Menu
-    elements.mobileMenuBtn.addEventListener('click', () => {
-        playClickSound();
-        elements.sidebar.classList.add('active');
-        elements.sidebarOverlay.classList.add('active');
-    });
+    if (elements.mobileMenuBtn && elements.sidebar && elements.sidebarOverlay) {
+        elements.mobileMenuBtn.addEventListener('click', () => {
+            playClickSound();
+            elements.sidebar.classList.add('active');
+            elements.sidebarOverlay.classList.add('active');
+        });
+    }
 
     // Buttons that live inside the mobile sidebar and open a modal must first
     // close the sidebar, otherwise the modal opens behind it.
@@ -4442,11 +4462,13 @@ function setupEventListeners() {
     });
 
     // Close sidebar when clicking overlay
-    elements.sidebarOverlay.addEventListener('click', () => {
-        playClickSound();
-        elements.sidebar.classList.remove('active');
-        elements.sidebarOverlay.classList.remove('active');
-    });
+    if (elements.sidebarOverlay && elements.sidebar) {
+        elements.sidebarOverlay.addEventListener('click', () => {
+            playClickSound();
+            elements.sidebar.classList.remove('active');
+            elements.sidebarOverlay.classList.remove('active');
+        });
+    }
 
     // Admin Panel
     if (elements.adminPanelBtn) {

@@ -233,4 +233,29 @@ describe("organizations privilege escalation", () => {
       await assertFails(snoop.collection("organizations").where("inviteCode", "==", "D1").get());
     });
   });
+
+  describe("audit logs", () => {
+    it("blocks client-side audit log reads and writes even for an organization owner", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("audit-owner").set({
+          role: "reader",
+          organizationId: "audit-org",
+          orgRole: "owner",
+        });
+        await ctx.firestore().collection("auditLogs").doc("log-1").set({
+          action: "org.delete",
+          organizationId: "audit-org",
+          actorUid: "audit-owner",
+        });
+      });
+
+      const owner = testEnv.authenticatedContext("audit-owner").firestore();
+      await assertFails(owner.collection("auditLogs").doc("log-1").get());
+      await assertFails(owner.collection("auditLogs").add({
+        action: "org.delete",
+        organizationId: "audit-org",
+        actorUid: "audit-owner",
+      }));
+    });
+  });
 });
