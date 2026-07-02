@@ -1,0 +1,8 @@
+# Тесты не должны попадать в деплой Vercel.
+# Vercel превращает КАЖДЫЙ файл api/*.js в отдельную serverless-функцию,
+# включая *.test.js. На Hobby-плане лимит — 12 функций на деплой.
+# Пять api/*.test.js раздували счётчик до 13 и роняли сборку
+# ("No more than 12 Serverless Functions can be added on the Hobby plan").
+# Исключаем все тесты — они гоняются локально/в CI, в проде не нужны.
+*.test.js
+firestore-tests/
