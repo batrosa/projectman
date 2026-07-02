@@ -6420,18 +6420,22 @@ function renderMyTasks(tasks) {
             </div>
         `;
 
-        // Click handler - navigate to project
+        // Click handler — navigate to the project AND open the exact status
+        // column the task sits in (works on desktop and mobile, where only the
+        // active column is shown).
+        const viewMap = { assigned: 'assigned', in_work: 'in-progress', completed: 'review', done: 'done' };
+        const boardView = viewMap[currentSubStatus] || 'assigned';
         taskEl.addEventListener('click', () => {
             playClickSound();
-            navigateToTask(task.projectId, task.id);
+            navigateToTask(task.projectId, task.id, boardView);
         });
 
         elements.myTasksList.appendChild(taskEl);
     });
 }
 
-// Navigate to project containing the task
-function navigateToTask(projectId, taskId) {
+// Navigate to project containing the task, opening the task's own status column
+function navigateToTask(projectId, taskId, boardView) {
     // Close modal
     elements.myTasksModal.classList.remove('active');
 
@@ -6443,8 +6447,12 @@ function navigateToTask(projectId, taskId) {
         }
     }
 
-    // Select the project
+    // Select the project (this resets the board view to "assigned")...
     selectProject(projectId);
+    // ...so switch to the task's actual status section AFTER selecting. On
+    // mobile only the active column is shown, so this is what makes the task
+    // visible instead of an empty "Назначенные" list.
+    if (boardView) setBoardView(boardView);
 
     // Highlight the task briefly after loading
     setTimeout(() => {

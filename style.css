@@ -990,6 +990,7 @@ body.light-mode select option {
 .deadline-tags-inline {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     margin-left: 6px;
     vertical-align: middle;
@@ -3602,8 +3603,8 @@ body.light-mode .file-preview-container {
 
 /* My Tasks Modal */
 .my-tasks-modal-content {
-    max-width: 380px;
-    width: 380px;
+    max-width: 420px;
+    width: 100%;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
@@ -3752,10 +3753,13 @@ body.light-mode .file-preview-container {
 
 .my-task-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 1rem;
-    font-size: 0.85rem;
+    gap: 0.4rem 0.6rem;
+    font-size: 0.82rem;
     color: var(--text-secondary);
+    width: 100%;
+    min-width: 0;
 }
 
 .my-task-meta i {
@@ -3775,14 +3779,19 @@ body.light-mode .file-preview-container {
     color: var(--warning);
 }
 
-/* Go to project arrow */
+/* "Перейти к задаче" — own full-width line so it never collides with the
+   deadline/status tags in the narrow modal. */
 .my-task-go {
+    flex-basis: 100%;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    margin-left: auto;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    color: var(--primary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-top: 0.15rem;
+    white-space: nowrap;
 }
 
 .my-task-item:hover .my-task-go {
