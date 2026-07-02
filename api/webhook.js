@@ -4,48 +4,8 @@ import {
     isValidTelegramLoginCode,
 } from "../lib/telegram-bot-login.js";
 
-// Firebase Admin for serverless
-const FIREBASE_PROJECT_ID = 'projectman-96d3c';
-
-// Firestore REST API helper
-async function firestoreGet(collection, docId, apiKey) {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?key=${apiKey}`;
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    return await response.json();
-}
-
-async function firestoreUpdate(collection, docId, fields, apiKey) {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?updateMask.fieldPaths=${Object.keys(fields).join('&updateMask.fieldPaths=')}&key=${apiKey}`;
-    
-    // Convert to Firestore format
-    const firestoreFields = {};
-    for (const [key, value] of Object.entries(fields)) {
-        if (value === null) {
-            firestoreFields[key] = { nullValue: null };
-        } else if (typeof value === 'string') {
-            firestoreFields[key] = { stringValue: value };
-        } else if (typeof value === 'number') {
-            firestoreFields[key] = { integerValue: String(value) };
-        }
-    }
-    
-    const response = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: firestoreFields })
-    });
-    return response.ok;
-}
-
-async function firestoreDelete(collection, docId, apiKey) {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}?key=${apiKey}`;
-    await fetch(url, { method: 'DELETE' });
-}
-
 export default async function handler(req, res) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    const firebaseApiKey = process.env.FIREBASE_WEB_API_KEY;
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
 
     // CORS headers
@@ -84,7 +44,6 @@ export default async function handler(req, res) {
             const rawText = (message.text || '').trim();
             const text = rawText.toUpperCase();
             const firstName = message.from?.first_name || 'друг';
-            const username = message.from?.username || null;
             const botLoginMatch = rawText.match(/^\/start(?:@[A-Za-z0-9_]+)?\s+login_([A-Za-z0-9_-]{16,64})$/i);
 
             let replyText = '';

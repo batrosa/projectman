@@ -5863,23 +5863,6 @@ async function sendTelegramNotification(chatId, message) {
     }
 }
 
-// Send task notification via Telegram
-async function sendTelegramTaskNotification(userEmail, taskTitle, projectName, deadline) {
-    // Find user by email
-    const user = state.users.find(u => u.email?.toLowerCase() === userEmail?.toLowerCase());
-    if (!user || !user.telegramChatId) return;
-
-    const message = `📋 <b>Новая задача!</b>
-
-<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
-<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
-<b>Срок:</b> ${deadline || 'Не указан'}
-
-Откройте ProjectMan для подробностей.`;
-
-    await sendTelegramNotification(user.telegramChatId, message);
-}
-
 // Resolves a picked assignee ({id, email, name}) to their Telegram chat id.
 // Telegram-login users have no email, so the uid is the only reliable key —
 // email is kept as a fallback for legacy/email-login accounts.
@@ -5990,23 +5973,6 @@ async function sendTelegramOverdueNotification(chatId, taskTitle, projectName, d
 Срок выполнения задачи истёк! Пожалуйста, завершите её как можно скорее.`;
 
     await sendTelegramNotification(chatId, message);
-}
-
-// Send task completion notification to creator/admin via Telegram
-async function sendTelegramCompletionNotification(creatorEmail, taskTitle, projectName, completedByName) {
-    // Find creator by email
-    const creator = state.users.find(u => u.email?.toLowerCase() === creatorEmail?.toLowerCase());
-    if (!creator || !creator.telegramChatId) return;
-
-    const message = `✅ <b>Задача выполнена!</b>
-
-<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
-<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
-<b>Исполнитель:</b> ${escapeHtmlForTelegram(completedByName)}
-
-Пожалуйста, проверьте выполнение задачи.`;
-
-    await sendTelegramNotification(creator.telegramChatId, message);
 }
 
 // Escape HTML for Telegram
@@ -6153,23 +6119,6 @@ function checkReminders(tasks) {
             }
         }
     });
-}
-
-async function deleteUser(userId, userName) {
-    // Check permission - only owner or admin can delete users
-    if (!canAccessAdmin()) return;
-
-    if (!confirm(`Вы уверены, что хотите удалить пользователя "${userName}"?\n\nЭто действие удалит данные пользователя из приложения, но технический аккаунт останется.`)) {
-        return;
-    }
-
-    try {
-        await db.collection('users').doc(userId).delete();
-        alert(`Пользователь "${userName}" удален из базы данных.`);
-    } catch (error) {
-        console.error('Error deleting user:', error);
-        alert('Ошибка при удалении пользователя: ' + error.message);
-    }
 }
 
 function updateAccessUserSelect() {
