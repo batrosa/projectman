@@ -1903,6 +1903,13 @@ body.read-only .remove-attachment-btn,
 /* File preview */
 body.read-only #preview-download-btn,
 body.read-only #files-list-modal .secondary-btn,
+body.read-only #file-preview-modal .primary-btn,
+/* Project files entry — backend allows any org member (api/project-files) */
+body.read-only #project-files-btn,
+/* AI agent chat — fully usable by readers (send button + any modal controls) */
+body.read-only #agent-chat-modal .primary-btn,
+body.read-only #agent-chat-modal .secondary-btn,
+body.read-only #agent-chat-send-btn,
 /* PIN screen */
 body.read-only .pin-key,
 body.read-only .pin-keypad button,

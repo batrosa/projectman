@@ -4722,43 +4722,18 @@ async function pollTelegramBotLogin(code, expiresAt, attemptId) {
     throw new Error('Ссылка для входа устарела. Нажмите «Войти через бота» ещё раз.');
 }
 
-// Whether onAuthStateChanged has fired at least once this page load. The FIRST
-// fire is Firebase's resolved initial state; a later null fire means a real
-// sign-out (during the session), not a cold-start restore race.
-let authResolvedOnce = false;
-
 function onAuthStateChanged(user) {
-    const firstFire = !authResolvedOnce;
-    authResolvedOnce = true;
-
     if (user) {
-        // User is signed in — remember it so a future cold-load persistence
-        // race (see below) doesn't dump us on the login screen.
-        try { localStorage.setItem('pm_was_logged_in', '1'); } catch (e) { /* storage disabled */ }
-        try { sessionStorage.removeItem('pm_auth_retry'); } catch (e) { /* ignore */ }
+        // User is signed in
         loadUserRole(user);
     } else {
-        // Firebase reports no user. On a COLD load this can be a transient
-        // persistence-restore miss (slow/locked IndexedDB, Safari ITP after an
-        // idle period) even though the session is valid — the classic "shows
-        // the login screen, a refresh fixes it". If this is the first fire AND
-        // we were logged in on this device before, retry once via a guarded
-        // reload (persistence usually restores on the 2nd load) instead of
-        // flashing the login screen. A later null fire (real sign-out) skips
-        // this and shows login normally.
-        let wasLoggedIn = false;
-        try { wasLoggedIn = localStorage.getItem('pm_was_logged_in') === '1'; } catch (e) { /* ignore */ }
-        let retried = false;
-        try { retried = sessionStorage.getItem('pm_auth_retry') === '1'; } catch (e) { /* ignore */ }
-        if (firstFire && wasLoggedIn && !retried) {
-            try { sessionStorage.setItem('pm_auth_retry', '1'); } catch (e) { /* ignore */ }
-            setTimeout(() => window.location.reload(), 800); // keep loading screen up
-            return;
-        }
-
-        // Genuinely signed out (or the retry already failed): clear the flag so
-        // we don't loop, and show the login screen.
-        try { localStorage.removeItem('pm_was_logged_in'); } catch (e) { /* ignore */ }
+        // No user. Firebase's FIRST onAuthStateChanged fire on page load already
+        // reflects the state restored from persistence (it waits for IndexedDB),
+        // so a null here means there is genuinely no session — show the login
+        // screen once. (An earlier version tried a guarded reload here to paper
+        // over a "slow restore", but the first fire is authoritative, so the
+        // reload never helped and produced a visible login→reload→login flash
+        // when the session truly wasn't persisted. Removed.)
         state.currentUser = null;
         state.role = 'guest';
         // Bump the agent-chat generation counter on every sign-out, however
@@ -5054,10 +5029,6 @@ async function logout() {
             ownUserDocListenerUnsubscribe = null;
         }
         stopPresenceHeartbeat();
-
-        // Explicit sign-out: forget the "was logged in" flag so the cold-load
-        // restore retry never kicks in and sends us back into the app.
-        try { localStorage.removeItem('pm_was_logged_in'); } catch (e) { /* ignore */ }
 
         await auth.signOut();
 
