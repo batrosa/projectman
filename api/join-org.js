@@ -76,7 +76,9 @@ export default async function handler(request, response) {
 
   try {
     await db.collection("users").doc(decoded.uid).set(
-      { organizationId: orgDoc.id, orgRole: "employee" },
+      // Clear any stale per-project restriction from a previous org so it can't
+      // follow the user in and hide/scramble access in the new org.
+      { organizationId: orgDoc.id, orgRole: "employee", allowedProjects: FieldValue.delete() },
       { merge: true }
     );
     await db.collection("organizations").doc(orgDoc.id).update({

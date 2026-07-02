@@ -157,15 +157,6 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Функция: Изменение membersCount ровно на ±1 (шаг присоединения/выхода участника)
-    function isMemberCountStep(orgId) {
-      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
-      return changedKeys.hasOnly(['membersCount'])
-        && isOrgMember(orgId)
-        && (request.resource.data.membersCount == resource.data.membersCount + 1
-            || request.resource.data.membersCount == resource.data.membersCount - 1);
-    }
-
     // Функция: Пользователь — владелец организации (по своему orgRole) или админ организации
     function isOrgOwnerOrAdmin(orgId) {
       return hasOrgRole(orgId, ['owner', 'admin']);
@@ -183,16 +174,14 @@ service cloud.firestore {
       allow list: if false;
       // Создать может только тот, кто указывает себя владельцем
       allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      // Обновлять: владелец/админ организации (но БЕЗ переназначения ownerId —
-      // это исключает «тихий» захват организации админом) ИЛИ шаг ±1
-      // membersCount (join/leave, только это поле).
-      allow update: if request.auth != null && (
-        (
-          (resource.data.ownerId == request.auth.uid || isOrgOwnerOrAdmin(orgId))
-          && request.resource.data.ownerId == resource.data.ownerId
-        ) ||
-        isMemberCountStep(orgId)
-      );
+      // Обновлять: только владелец/админ организации и БЕЗ переназначения
+      // ownerId (исключает «тихий» захват). membersCount меняется ТОЛЬКО
+      // сервером (api/org, api/join-org через Admin SDK), поэтому клиентского
+      // правила «шаг ±1» больше нет — оно позволяло любому участнику крутить
+      // счётчик.
+      allow update: if request.auth != null
+        && (resource.data.ownerId == request.auth.uid || isOrgOwnerOrAdmin(orgId))
+        && request.resource.data.ownerId == resource.data.ownerId;
       // Удалять: только владелец организации. Admin может управлять организацией, но не удалять её.
       allow delete: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||

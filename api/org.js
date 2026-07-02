@@ -158,5 +158,81 @@ export default async function handler(request, response) {
     }
   }
 
+  // ── Leave the org (self). Server-side so it's atomic and doesn't hit the
+  // client ordering trap (clearing membership before decrementing membersCount
+  // used to fail the rule). Also clears allowedProjects so a stale per-project
+  // restriction never follows the user into a future org.
+  if (action === "leave") {
+    let userData;
+    try {
+      const snap = await db.collection("users").doc(decoded.uid).get();
+      userData = snap.exists ? snap.data() : null;
+    } catch (error) {
+      console.error("org leave: load caller failed", error);
+      return response.status(500).json({ error: "Не удалось проверить пользователя" });
+    }
+    const orgId = userData && userData.organizationId;
+    if (!orgId) return response.status(200).json({ ok: true }); // already not in an org
+    if (userData.orgRole === "owner") {
+      return response.status(403).json({ error: "Владелец не может покинуть организацию" });
+    }
+    try {
+      await db.collection("users").doc(decoded.uid).set(
+        { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
+        { merge: true }
+      );
+      await db.collection("organizations").doc(orgId).update({ membersCount: FieldValue.increment(-1) });
+      return response.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("org leave: write failed", error);
+      return response.status(500).json({ error: "Не удалось покинуть организацию" });
+    }
+  }
+
+  // ── Remove a member (owner/admin removes someone else). Server-side so
+  // membersCount can only ever be changed here (no client rule needed).
+  if (action === "removeMember") {
+    const targetUid = String(body.userId || "").trim();
+    if (!targetUid) return response.status(400).json({ error: "userId required" });
+    if (targetUid === decoded.uid) return response.status(400).json({ error: "Используйте выход из организации" });
+
+    let callerData, targetData;
+    try {
+      const [callerSnap, targetSnap] = await Promise.all([
+        db.collection("users").doc(decoded.uid).get(),
+        db.collection("users").doc(targetUid).get(),
+      ]);
+      callerData = callerSnap.exists ? callerSnap.data() : null;
+      targetData = targetSnap.exists ? targetSnap.data() : null;
+    } catch (error) {
+      console.error("org removeMember: load failed", error);
+      return response.status(500).json({ error: "Не удалось проверить пользователей" });
+    }
+    const orgId = callerData && callerData.organizationId;
+    if (!orgId || !["owner", "admin"].includes(callerData.orgRole)) {
+      return response.status(403).json({ error: "Недостаточно прав" });
+    }
+    if (!targetData || targetData.organizationId !== orgId) {
+      return response.status(404).json({ error: "Участник не найден в вашей организации" });
+    }
+    if (targetData.orgRole === "owner") {
+      return response.status(403).json({ error: "Нельзя удалить владельца" });
+    }
+    if (callerData.orgRole === "admin" && targetData.orgRole === "admin") {
+      return response.status(403).json({ error: "Администратор не может удалить другого администратора" });
+    }
+    try {
+      await db.collection("users").doc(targetUid).set(
+        { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
+        { merge: true }
+      );
+      await db.collection("organizations").doc(orgId).update({ membersCount: FieldValue.increment(-1) });
+      return response.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("org removeMember: write failed", error);
+      return response.status(500).json({ error: "Не удалось удалить участника" });
+    }
+  }
+
   return response.status(400).json({ error: "Unknown action" });
 }

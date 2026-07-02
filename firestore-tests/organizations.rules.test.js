@@ -136,31 +136,18 @@ describe("organizations privilege escalation", () => {
       );
     });
 
-    it("allows a plain employee to bump membersCount by exactly 1 on the org they just joined (real joinOrganization() follow-up write)", async () => {
+    it("blocks any plain member from changing membersCount — it is server-only (Admin SDK) now", async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         await ctx.firestore().collection("users").doc("joiner").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
         await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
       });
 
       const joiner = testEnv.authenticatedContext("joiner").firestore();
-      await assertSucceeds(
-        joiner.collection("organizations").doc("some-org").update({ membersCount: 2 })
-      );
-    });
-
-    it("blocks a plain employee from changing membersCount by more than 1 or touching other org fields", async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
-        await ctx.firestore().collection("users").doc("joiner2").set({ role: "reader", organizationId: "some-org", orgRole: "employee" });
-        await ctx.firestore().collection("organizations").doc("some-org").set({ ownerId: "owner1", name: "Some Org", membersCount: 1 });
-      });
-
-      const joiner2 = testEnv.authenticatedContext("joiner2").firestore();
-      await assertFails(
-        joiner2.collection("organizations").doc("some-org").update({ membersCount: 5 })
-      );
-      await assertFails(
-        joiner2.collection("organizations").doc("some-org").update({ membersCount: 2, name: "Renamed" })
-      );
+      // ±1 used to be allowed via isMemberCountStep — that client rule is removed;
+      // join/leave/remove all change membersCount server-side via the Admin SDK.
+      await assertFails(joiner.collection("organizations").doc("some-org").update({ membersCount: 2 }));
+      await assertFails(joiner.collection("organizations").doc("some-org").update({ membersCount: 0 }));
+      await assertFails(joiner.collection("organizations").doc("some-org").update({ membersCount: 5 }));
     });
 
     it("allows owner but blocks admin from deleting the organization", async () => {

@@ -637,24 +637,18 @@ async function leaveOrganization() {
         throw new Error('Владелец не может покинуть организацию. Используйте "Удалить организацию".');
     }
 
-    const orgId = state.organization.id;
-
-    // Update user - use set with merge to handle any edge cases
-    await db.collection('users').doc(state.currentUser.uid).set({
-        organizationId: null,
-        orgRole: null
-    }, { merge: true });
-
-    // Decrement members count
-    await db.collection('organizations').doc(orgId).update({
-        membersCount: firebase.firestore.FieldValue.increment(-1)
-    });
+    // Leaving is done SERVER-SIDE (api/org 'leave', Admin SDK): it atomically
+    // clears organizationId/orgRole/allowedProjects and decrements membersCount.
+    // The old client version cleared membership first and then the -1 counter
+    // write failed the rules (no longer a member), leaving a stale count.
+    await callOrgApi('leave');
 
     // Clear local state
     state.organization = null;
     state.orgRole = null;
     state.currentUser.organizationId = null;
     state.currentUser.orgRole = null;
+    state.currentUser.allowedProjects = [];
 }
 
 // Delete organization (only for owner)
@@ -5429,23 +5423,15 @@ async function removeUserFromOrganization(userId, userName, targetRole = 'employ
     if (!confirm(`Удалить ${userName} из организации?`)) return;
 
     try {
-        // Remove user from organization
-        await db.collection('users').doc(userId).set({
-            organizationId: null,
-            orgRole: null
-        }, { merge: true });
-
-        // Decrement members count
-        if (state.organization?.id) {
-            await db.collection('organizations').doc(state.organization.id).update({
-                membersCount: firebase.firestore.FieldValue.increment(-1)
-            });
-        }
-
+        // Done SERVER-SIDE (api/org 'removeMember', Admin SDK): re-checks the
+        // caller's rights, clears the target's org fields + allowedProjects, and
+        // decrements membersCount atomically. The client checks above are just
+        // for UX; the server is the real gate.
+        await callOrgApi('removeMember', { userId });
         playClickSound();
     } catch (error) {
         console.error('Error removing user:', error);
-        alert('Ошибка при удалении пользователя');
+        alert('Ошибка при удалении пользователя: ' + (error.message || error));
     }
 }
 
