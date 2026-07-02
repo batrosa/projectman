@@ -86,12 +86,19 @@ export default async function handler(request, response) {
   try {
     const now = Date.now();
     const rlRef = db.collection(RATE_LIMIT_COLLECTION).doc(decoded.uid);
-    const rlSnap = await rlRef.get();
-    const rl = evaluateRateLimit(rlSnap.exists ? rlSnap.data().timestamps : [], now);
-    if (!rl.allowed) {
+    // Transactional so concurrent requests from the same user can't both read
+    // the same window and slip through (a plain get-then-set is a TOCTOU race
+    // that under-counts exactly when the limiter matters — rapid repeats).
+    const allowed = await db.runTransaction(async (tx) => {
+      const rlSnap = await tx.get(rlRef);
+      const rl = evaluateRateLimit(rlSnap.exists ? rlSnap.data().timestamps : [], now);
+      if (!rl.allowed) return false;
+      tx.set(rlRef, { timestamps: rl.timestamps, updatedAt: now }, { merge: true });
+      return true;
+    });
+    if (!allowed) {
       return response.status(200).json({ ok: true, answer: "Слишком много запросов подряд. Подождите минуту и попробуйте снова." });
     }
-    await rlRef.set({ timestamps: rl.timestamps, updatedAt: now }, { merge: true });
   } catch (error) {
     console.error("agent-chat: rate limit check failed", error);
   }
