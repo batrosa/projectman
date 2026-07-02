@@ -7,9 +7,16 @@ service cloud.firestore {
       return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Функция: Проверка, что пользователь не меняет защищенные поля (роль, доступы, организация)
+    // Функция: Проверка, что пользователь не меняет защищённые поля — роль,
+    // доступы, организация И игровые счётчики (XP/уровень/статистика). Начисление
+    // XP теперь только серверное (api/award-xp через Admin SDK, в обход правил),
+    // поэтому клиент вообще не должен писать эти поля — иначе любой мог сам себе
+    // накрутить XP/уровень в рейтинге.
     function notUpdatingRestrictedFields() {
-      return (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'allowedProjects', 'organizationId', 'orgRole']));
+      return (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'role', 'allowedProjects', 'organizationId', 'orgRole',
+        'totalXP', 'level', 'completedTasksCount', 'onTimeTasksCount', 'noRevisionTasksCount'
+      ]));
     }
 
     // Функция: Проверка, что пользователь ещё не состоит в организации
@@ -118,15 +125,7 @@ service cloud.firestore {
         && (managerData.orgRole == 'owner' || (resource.data.orgRole != 'owner' && request.resource.data.orgRole != 'owner'));
     }
 
-    function isOrgUserStatsUpdate() {
-      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
-      let managerData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-      return request.auth != null
-        && changedKeys.hasOnly(['totalXP', 'level', 'completedTasksCount', 'onTimeTasksCount', 'noRevisionTasksCount'])
-        && managerData.organizationId != null
-        && resource.data.organizationId == managerData.organizationId
-        && managerData.orgRole in ['owner', 'admin', 'moderator'];
-    }
+    // (isOrgUserStatsUpdate removed — XP/stats are server-only now; see api/award-xp.)
 
     // Коллекция Users
     match /users/{userId} {
@@ -153,10 +152,12 @@ service cloud.firestore {
       // removed too — otherwise a client could null its organizationId directly,
       // skipping the membersCount decrement and allowedProjects cleanup.
       // Owner-create-org remains self-service (isSelfServiceOrgCreate).
+      // NOTE: manager-writes-stats (isOrgUserStatsUpdate) was removed — XP/stats
+      // are now credited only by the server (api/award-xp, Admin SDK), so no
+      // client (not even a moderator) may write totalXP/level/*Count.
       allow update: if (request.auth != null && request.auth.uid == userId
                          && (notUpdatingRestrictedFields() || isSelfServiceOrgCreate()))
                     || isOrgUserManagerUpdate()
-                    || isOrgUserStatsUpdate()
                     || isAdmin();
 
       // Удалять: Только Админ
