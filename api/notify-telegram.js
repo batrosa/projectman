@@ -2,6 +2,7 @@
 // Keeps the bot token out of the browser bundle — the client only ever
 // calls this endpoint, never api.telegram.org directly.
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
+import { sendTelegramMessage } from "../lib/telegram-send.js";
 
 async function parseJsonBody(request) {
     if (request.body && typeof request.body === 'object') return request.body;
@@ -87,36 +88,23 @@ export default async function handler(request, response) {
 
     const parseMode = body.parseMode ? String(body.parseMode) : undefined;
 
-    try {
-        const telegramResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: text.slice(0, 3900),
-                ...(parseMode ? { parse_mode: parseMode } : {})
-            })
-        });
+    // Shared sender (lib/telegram-send). Its rich result lets this endpoint
+    // keep the exact response semantics it always had: transport failure →
+    // 502; Telegram logical refusal on HTTP 200 → 502; Telegram HTTP error →
+    // proxy the upstream status; success → 200 with messageId.
+    const result = await sendTelegramMessage(chatId, text, { parseMode });
 
-        let telegramBody = null;
-        try {
-            telegramBody = await telegramResponse.json();
-        } catch {
-            telegramBody = null;
-        }
-
-        if (!telegramResponse.ok || !telegramBody?.ok) {
-            return response.status(telegramResponse.ok ? 502 : telegramResponse.status).json({
-                ok: false,
-                error: 'Telegram send failed',
-                errorCode: telegramBody?.error_code || telegramResponse.status,
-                description: telegramBody?.description || telegramResponse.statusText || 'Unknown Telegram error'
-            });
-        }
-
-        return response.status(200).json({ ok: true, messageId: telegramBody.result?.message_id || null });
-    } catch (error) {
-        console.error('Telegram send failed:', error);
+    if (result.ok) {
+        return response.status(200).json({ ok: true, messageId: result.messageId || null });
+    }
+    if (result.transport) {
+        console.error('Telegram send failed:', result.error);
         return response.status(502).json({ ok: false, error: 'Failed to reach Telegram' });
     }
+    return response.status(result.httpOk ? 502 : result.httpStatus).json({
+        ok: false,
+        error: 'Telegram send failed',
+        errorCode: result.errorCode,
+        description: result.description
+    });
 }
