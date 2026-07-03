@@ -1877,6 +1877,8 @@ body.read-only #theme-toggle,
 body.read-only #logout-btn,
 body.read-only #mobile-menu-btn,
 body.read-only #my-tasks-btn,
+body.read-only #agent-notify-btn,
+body.read-only #agent-notify-read-all,
 body.read-only #agent-chat-btn,
 body.read-only #settings-btn,
 body.read-only #submit-completion-btn,
@@ -6872,4 +6874,63 @@ body.light-mode .leaderboard-empty {
         max-height: 100vh;
         border-radius: 0;
     }
+}
+
+/* ===== Agent notifications feed (колокольчик) ===== */
+.agent-notify-read-all {
+    margin: 0 0 0.75rem 0;
+    width: auto;
+    align-self: flex-start;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.9rem;
+}
+
+.agent-notify-item {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.agent-notify-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+body.light-mode .agent-notify-item:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.agent-notify-item.unread {
+    background: rgba(99, 102, 241, 0.10);
+}
+
+.agent-notify-item i {
+    margin-top: 0.15rem;
+    color: #818cf8;
+    flex-shrink: 0;
+}
+
+.agent-notify-body {
+    min-width: 0;
+}
+
+.agent-notify-text {
+    font-size: 0.9rem;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.agent-notify-time {
+    font-size: 0.72rem;
+    opacity: 0.55;
+    margin-top: 0.2rem;
+}
+
+.agent-notify-empty {
+    opacity: 0.6;
+    text-align: center;
+    padding: 1.25rem 0.5rem;
 }

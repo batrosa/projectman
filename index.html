@@ -17,8 +17,8 @@
     <title>ProjectMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=57.0" as="style">
-    <link rel="stylesheet" href="style.css?v=57.0">
+    <link rel="preload" href="style.css?v=58.0" as="style">
+    <link rel="stylesheet" href="style.css?v=58.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=65.0" defer></script>
+    <script src="script.js?v=66.0" defer></script>
 </head>
 
 <body>
@@ -855,6 +855,13 @@
                 <button id="my-tasks-btn" class="my-tasks-btn" style="width: 100%; justify-content: center;">
                     <i class="fa-solid fa-list-check"></i> <span>Мои задачи</span>
                     <span id="my-tasks-count" class="my-tasks-count" style="display: none;">0</span>
+                </button>
+                <!-- Лента уведомлений ИИ-агента (просрочки, сроки, «не взял в
+                     работу», задачи из документов). Видна ВСЕМ ролям — id
+                     обязан быть в списке исключений body.read-only в style.css. -->
+                <button id="agent-notify-btn" class="my-tasks-btn" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-bell"></i> <span>Уведомления</span>
+                    <span id="agent-notify-count" class="my-tasks-count" style="display: none;">0</span>
                 </button>
                 <!-- Global AI agent entry point: available to EVERY role incl.
                      Исполнитель (read-only). NB: `.secondary-btn` is hidden in
@@ -1761,6 +1768,25 @@
                         <i class="fa-solid fa-clipboard-check"></i>
                         <p>У вас нет назначенных задач</p>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Notifications Modal (лента уведомлений ИИ-агента; записи пишет
+         только сервер — api/agent-monitor и api/agent-chat) -->
+    <div id="agent-notify-modal" class="modal">
+        <div class="modal-content my-tasks-modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-bell"></i> Уведомления агента</h2>
+                <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="my-tasks-content">
+                <button id="agent-notify-read-all" class="secondary-btn agent-notify-read-all">
+                    <i class="fa-solid fa-check-double"></i> Прочитать все
+                </button>
+                <div id="agent-notify-list" class="my-tasks-list">
+                    <!-- Notifications are rendered here -->
                 </div>
             </div>
         </div>

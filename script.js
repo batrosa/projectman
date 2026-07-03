@@ -1303,6 +1303,7 @@ function enterApp() {
     applyRoleRestrictions();
     setupRealtimeListeners();
     subscribeToMyTasks();
+    subscribeToAgentNotifications();
     subscribeToOwnUserDoc();
 
 
@@ -4457,7 +4458,7 @@ function setupEventListeners() {
 
     // Buttons that live inside the mobile sidebar and open a modal must first
     // close the sidebar, otherwise the modal opens behind it.
-    [elements.myTasksBtn, elements.adminPanelBtn].forEach(btn => {
+    [elements.myTasksBtn, elements.adminPanelBtn, document.getElementById('agent-notify-btn')].forEach(btn => {
         if (btn) btn.addEventListener('click', closeSidebarOnMobile);
     });
 
@@ -4489,6 +4490,24 @@ function setupEventListeners() {
             playClickSound();
             closeSidebarOnMobile();
             openMyTasksModal();
+        });
+    }
+
+    // Agent Notifications (колокольчик)
+    const agentNotifyBtn = document.getElementById('agent-notify-btn');
+    if (agentNotifyBtn) {
+        agentNotifyBtn.addEventListener('click', () => {
+            playClickSound();
+            closeSidebarOnMobile();
+            renderAgentNotifyList();
+            document.getElementById('agent-notify-modal')?.classList.add('active');
+        });
+    }
+    const agentNotifyReadAll = document.getElementById('agent-notify-read-all');
+    if (agentNotifyReadAll) {
+        agentNotifyReadAll.addEventListener('click', () => {
+            playClickSound();
+            markAllAgentNotificationsRead();
         });
     }
 
@@ -4889,6 +4908,7 @@ function finishAuthLegacy(role) {
 
     // Subscribe to real-time My Tasks updates
     subscribeToMyTasks();
+    subscribeToAgentNotifications();
 }
 
 function showAuthScreen() {
@@ -5009,6 +5029,7 @@ async function logout() {
     try {
         // Unsubscribe from my tasks listener
         unsubscribeFromMyTasks();
+        unsubscribeFromAgentNotifications();
         if (ownUserDocListenerUnsubscribe) {
             ownUserDocListenerUnsubscribe();
             ownUserDocListenerUnsubscribe = null;
@@ -6586,6 +6607,119 @@ async function updateMyTasksCount() {
         elements.myTasksCount.style.display = 'flex';
     } else {
         elements.myTasksCount.style.display = 'none';
+    }
+}
+
+// ===== AGENT NOTIFICATIONS FEED (колокольчик «Уведомления») =====
+// Записи в agentNotifications создаёт ТОЛЬКО сервер (api/agent-monitor,
+// api/agent-chat через Admin SDK); правила разрешают клиенту читать и помечать
+// прочитанным только СВОИ записи. Запрос обязан быть заскоуплен по uid — иначе
+// правила отклонят его целиком.
+let agentNotifyUnsubscribe = null;
+let agentNotifications = [];
+
+function subscribeToAgentNotifications() {
+    if (agentNotifyUnsubscribe) { agentNotifyUnsubscribe(); agentNotifyUnsubscribe = null; }
+    const uid = state.currentUser?.uid;
+    if (!uid || !db) return;
+    agentNotifyUnsubscribe = db.collection('agentNotifications')
+        .where('uid', '==', uid)
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .onSnapshot(snap => {
+            agentNotifications = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            renderAgentNotifyBadge();
+            renderAgentNotifyList();
+        }, err => console.error('agentNotifications listener:', err?.message || err));
+}
+
+function unsubscribeFromAgentNotifications() {
+    if (agentNotifyUnsubscribe) { agentNotifyUnsubscribe(); agentNotifyUnsubscribe = null; }
+    agentNotifications = [];
+}
+
+function renderAgentNotifyBadge() {
+    const badge = document.getElementById('agent-notify-count');
+    if (!badge) return;
+    const unread = agentNotifications.filter(n => !n.readAt).length;
+    badge.textContent = String(unread);
+    badge.style.display = unread > 0 ? 'flex' : 'none';
+}
+
+const AGENT_NOTIFY_ICONS = {
+    overdue: 'fa-triangle-exclamation',
+    deadline_tomorrow: 'fa-clock',
+    not_taken_1h: 'fa-hourglass-half',
+    tasks_created: 'fa-square-plus'
+};
+
+function renderAgentNotifyList() {
+    const list = document.getElementById('agent-notify-list');
+    if (!list) return;
+    list.textContent = '';
+    if (agentNotifications.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'agent-notify-empty';
+        empty.textContent = 'Пока нет уведомлений от агента';
+        list.appendChild(empty);
+        return;
+    }
+    agentNotifications.forEach(n => {
+        const item = document.createElement('div');
+        item.className = 'agent-notify-item' + (n.readAt ? '' : ' unread');
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid ' + (AGENT_NOTIFY_ICONS[n.type] || 'fa-bell');
+        const body = document.createElement('div');
+        body.className = 'agent-notify-body';
+        const text = document.createElement('div');
+        text.className = 'agent-notify-text';
+        text.textContent = n.text || '';
+        const when = document.createElement('div');
+        when.className = 'agent-notify-time';
+        when.textContent = formatDateTimeRu(n.createdAt) || '';
+        body.appendChild(text);
+        body.appendChild(when);
+        item.appendChild(icon);
+        item.appendChild(body);
+        item.addEventListener('click', () => {
+            markAgentNotificationRead(n);
+            if (n.taskId) openTaskFromNotification(n.taskId);
+        });
+        list.appendChild(item);
+    });
+}
+
+function markAgentNotificationRead(n) {
+    if (!n || n.readAt || !db) return;
+    db.collection('agentNotifications').doc(n.id)
+        .update({ readAt: firebase.firestore.FieldValue.serverTimestamp() })
+        .catch(err => console.warn('agent-notify mark read failed:', err?.message || err));
+}
+
+function markAllAgentNotificationsRead() {
+    if (!db) return;
+    const unread = agentNotifications.filter(n => !n.readAt);
+    if (unread.length === 0) return;
+    const batch = db.batch();
+    unread.forEach(n => batch.update(
+        db.collection('agentNotifications').doc(n.id),
+        { readAt: firebase.firestore.FieldValue.serverTimestamp() }
+    ));
+    batch.commit().catch(err => console.warn('agent-notify mark all failed:', err?.message || err));
+}
+
+// Открыть задачу из уведомления. Задача может быть не в state.tasks (другой
+// проект открыт) — читаем документ напрямую; правила пропустят, если у
+// пользователя есть доступ. Удалённая/недоступная задача — молча ничего.
+async function openTaskFromNotification(taskId) {
+    if (!db || !taskId) return;
+    try {
+        const doc = await db.collection('tasks').doc(taskId).get();
+        if (!doc.exists) return;
+        document.getElementById('agent-notify-modal')?.classList.remove('active');
+        openTaskDetailsModal({ id: doc.id, ...doc.data() });
+    } catch (err) {
+        console.warn('openTaskFromNotification failed:', err?.message || err);
     }
 }
 
