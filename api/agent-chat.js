@@ -6,7 +6,7 @@
 // do not "restore" an org-wide read here, it would leak restricted projects.
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
-import { buildOpenRouterModels, openRouterModelBody, fetchWithTimeout } from "../lib/openrouter-config.js";
+import { buildOpenRouterModels, openRouterModelBody, fetchJsonWithTimeout } from "../lib/openrouter-config.js";
 import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload, matchProposalFile } from "../lib/task-proposal.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 // Same manage bar as the rules/award flow: owner/admin manage any project in
@@ -16,12 +16,12 @@ import { callerCanManageProject } from "./award-xp.js";
 const CONTEXT_CHAR_LIMIT = 45000;
 const MAX_HISTORY_TURNS = 8;
 const MAX_MESSAGE_CHARS = 4000;
-// Output-token cap for the model reply. Was 900 (truncated long answers), then
-// 2000 — which still cut propose_tasks JSON mid-array on a big roadmap
-// document. 3000 fits a 20-task JSON block (the prompt also caps the block at
-// 20 tasks per portion) plus detailed Markdown tables; the extractor can
-// additionally salvage complete tasks if a model still overruns.
-const MAX_OUTPUT_TOKENS = 3000;
+// Output-token cap for the model reply. History: 900 (truncated long
+// answers) → 2000 (still cut propose_tasks JSON mid-array on a big roadmap) →
+// 4000: fits a 30-task JSON portion (the prompt caps the block at 30) plus
+// detailed Markdown tables. The extractor still salvages complete tasks if a
+// model overruns, and fetchJsonWithTimeout bounds how long generation may take.
+const MAX_OUTPUT_TOKENS = 4000;
 // Mirrors the frontend access model (see script.js): users.allowedProjects with
 // an empty/absent array means "all projects"; a lone sentinel id means "none".
 const NO_ACCESS_SENTINEL = "__no_access__";
@@ -51,7 +51,7 @@ const SYSTEM_PROMPT_RULES = [
   "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
   `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
   PROJECTMAN_CAPABILITY_GUIDE,
-  "ФОРМИРОВАНИЕ ЗАДАЧ ИЗ ДОКУМЕНТА: если пользователь просит сформировать/создать/поставить задачи из загруженного документа (файла проекта), НЕ пиши обычный ответ — верни РОВНО ОДИН блок кода: ```json {\"action\":\"propose_tasks\",\"file\":\"<точное имя файла из данных>\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"Имя Фамилия\"}]} ``` — без текста до и после блока. В блоке НЕ БОЛЬШЕ 20 задач за раз: если в документе их больше — включи первые 20 по порядку документа (пользователь попросит следующую порцию отдельно). Названия задач краткие и понятные; ответственного и срок бери ТОЛЬКО из документа; если срок не указан — null; не выдумывай задачи, которых в документе нет. Если нужного документа нет в данных — ответь обычным текстом, что документ не найден.",
+  "ФОРМИРОВАНИЕ ЗАДАЧ ИЗ ДОКУМЕНТА: если пользователь просит сформировать/создать/поставить задачи из загруженного документа (файла проекта), НЕ пиши обычный ответ — верни РОВНО ОДИН блок кода: ```json {\"action\":\"propose_tasks\",\"file\":\"<точное имя файла из данных>\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"Имя Фамилия\"}],\"hasMore\":false} ``` — без текста до и после блока. В блоке НЕ БОЛЬШЕ 30 задач за раз, по порядку документа; если в документе задач больше, чем вошло в блок, поставь \"hasMore\": true (пользователь попросит следующую порцию, например «следующие задачи из документа X»); при запросе следующей порции продолжай с того места, где закончил. Названия задач краткие и понятные; ответственного и срок бери из документа; НО если пользователь в своём запросе ЯВНО указал, кого назначить ответственным и/или какой срок поставить (например «назначь все на Тэко Исаев со сроком 2026-08-15») — используй указанные пользователем значения для всех задач вместо данных документа. Если срока нет ни в документе, ни в запросе — null. Не выдумывай задачи, которых в документе нет. Если нужного документа нет в данных — ответь обычным текстом, что документ не найден.",
   "По умолчанию отвечай кратко (1-3 тезиса), простым нетехническим языком. Но если пользователь просит подробности, список, таблицу или схему — дай полный, хорошо структурированный ответ и НЕ сокращай данные.",
   "Обычные ответы пиши обычным текстом или короткими пунктами. Таблицу (Markdown: строка заголовков, строка-разделитель | --- | --- |, строки данных) делай ТОЛЬКО когда она действительно уместна: когда перечисляешь НЕСКОЛЬКО (2+) однотипных объектов с общими полями — список задач с исполнителями/сроками/статусами, сравнение проектов и т.п. — ИЛИ когда пользователь прямо просит таблицу. НЕ оборачивай в таблицу один объект, короткий факт, приветствие или пояснение (например «что за задача X» про одну задачу — ответь обычным текстом, а не таблицей «поле—значение»). Для акцентов можно **жирный**, для простых перечней — списки. Ссылки [текст](url) и изображения не вставляй.",
   "НЕ рисуй псевдографику и ASCII-диаграммы (сетки из | и —, стрелочные таймлайны, «нарисованные» схемы) — в чате они не отображаются и выглядят сломанно. Блоки кода (```) используй только для настоящего кода/конфигов. Если просят «схему», «диаграмму», «график», «таймлайн» или «дорожную карту» — представь это Markdown-таблицей (например: Этап | Период | Статус) или структурированным списком по этапам/годам, а не рисунком из символов.",
@@ -190,48 +190,51 @@ export default async function handler(request, response) {
     { role: "user", content: message },
   ];
 
+  // One hard budget for the WHOLE model-fallback chain, kept safely under the
+  // function's maxDuration (60s in vercel.json). fetchJsonWithTimeout bounds
+  // headers AND body together — the old fetchWithTimeout+json() pair only
+  // bounded time-to-headers, so a slow STREAMING model rode past the platform
+  // limit into a 504 ("Task timed out after 60 seconds", prod repro).
+  const LLM_TOTAL_BUDGET_MS = 50_000;
+  const LLM_PER_MODEL_MS = 25_000;
+  const llmDeadline = Date.now() + LLM_TOTAL_BUDGET_MS;
+
   for (let i = 0; i < models.length; i += 1) {
     const model = models[i];
-    try {
-      const apiResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${openRouterKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...openRouterModelBody([model]), temperature: 0.2, max_tokens: MAX_OUTPUT_TOKENS, messages }),
-      });
+    const remainingMs = llmDeadline - Date.now();
+    if (remainingMs < 3000) break; // no realistic budget left for another attempt
 
-      if (!apiResponse.ok) {
-        if (i === models.length - 1) break;
-        continue;
-      }
+    const attempt = await fetchJsonWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openRouterKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...openRouterModelBody([model]), temperature: 0.2, max_tokens: MAX_OUTPUT_TOKENS, messages }),
+    }, Math.min(LLM_PER_MODEL_MS, remainingMs));
 
-      const data = await apiResponse.json();
-      const answer = cleanAnswer(data?.choices?.[0]?.message?.content);
-      if (!answer) {
-        if (i === models.length - 1) break;
-        continue;
-      }
-
-      // PHASE 1: did the model answer with a propose_tasks JSON block?
-      // (Only fires when the user asked to form tasks from a document — the
-      // system prompt mandates the block for that intent.) Any problem with
-      // the block degrades to a plain-text explanation, never a 500.
-      try {
-        const proposal = await tryBuildTaskProposal({ db, rawAnswer: answer, context, organizationId, callerData });
-        if (proposal) {
-          if (proposal.error) {
-            return response.status(200).json({ ok: true, answer: proposal.error, model });
-          }
-          return response.status(200).json({ ok: true, taskProposal: proposal.taskProposal, model });
-        }
-      } catch (error) {
-        console.error("agent-chat: task proposal post-processing failed", error);
-        return response.status(200).json({ ok: true, answer: "Не удалось подготовить список задач из документа, попробуйте ещё раз.", model });
-      }
-
-      return response.status(200).json({ ok: true, answer, model });
-    } catch {
-      if (i === models.length - 1) break;
+    if (!attempt.ok) {
+      if (attempt.timedOut) console.warn("agent-chat: model attempt timed out", model);
+      continue;
     }
+    const answer = cleanAnswer(attempt.data?.choices?.[0]?.message?.content);
+    if (!answer) continue;
+
+    // PHASE 1: did the model answer with a propose_tasks JSON block?
+    // (Only fires when the user asked to form tasks from a document — the
+    // system prompt mandates the block for that intent.) Any problem with
+    // the block degrades to a plain-text explanation, never a 500.
+    try {
+      const proposal = await tryBuildTaskProposal({ db, rawAnswer: answer, context, organizationId, callerData });
+      if (proposal) {
+        if (proposal.error) {
+          return response.status(200).json({ ok: true, answer: proposal.error, model });
+        }
+        return response.status(200).json({ ok: true, taskProposal: proposal.taskProposal, model });
+      }
+    } catch (error) {
+      console.error("agent-chat: task proposal post-processing failed", error);
+      return response.status(200).json({ ok: true, answer: "Не удалось подготовить список задач из документа, попробуйте ещё раз.", model });
+    }
+
+    return response.status(200).json({ ok: true, answer, model });
   }
 
   return response.status(200).json({
@@ -328,10 +331,13 @@ async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, ca
       projectName: file.projectName || "без названия",
       tasks,
       canCreate,
-      // Partial list: recovered from a token-capped answer OR trimmed to the
-      // 30-task cap — the card warns the user so they can ask for the next
-      // portion after creating these.
-      truncated: extracted.truncated === true || validated.trimmed === true,
+      // Partial list: recovered from a token-capped answer, trimmed to the
+      // 30-task cap, or the model itself flagged hasMore (document has more
+      // tasks than the portion) — the card warns the user so they can ask for
+      // the next portion after creating these.
+      truncated: extracted.truncated === true
+        || validated.trimmed === true
+        || extracted.proposal.hasMore === true,
     },
   };
 }

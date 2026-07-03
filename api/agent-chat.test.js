@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit } from "./agent-chat.js";
-import { fetchWithTimeout } from "../lib/openrouter-config.js";
+import { fetchJsonWithTimeout } from "../lib/openrouter-config.js";
 
 const CONTEXT_CHAR_LIMIT = 45000;
 
@@ -545,6 +545,13 @@ vi.mock("../lib/firebase-admin.js", () => ({
 vi.mock("../lib/openrouter-config.js", () => ({
   buildOpenRouterModels: () => ["fake-model"],
   openRouterModelBody: (models) => ({ model: models[0] }),
+  // The handler now uses fetchJsonWithTimeout (bounds headers AND body under
+  // one deadline); it returns the parsed data directly, no .json() step.
+  fetchJsonWithTimeout: vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    data: { choices: [{ message: { content: "AI answer" } }] },
+  })),
   fetchWithTimeout: vi.fn(async () => ({
     ok: true,
     json: async () => ({ choices: [{ message: { content: "AI answer" } }] }),
@@ -561,7 +568,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
   beforeEach(() => {
     process.env.OPENROUTER_API_KEY = "test-key";
     state.verifyIdToken = vi.fn(async () => ({ uid: "user-1" }));
-    fetchWithTimeout.mockClear();
+    fetchJsonWithTimeout.mockClear();
   });
 
   it("returns a graceful HTTP 200 fallback when the user-doc lookup rejects", async () => {
@@ -620,8 +627,8 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     await handler(makeRequest({ message: "как контролить Абрау в ProjectMan?" }), res);
 
     expect(res.statusCode).toBe(200);
-    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
-    const [, options] = fetchWithTimeout.mock.calls[0];
+    expect(fetchJsonWithTimeout).toHaveBeenCalledTimes(1);
+    const [, options] = fetchJsonWithTimeout.mock.calls[0];
     const payload = JSON.parse(options.body);
     const systemPrompt = payload.messages[0].content;
 
