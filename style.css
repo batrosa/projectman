@@ -6934,3 +6934,49 @@ body.light-mode .agent-notify-item:hover {
     text-align: center;
     padding: 1.25rem 0.5rem;
 }
+
+/* ===== Agent task-proposal card (создание задач из документа) ===== */
+.agent-task-proposal-title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.agent-task-proposal-scroll {
+    overflow-x: auto;
+    margin: 0.25rem 0 0.6rem 0;
+}
+
+.agent-task-proposal-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.85rem;
+}
+
+.agent-task-proposal-table th,
+.agent-task-proposal-table td {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 0.35rem 0.55rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+body.light-mode .agent-task-proposal-table th,
+body.light-mode .agent-task-proposal-table td {
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+.agent-task-proposal-skip {
+    opacity: 0.6;
+}
+
+.agent-task-proposal-create {
+    margin-top: 0.25rem;
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+}
+
+.agent-task-proposal-note {
+    font-size: 0.8rem;
+    opacity: 0.65;
+    margin-top: 0.35rem;
+}

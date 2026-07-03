@@ -8077,6 +8077,123 @@ function renderAgentChatEmptyState() {
     elements.agentChatMessages.appendChild(empty);
 }
 
+// ===== TASK PROPOSAL CARD (создание задач из документа, фаза предпросмотра) =====
+// Рендерит карточку «что я создам» из ответа сервера {taskProposal}. DOM
+// строится только через createElement/textContent (никакого innerHTML с
+// данными). Кнопка создания видна лишь когда сервер сказал canCreate — и
+// сервер всё равно перепроверит права на фазе 2.
+function appendAgentTaskProposal(proposal) {
+    if (!elements.agentChatMessages || !proposal || !Array.isArray(proposal.tasks)) return;
+    const emptyState = elements.agentChatMessages.querySelector('.agent-chat-empty');
+    if (emptyState) emptyState.remove();
+
+    const card = document.createElement('div');
+    card.className = 'agent-chat-message agent-chat-message-assistant agent-task-proposal';
+
+    const heading = document.createElement('div');
+    heading.className = 'agent-task-proposal-title';
+    heading.textContent = `Задачи из документа «${proposal.file || ''}» (проект «${proposal.projectName || ''}»)`;
+    card.appendChild(heading);
+
+    const table = document.createElement('table');
+    table.className = 'agent-task-proposal-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['Задача', 'Срок', 'Ответственный', 'Статус'].forEach(label => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    proposal.tasks.forEach(t => {
+        const tr = document.createElement('tr');
+        const cells = [
+            t.title || '',
+            t.deadline || '—',
+            t.assigneeDisplay || t.assigneeName || '',
+            t.ok ? '✅ будет создана' : `⚠️ ${t.reason || 'не будет создана'}`
+        ];
+        cells.forEach(value => {
+            const td = document.createElement('td');
+            td.textContent = value;
+            tr.appendChild(td);
+        });
+        if (!t.ok) tr.className = 'agent-task-proposal-skip';
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    // Таблица может быть шире пузыря — скроллим внутри карточки.
+    const scroller = document.createElement('div');
+    scroller.className = 'agent-task-proposal-scroll';
+    scroller.appendChild(table);
+    card.appendChild(scroller);
+
+    const okTasks = proposal.tasks.filter(t => t.ok && t.assigneeUid && t.deadline);
+    if (proposal.canCreate && okTasks.length > 0) {
+        const btn = document.createElement('button');
+        btn.className = 'primary-btn agent-task-proposal-create';
+        btn.textContent = `Создать ${okTasks.length} задач(и)`;
+        btn.addEventListener('click', () => {
+            btn.disabled = true;
+            btn.textContent = 'Создаю…';
+            confirmAgentTaskProposal(proposal, okTasks, btn);
+        });
+        card.appendChild(btn);
+    } else if (okTasks.length === 0) {
+        const note = document.createElement('div');
+        note.className = 'agent-task-proposal-note';
+        note.textContent = 'Создавать нечего: ни одна строка не прошла проверку.';
+        card.appendChild(note);
+    } else if (!proposal.canCreate) {
+        const note = document.createElement('div');
+        note.className = 'agent-task-proposal-note';
+        note.textContent = 'Создавать задачи может владелец, админ или модератор с доступом к проекту.';
+        card.appendChild(note);
+    }
+
+    elements.agentChatMessages.appendChild(card);
+    elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
+}
+
+// Фаза 2: подтверждение — POST {action:'create_tasks'} на тот же endpoint.
+async function confirmAgentTaskProposal(proposal, okTasks, btn) {
+    try {
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('Не авторизован');
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch('/api/agent-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({
+                action: 'create_tasks',
+                projectId: proposal.projectId,
+                file: proposal.file || '',
+                tasks: okTasks.map(t => ({ title: t.title, deadline: t.deadline, assigneeUid: t.assigneeUid }))
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.ok) {
+            if (btn) btn.remove();
+            const doneText = `✅ Создано задач: ${data.created}. Проект «${proposal.projectName || ''}», раздел «Назначенные». Исполнители получили уведомления.`;
+            appendAgentChatMessage('assistant', doneText);
+            agentChatState.history.push({ role: 'assistant', content: doneText });
+            agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+        } else {
+            if (btn) { btn.disabled = false; btn.textContent = `Создать ${okTasks.length} задач(и)`; }
+            const detail = data && typeof data.error === 'string' ? data.error : 'Попробуйте ещё раз.';
+            appendAgentChatMessage('error', `Не удалось создать задачи: ${detail}`);
+        }
+    } catch (error) {
+        if (btn) { btn.disabled = false; btn.textContent = `Создать ${okTasks.length} задач(и)`; }
+        console.error('agent-chat create_tasks failed:', error);
+        appendAgentChatMessage('error', 'Ошибка сети при создании задач. Попробуйте ещё раз.');
+    }
+}
+
 function setAgentChatInputDisabled(disabled) {
     if (elements.agentChatInput) elements.agentChatInput.disabled = disabled;
     if (elements.agentChatSendBtn) elements.agentChatSendBtn.disabled = disabled;
@@ -8157,12 +8274,24 @@ async function handleAgentChatSubmit(event) {
         if (myGeneration !== agentChatState.generation) return;
 
         if (status === 200 && data && data.ok) {
-            const answer = typeof data.answer === 'string' && data.answer.trim()
-                ? data.answer
-                : 'Агент не смог сформировать ответ. Попробуйте переформулировать вопрос.';
-            appendAgentChatMessage('assistant', answer);
-            agentChatState.history.push({ role: 'assistant', content: answer });
-            agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+            if (data.taskProposal && typeof data.taskProposal === 'object') {
+                // Предпросмотр задач из документа: карточка + кнопка. В историю
+                // для LLM кладём компактный текст, а не карточку.
+                appendAgentTaskProposal(data.taskProposal);
+                const total = Array.isArray(data.taskProposal.tasks) ? data.taskProposal.tasks.length : 0;
+                const okCount = Array.isArray(data.taskProposal.tasks)
+                    ? data.taskProposal.tasks.filter(t => t.ok).length : 0;
+                const summary = `Предложены задачи из документа «${data.taskProposal.file || ''}»: к созданию ${okCount} из ${total}.`;
+                agentChatState.history.push({ role: 'assistant', content: summary });
+                agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+            } else {
+                const answer = typeof data.answer === 'string' && data.answer.trim()
+                    ? data.answer
+                    : 'Агент не смог сформировать ответ. Попробуйте переформулировать вопрос.';
+                appendAgentChatMessage('assistant', answer);
+                agentChatState.history.push({ role: 'assistant', content: answer });
+                agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+            }
         } else if (status === 401) {
             // Token expired/invalid server-side — a generic error message
             // would be misleading here since retrying with the same (stale)
