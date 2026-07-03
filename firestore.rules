@@ -321,5 +321,18 @@ service cloud.firestore {
     match /auditLogs/{logId} {
       allow read, write: if false;
     }
+
+    // agentNotifications — лента уведомлений ИИ-агента (просрочки, «остался
+    // 1 день», «не взял в работу», «задачи созданы из документа»). Пишет
+    // ТОЛЬКО сервер (api/agent-monitor, api/agent-chat через Admin SDK).
+    // Клиент: читает и помечает прочитанным ТОЛЬКО свои записи (readAt) —
+    // подделать, переписать текст или удалить историю нельзя.
+    match /agentNotifications/{noteId} {
+      allow get, list: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow create, delete: if false;
+    }
   }
 }
