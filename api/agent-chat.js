@@ -7,7 +7,7 @@
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildOpenRouterModels, openRouterModelBody, fetchWithTimeout } from "../lib/openrouter-config.js";
-import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload } from "../lib/task-proposal.js";
+import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload, matchProposalFile } from "../lib/task-proposal.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 // Same manage bar as the rules/award flow: owner/admin manage any project in
 // their org; a moderator only projects in their allowedProjects.
@@ -261,33 +261,28 @@ async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, ca
     return { error: "Не смог корректно разобрать задачи из документа — похоже, список получился слишком большим. Попросите порцию поменьше, например: «первые 10 задач из документа X» или задачи по конкретному разделу." };
   }
 
-  // Salvaged from a truncated payload: keep it within the validator's cap and
-  // tell the client the list is partial.
-  if (extracted.truncated && Array.isArray(extracted.proposal.tasks)) {
-    extracted.proposal.tasks = extracted.proposal.tasks.slice(0, 30);
-  }
-
   const validated = validateProposal(extracted.proposal);
   if (!validated.ok) {
     return { error: `Не получилось сформировать задачи: ${validated.error}.` };
   }
 
-  // Bind the proposal to the document's project by filename (exact
-  // case-insensitive match first, then a unique substring match). The LLM only
-  // ever sees filenames — never project ids.
-  const wanted = validated.file.toLowerCase();
+  // Bind the proposal to the document's project by filename. The LLM re-types
+  // the name rather than copying it (prod case: an underscore came back as a
+  // space), so matching is normalized + substring + single-document fallback —
+  // see matchProposalFile. The LLM only ever sees filenames, never project ids.
   const allFiles = Array.isArray(context.files) ? context.files : [];
-  let hits = allFiles.filter((f) => (f.filename || "").toLowerCase() === wanted);
-  if (hits.length === 0) {
-    hits = allFiles.filter((f) => (f.filename || "").toLowerCase().includes(wanted));
-  }
-  if (hits.length === 0) {
+  const fileMatch = matchProposalFile(allFiles, validated.file);
+  if (fileMatch.error === "not_found") {
+    console.error("agent-chat: proposal file not matched", {
+      wanted: validated.file,
+      available: allFiles.map((f) => f.filename),
+    });
     return { error: `Документ «${validated.file}» не найден среди файлов ваших проектов (или из него не извлечён текст).` };
   }
-  if (hits.length > 1) {
+  if (fileMatch.error === "ambiguous") {
     return { error: `Название «${validated.file}» подходит к нескольким файлам — уточните, какой документ использовать.` };
   }
-  const file = hits[0];
+  const file = fileMatch.file;
 
   // Org members for assignee matching (by human name from the document).
   let users = [];
@@ -303,8 +298,16 @@ async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, ca
     not_found: "пользователь не найден в организации",
     ambiguous: "имя подходит нескольким пользователям",
     no_deadline: "в документе не указан срок",
+    no_title: "нет названия задачи",
+    bad_deadline: "некорректный срок в документе",
+    no_assignee: "не указан ответственный",
   };
   const tasks = validated.tasks.map((t) => {
+    // Row-level problems from the validator (messy source document) — show
+    // the reason, keep the other rows creatable.
+    if (t.rowError) {
+      return { title: t.title || "—", deadline: t.deadline, assigneeName: t.assigneeName, ok: false, reason: REASON_TEXT[t.rowError] || t.rowError };
+    }
     const match = matchAssignee(users, t.assigneeName);
     if (match.error) {
       return { ...t, ok: false, reason: REASON_TEXT[match.error] || match.error };
@@ -325,9 +328,10 @@ async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, ca
       projectName: file.projectName || "без названия",
       tasks,
       canCreate,
-      // Partial list recovered from a token-capped answer — the card warns
-      // the user so they can ask for the next portion after creating these.
-      truncated: extracted.truncated === true,
+      // Partial list: recovered from a token-capped answer OR trimmed to the
+      // 30-task cap — the card warns the user so they can ask for the next
+      // portion after creating these.
+      truncated: extracted.truncated === true || validated.trimmed === true,
     },
   };
 }
