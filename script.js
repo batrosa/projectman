@@ -1915,7 +1915,6 @@ function subscribeToProjectTasks(projectId) {
                 tasks.push({ id: doc.id, ...doc.data() });
             });
             state.tasks = tasks;
-            checkReminders(tasks);
             renderBoard();
         }, error => {
             console.error("Error fetching tasks:", error);
@@ -5896,49 +5895,15 @@ ${escapeHtmlForTelegram(revisionReason)}
     await sendTelegramNotification(chatId, message);
 }
 
-// Send deadline reminder via Telegram (chatId resolved by caller via uid)
-async function sendTelegramReminderNotification(chatId, taskTitle, projectName, deadline) {
-    if (!chatId) return;
-
-    const message = `⏰ <b>Напоминание о дедлайне!</b>
-
-<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
-<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
-<b>Срок:</b> ${deadline}
-
-Осталось менее 20% времени. Поторопитесь!`;
-
-    await sendTelegramNotification(chatId, message);
-}
-
-// Send "take task into work" reminder via Telegram (chatId resolved via uid)
-async function sendTelegramTakeTaskReminder(chatId, taskTitle, projectName) {
-    if (!chatId) return;
-
-    const message = `📋 <b>Напоминание!</b>
-
-<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
-<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
-
-Пожалуйста, возьмите задачу в работу как можно скорее!`;
-
-    await sendTelegramNotification(chatId, message);
-}
-
-// Send overdue notification via Telegram (chatId resolved by caller via uid)
-async function sendTelegramOverdueNotification(chatId, taskTitle, projectName, deadline) {
-    if (!chatId) return;
-
-    const message = `⚠️ <b>Просрочка!</b>
-
-<b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
-<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
-<b>Срок был:</b> ${deadline}
-
-Срок выполнения задачи истёк! Пожалуйста, завершите её как можно скорее.`;
-
-    await sendTelegramNotification(chatId, message);
-}
+// Client-side deadline reminders were RETIRED. The per-task Telegram
+// reminder helpers (deadline / take-into-work / overdue) and the client
+// reminder sweep that called them lived here. They only worked while a
+// manager had a tab open and messaged the assignee only. Replaced by the
+// server-side api/agent-monitor (Vercel cron daily + GitHub Actions hourly):
+// it notifies the assignee AND the task creator, writes the in-app
+// agentNotifications feed, duplicates to Telegram, and de-dups via
+// notifiedOverdueOn / notifiedDeadlineSoonAt / notifiedNotTakenAt flags.
+// Do NOT reintroduce a client-side sweep — it would double every message.
 
 // Escape HTML for Telegram
 function escapeHtmlForTelegram(text) {
@@ -5947,143 +5912,6 @@ function escapeHtmlForTelegram(text) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-}
-
-function checkReminders(tasks) {
-    // Only run if we have users loaded
-    if (!state.users || state.users.length === 0) return;
-
-    // Only managers run the reminder sweep. It writes de-dup flags
-    // (lastNotTakenReminder / overdueNotificationSent / reminderSent) that the
-    // reader task-rule forbids — so on a reader's client these writes were
-    // denied and the reminder re-fired on every snapshot. Managers write via
-    // the broad task-update rule, so the flags persist and throttle correctly.
-    // (Also cuts duplicate Telegram sends from many open clients.)
-    if (!canManageTasks()) return;
-
-    const now = new Date();
-    const TWO_HOURS_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
-
-    tasks.forEach(task => {
-        if (task.status === 'done') return;
-
-        const deadlineDate = new Date(task.deadline);
-        const projectName = document.getElementById('project-title')?.textContent || 'Проект';
-
-        // Handle createdAt
-        let createdAtDate;
-        if (task.createdAt && task.createdAt.toDate) {
-            createdAtDate = task.createdAt.toDate();
-        } else if (task.createdAt) {
-            createdAtDate = new Date(task.createdAt);
-        } else {
-            return;
-        }
-
-        // Get current subStatus
-        const currentSubStatus = task.subStatus || 'assigned';
-
-        // 1. Check for "take task" reminder (status = assigned, 2+ hours passed)
-        if (currentSubStatus === 'assigned' && (task.assigneeIds?.length || task.assigneeEmail)) {
-            const timeSinceCreation = now - createdAtDate;
-
-            // Check if 2+ hours since creation
-            if (timeSinceCreation >= TWO_HOURS_MS) {
-                // Check last reminder time
-                let lastReminderTime = null;
-                if (task.lastNotTakenReminder) {
-                    if (task.lastNotTakenReminder.toDate) {
-                        lastReminderTime = task.lastNotTakenReminder.toDate();
-                    } else {
-                        lastReminderTime = new Date(task.lastNotTakenReminder);
-                    }
-                }
-
-                // Send if never sent or 2+ hours since last reminder
-                const shouldSend = !lastReminderTime || (now - lastReminderTime >= TWO_HOURS_MS);
-
-                if (shouldSend) {
-                    taskAssigneeChatIds(task).forEach(chatId => {
-                        sendTelegramTakeTaskReminder(chatId, task.title, projectName);
-                    });
-
-                    // Update last reminder time
-                    db.collection('tasks').doc(task.id).update({
-                        lastNotTakenReminder: new Date().toISOString()
-                    });
-                }
-            }
-        }
-
-        // 2. Check for overdue notification (status = in_work, deadline passed)
-        // Send notification the day AFTER the deadline (not on the deadline day itself)
-        // Also don't send if task was just taken into work (within last hour)
-        if (currentSubStatus === 'in_work' && (task.assigneeIds?.length || task.assigneeEmail) && !task.overdueNotificationSent) {
-            // Check if task was taken into work recently (within last hour) - don't notify yet
-            let takenToWorkTime = null;
-            if (task.takenToWorkAt) {
-                if (task.takenToWorkAt.toDate) {
-                    takenToWorkTime = task.takenToWorkAt.toDate();
-                } else {
-                    takenToWorkTime = new Date(task.takenToWorkAt);
-                }
-            }
-
-            const ONE_HOUR_MS = 60 * 60 * 1000;
-            const timeSinceTakenToWork = takenToWorkTime ? (now - takenToWorkTime) : Infinity;
-
-            // Skip if task was taken into work less than 1 hour ago
-            if (timeSinceTakenToWork < ONE_HOUR_MS) {
-                return; // Don't send notification yet, give grace period
-            }
-
-            // Compare dates only (ignore time), using local timezone
-            const todayDate = new Date();
-            todayDate.setHours(0, 0, 0, 0);
-
-            // Parse deadline as local date (not UTC)
-            let deadlineDateLocal;
-            if (typeof task.deadline === 'string' && task.deadline.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                const [year, month, day] = task.deadline.split('-').map(Number);
-                deadlineDateLocal = new Date(year, month - 1, day);
-            } else {
-                deadlineDateLocal = new Date(task.deadline);
-            }
-            deadlineDateLocal.setHours(0, 0, 0, 0);
-
-            // Calculate difference in days
-            const diffDays = Math.floor((todayDate - deadlineDateLocal) / (1000 * 60 * 60 * 24));
-
-            // Send notification only if we're at least 1 day AFTER the deadline
-            if (diffDays >= 1) {
-                taskAssigneeChatIds(task).forEach(chatId => {
-                    sendTelegramOverdueNotification(chatId, task.title, projectName, task.deadline);
-                });
-
-                // Mark as sent
-                db.collection('tasks').doc(task.id).update({ overdueNotificationSent: true });
-            }
-        }
-
-        // 3. Original deadline reminder (less than 20% time left)
-        if (!task.reminderSent && (task.assigneeIds?.length || task.assigneeEmail)) {
-            const totalDuration = deadlineDate - createdAtDate;
-            const timeLeft = deadlineDate - now;
-
-            if (totalDuration > 0) {
-                const percentage = (timeLeft / totalDuration) * 100;
-
-                if (percentage < 20 && percentage > 0) {
-                    taskAssigneeChatIds(task).forEach(chatId => {
-                        sendTelegramReminderNotification(chatId, task.title, projectName, task.deadline);
-                    });
-
-                    // Mark as sent
-                    db.collection('tasks').doc(task.id).update({ reminderSent: true });
-                }
-            }
-        }
-    });
 }
 
 // ========================================
