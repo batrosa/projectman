@@ -1,0 +1,23 @@
+# Ежечасный будильник для api/agent-monitor (проверка «не взял в работу за
+# час» и подстраховка дневного Vercel Cron — Hobby-план Vercel умеет cron
+# только раз в сутки). РЕПОЗИТОРИЙ ПУБЛИЧНЫЙ: секрет живёт ТОЛЬКО в
+# GitHub → Settings → Secrets and variables → Actions → CRON_SECRET (то же
+# значение, что в Vercel env CRON_SECRET). workflow_dispatch — ручной запуск
+# для смоук-теста из вкладки Actions.
+name: agent-monitor-hourly
+
+on:
+  schedule:
+    - cron: "5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call agent monitor
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sS -f -X POST "https://projectmanteko.vercel.app/api/agent-monitor" \
+            -H "Authorization: Bearer ${CRON_SECRET}"
