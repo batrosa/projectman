@@ -5,7 +5,13 @@
 // member gets only their allowedProjects. It does NOT bypass allowedProjects —
 // do not "restore" an org-wide read here, it would leak restricted projects.
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
+import { FieldValue } from "firebase-admin/firestore";
 import { buildOpenRouterModels, openRouterModelBody, fetchWithTimeout } from "../lib/openrouter-config.js";
+import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload } from "../lib/task-proposal.js";
+import { sendTelegramMessage } from "../lib/telegram-send.js";
+// Same manage bar as the rules/award flow: owner/admin manage any project in
+// their org; a moderator only projects in their allowedProjects.
+import { callerCanManageProject } from "./award-xp.js";
 
 const CONTEXT_CHAR_LIMIT = 45000;
 const MAX_HISTORY_TURNS = 8;
@@ -43,6 +49,7 @@ const SYSTEM_PROMPT_RULES = [
   "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
   `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
   PROJECTMAN_CAPABILITY_GUIDE,
+  "ФОРМИРОВАНИЕ ЗАДАЧ ИЗ ДОКУМЕНТА: если пользователь просит сформировать/создать/поставить задачи из загруженного документа (файла проекта), НЕ пиши обычный ответ — верни РОВНО ОДИН блок кода: ```json {\"action\":\"propose_tasks\",\"file\":\"<точное имя файла из данных>\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"Имя Фамилия\"}]} ``` — без текста до и после блока. Названия задач краткие и понятные; ответственного и срок бери ТОЛЬКО из документа; если срок не указан — null; не выдумывай задачи, которых в документе нет. Если нужного документа нет в данных — ответь обычным текстом, что документ не найден.",
   "По умолчанию отвечай кратко (1-3 тезиса), простым нетехническим языком. Но если пользователь просит подробности, список, таблицу или схему — дай полный, хорошо структурированный ответ и НЕ сокращай данные.",
   "Обычные ответы пиши обычным текстом или короткими пунктами. Таблицу (Markdown: строка заголовков, строка-разделитель | --- | --- |, строки данных) делай ТОЛЬКО когда она действительно уместна: когда перечисляешь НЕСКОЛЬКО (2+) однотипных объектов с общими полями — список задач с исполнителями/сроками/статусами, сравнение проектов и т.п. — ИЛИ когда пользователь прямо просит таблицу. НЕ оборачивай в таблицу один объект, короткий факт, приветствие или пояснение (например «что за задача X» про одну задачу — ответь обычным текстом, а не таблицей «поле—значение»). Для акцентов можно **жирный**, для простых перечней — списки. Ссылки [текст](url) и изображения не вставляй.",
   "НЕ рисуй псевдографику и ASCII-диаграммы (сетки из | и —, стрелочные таймлайны, «нарисованные» схемы) — в чате они не отображаются и выглядят сломанно. Блоки кода (```) используй только для настоящего кода/конфигов. Если просят «схему», «диаграмму», «график», «таймлайн» или «дорожную карту» — представь это Markdown-таблицей (например: Этап | Период | Статус) или структурированным списком по этапам/годам, а не рисунком из символов.",
@@ -81,8 +88,12 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "Invalid JSON body" });
   }
 
+  // Phase 2 of the create-tasks-from-document flow: the client's «Создать N
+  // задач» button posts {action:'create_tasks', ...} instead of a chat message.
+  const isCreateAction = body && body.action === "create_tasks";
+
   const message = String(body.message || "").trim().slice(0, MAX_MESSAGE_CHARS);
-  if (!message) return response.status(400).json({ error: "message is required" });
+  if (!isCreateAction && !message) return response.status(400).json({ error: "message is required" });
   const history = normalizeHistory(body.history);
 
   // Scope is enforced by the system prompt (greet greetings, refuse only
@@ -118,17 +129,25 @@ export default async function handler(request, response) {
 
   let organizationId;
   let accessibleProjectIds = null; // null = all projects (owner/admin or unrestricted)
+  let callerData = null; // kept for the task-creation permission check (orgRole/allowedProjects)
   try {
     const userDoc = await db.collection("users").doc(decoded.uid).get();
-    const userData = userDoc.exists ? userDoc.data() : null;
-    organizationId = userData ? userData.organizationId : null;
-    accessibleProjectIds = accessibleProjectIdsFor(userData);
+    callerData = userDoc.exists ? userDoc.data() : null;
+    organizationId = callerData ? callerData.organizationId : null;
+    accessibleProjectIds = accessibleProjectIdsFor(callerData);
   } catch (error) {
     console.error("agent-chat: failed to load user doc", error);
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
   }
   if (!organizationId) {
     return response.status(200).json({ ok: true, answer: "Вы пока не состоите ни в одной организации — агенту нечего показать." });
+  }
+
+  // PHASE 2: confirmed creation from a previously shown proposal. Own
+  // validation + a server-side permission check (the button being visible on
+  // the client proves nothing).
+  if (isCreateAction) {
+    return handleCreateTasks({ db, response, decoded, body, callerData, organizationId });
   }
   // Restricted member with access to NO projects: don't even call the model.
   if (Array.isArray(accessibleProjectIds) && accessibleProjectIds.length === 0) {
@@ -190,6 +209,23 @@ export default async function handler(request, response) {
         continue;
       }
 
+      // PHASE 1: did the model answer with a propose_tasks JSON block?
+      // (Only fires when the user asked to form tasks from a document — the
+      // system prompt mandates the block for that intent.) Any problem with
+      // the block degrades to a plain-text explanation, never a 500.
+      try {
+        const proposal = await tryBuildTaskProposal({ db, rawAnswer: answer, context, organizationId, callerData });
+        if (proposal) {
+          if (proposal.error) {
+            return response.status(200).json({ ok: true, answer: proposal.error, model });
+          }
+          return response.status(200).json({ ok: true, taskProposal: proposal.taskProposal, model });
+        }
+      } catch (error) {
+        console.error("agent-chat: task proposal post-processing failed", error);
+        return response.status(200).json({ ok: true, answer: "Не удалось подготовить список задач из документа, попробуйте ещё раз.", model });
+      }
+
       return response.status(200).json({ ok: true, answer, model });
     } catch {
       if (i === models.length - 1) break;
@@ -201,6 +237,190 @@ export default async function handler(request, response) {
     answer: "Не удалось получить ответ от ИИ-агента, попробуйте ещё раз через минуту.",
     model: "fallback",
   });
+}
+
+// ===== CREATE TASKS FROM A DOCUMENT (two-phase protocol) =====
+
+// PHASE 1 post-processing: if the LLM answered with a propose_tasks JSON
+// block, turn it into a validated proposal for the client's preview card.
+// Returns null (not our flow — treat the answer as normal chat),
+// { error } (human-readable Russian text to show instead), or
+// { taskProposal } for the preview card.
+async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, callerData }) {
+  const extracted = extractProposal(rawAnswer);
+  if (!extracted.found) return null;
+  if (extracted.error) {
+    return { error: "Не смог корректно разобрать задачи из документа. Попробуйте переформулировать запрос." };
+  }
+
+  const validated = validateProposal(extracted.proposal);
+  if (!validated.ok) {
+    return { error: `Не получилось сформировать задачи: ${validated.error}.` };
+  }
+
+  // Bind the proposal to the document's project by filename (exact
+  // case-insensitive match first, then a unique substring match). The LLM only
+  // ever sees filenames — never project ids.
+  const wanted = validated.file.toLowerCase();
+  const allFiles = Array.isArray(context.files) ? context.files : [];
+  let hits = allFiles.filter((f) => (f.filename || "").toLowerCase() === wanted);
+  if (hits.length === 0) {
+    hits = allFiles.filter((f) => (f.filename || "").toLowerCase().includes(wanted));
+  }
+  if (hits.length === 0) {
+    return { error: `Документ «${validated.file}» не найден среди файлов ваших проектов (или из него не извлечён текст).` };
+  }
+  if (hits.length > 1) {
+    return { error: `Название «${validated.file}» подходит к нескольким файлам — уточните, какой документ использовать.` };
+  }
+  const file = hits[0];
+
+  // Org members for assignee matching (by human name from the document).
+  let users = [];
+  try {
+    const usersSnap = await db.collection("users").where("organizationId", "==", organizationId).get();
+    users = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.error("agent-chat proposal: failed to load org users", error);
+    return { error: "Не удалось загрузить список участников организации, попробуйте ещё раз." };
+  }
+
+  const REASON_TEXT = {
+    not_found: "пользователь не найден в организации",
+    ambiguous: "имя подходит нескольким пользователям",
+    no_deadline: "в документе не указан срок",
+  };
+  const tasks = validated.tasks.map((t) => {
+    const match = matchAssignee(users, t.assigneeName);
+    if (match.error) {
+      return { ...t, ok: false, reason: REASON_TEXT[match.error] || match.error };
+    }
+    if (!t.deadline) {
+      // Creation requires a real deadline (board rendering + the deadline
+      // monitor both assume one) — surface it in the preview instead.
+      return { ...t, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: false, reason: REASON_TEXT.no_deadline };
+    }
+    return { ...t, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: true };
+  });
+
+  const canCreate = callerCanManageProject(callerData?.orgRole, callerData?.allowedProjects, file.projectId);
+  return {
+    taskProposal: {
+      file: file.filename,
+      projectId: file.projectId,
+      projectName: file.projectName || "без названия",
+      tasks,
+      canCreate,
+    },
+  };
+}
+
+// PHASE 2: the confirmed «Создать N задач» click. Server-side validation +
+// the same manage bar as the main UI, then a single batch creating the task
+// docs (field shape mirrors the client's createTask()) and the feed entries;
+// Telegram duplicates go out after the commit.
+async function handleCreateTasks({ db, response, decoded, body, callerData, organizationId }) {
+  const payload = validateCreateTasksPayload(body);
+  if (!payload.ok) return response.status(400).json({ error: payload.error });
+
+  let project;
+  try {
+    const snap = await db.collection("projects").doc(payload.projectId).get();
+    project = snap.exists ? snap.data() : null;
+  } catch (error) {
+    console.error("agent-chat create_tasks: project load failed", error);
+    return response.status(500).json({ error: "Не удалось проверить проект" });
+  }
+  if (!project || project.organizationId !== organizationId) {
+    return response.status(403).json({ error: "Проект не найден в вашей организации" });
+  }
+  if (!callerCanManageProject(callerData?.orgRole, callerData?.allowedProjects, payload.projectId)) {
+    return response.status(403).json({ error: "Недостаточно прав для создания задач в этом проекте" });
+  }
+
+  // Every assignee must be a real member of the caller's org — reject the
+  // whole request otherwise (no partial creation surprises).
+  const uniqueUids = [...new Set(payload.tasks.map((t) => t.assigneeUid))];
+  const usersByUid = new Map();
+  for (const uid of uniqueUids) {
+    try {
+      const snap = await db.collection("users").doc(uid).get();
+      const data = snap.exists ? snap.data() : null;
+      if (!data || data.organizationId !== organizationId) {
+        return response.status(400).json({ error: "Один из исполнителей не найден в вашей организации" });
+      }
+      usersByUid.set(uid, data);
+    } catch (error) {
+      console.error("agent-chat create_tasks: user load failed", uid, error);
+      return response.status(500).json({ error: "Не удалось проверить исполнителей" });
+    }
+  }
+
+  const createdByName = callerData
+    ? (`${callerData.firstName || ""} ${callerData.lastName || ""}`.trim() || callerData.email || "ИИ-агент")
+    : "ИИ-агент";
+  const description = payload.file
+    ? `Создано ИИ-агентом из документа «${payload.file}»`
+    : "Создано ИИ-агентом";
+  const projectName = project.name || "Проект";
+
+  const batch = db.batch();
+  const telegramQueue = [];
+  for (const t of payload.tasks) {
+    const user = usersByUid.get(t.assigneeUid);
+    const assigneeDisplay = user.displayName
+      || `${user.firstName || ""} ${user.lastName || ""}`.trim()
+      || user.email
+      || "Исполнитель";
+    const taskRef = db.collection("tasks").doc();
+    // Field shape mirrors the client's createTask() exactly, so boards,
+    // filters, the reader carve-out and the monitor treat these tasks like any
+    // manually created one.
+    batch.set(taskRef, {
+      projectId: payload.projectId,
+      organizationId,
+      title: t.title,
+      description,
+      assignee: assigneeDisplay,
+      assigneeEmail: user.email || "",
+      assigneeIds: [t.assigneeUid],
+      deadline: t.deadline,
+      status: "in-progress",
+      subStatus: "assigned",
+      assigneeCompleted: false,
+      attachments: [],
+      createdAt: FieldValue.serverTimestamp(),
+      createdBy: createdByName,
+      createdByEmail: callerData?.email || "",
+      createdByUid: decoded.uid,
+    });
+
+    const text = `🆕 Новая задача: «${t.title}». Срок: ${t.deadline} (проект «${projectName}»). Поставлена ИИ-агентом по поручению: ${createdByName}.`;
+    const noteRef = db.collection("agentNotifications").doc();
+    batch.set(noteRef, {
+      uid: t.assigneeUid,
+      organizationId,
+      taskId: taskRef.id,
+      projectId: payload.projectId,
+      type: "tasks_created",
+      text,
+      createdAt: FieldValue.serverTimestamp(),
+      readAt: null,
+    });
+    if (user.telegramChatId) telegramQueue.push({ chatId: user.telegramChatId, text });
+  }
+
+  try {
+    await batch.commit();
+  } catch (error) {
+    console.error("agent-chat create_tasks: batch commit failed", error);
+    return response.status(500).json({ error: "Не удалось создать задачи" });
+  }
+  for (const message of telegramQueue) {
+    await sendTelegramMessage(message.chatId, message.text);
+  }
+
+  return response.status(200).json({ ok: true, created: payload.tasks.length });
 }
 
 // Pure sliding-window rate-limit decision. Given the user's prior request
@@ -304,7 +524,10 @@ async function loadOrganizationContext(db, organizationId, accessibleProjectIds 
     const project = projects[index];
     filesSnap.docs.forEach((doc) => {
       const data = doc.data();
-      if (data.extractedText) files.push({ projectName: project.name || "без названия", filename: data.filename, extractedText: data.extractedText });
+      // projectId is needed by the task-proposal flow to bind proposed tasks
+      // to the document's project; compactContext maps it to a NAME for the
+      // prompt, so the raw id never leaks to the LLM.
+      if (data.extractedText) files.push({ projectId: project.id, projectName: project.name || "без названия", filename: data.filename, extractedText: data.extractedText });
     });
   });
 
