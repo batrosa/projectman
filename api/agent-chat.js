@@ -443,9 +443,17 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     console.error("agent-chat create_tasks: batch commit failed", error);
     return response.status(500).json({ error: "Не удалось создать задачи" });
   }
-  for (const message of telegramQueue) {
-    await sendTelegramMessage(message.chatId, message.text);
-  }
+  // Parallel + logged (sendTelegramMessage has its own timeout) — a slow or
+  // refused Telegram must neither delay the HTTP response nor fail silently.
+  const sendResults = await Promise.allSettled(
+    telegramQueue.map((message) => sendTelegramMessage(message.chatId, message.text))
+  );
+  sendResults.forEach((result, index) => {
+    const value = result.status === "fulfilled" ? result.value : null;
+    if (result.status === "rejected" || (value && value.ok === false)) {
+      console.error("agent-chat create_tasks: telegram send failed", telegramQueue[index].chatId, result.reason || value);
+    }
+  });
 
   return response.status(200).json({ ok: true, created: payload.tasks.length });
 }

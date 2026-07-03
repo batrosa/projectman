@@ -23,13 +23,18 @@ import { FieldValue } from "firebase-admin/firestore";
 import { classifyTask, buildEventText, mskDateString } from "../lib/agent-monitor-core.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 
-// Safety cap for one sweep; far above the real org size (see the same pattern
-// in api/agent-chat.js context caps).
-const MAX_TASKS_PER_SWEEP = 2000;
+// Paginated sweep: pages of 500 up to 20 pages (10k active tasks) — far above
+// the real org size, and unlike a single limit() read nothing past the cap is
+// silently skipped until that ceiling.
+const SWEEP_PAGE_SIZE = 500;
+const MAX_SWEEP_PAGES = 20;
 
 export default async function handler(request, response) {
-  if (request.method !== "POST") {
-    response.setHeader("Allow", "POST");
+  // GET **and** POST: Vercel Cron invokes the path with a GET (it still sends
+  // the Authorization: Bearer CRON_SECRET header) — POST-only made the daily
+  // cron die with 405. GitHub Actions posts. Auth is identical either way.
+  if (request.method !== "POST" && request.method !== "GET") {
+    response.setHeader("Allow", "GET, POST");
     return response.status(405).json({ error: "Method not allowed" });
   }
 
@@ -42,12 +47,25 @@ export default async function handler(request, response) {
   const db = adminDb();
   const now = new Date();
 
-  let taskSnap;
+  // Paginated sweep (cursor over __name__) instead of a single hard-capped
+  // read: with one limit(N) query, task N+1 was silently never checked.
+  const taskDocs = [];
   try {
-    taskSnap = await db.collection("tasks")
-      .where("status", "==", "in-progress")
-      .limit(MAX_TASKS_PER_SWEEP)
-      .get();
+    let lastDoc = null;
+    for (let page = 0; page < MAX_SWEEP_PAGES; page += 1) {
+      let query = db.collection("tasks")
+        .where("status", "==", "in-progress")
+        .orderBy("__name__")
+        .limit(SWEEP_PAGE_SIZE);
+      if (lastDoc) query = query.startAfter(lastDoc);
+      const snap = await query.get();
+      taskDocs.push(...snap.docs);
+      if (snap.docs.length < SWEEP_PAGE_SIZE) break;
+      lastDoc = snap.docs[snap.docs.length - 1];
+      if (page === MAX_SWEEP_PAGES - 1) {
+        console.warn(`agent-monitor: sweep capped at ${taskDocs.length} tasks`);
+      }
+    }
   } catch (error) {
     console.error("agent-monitor: failed to load tasks", error);
     return response.status(500).json({ error: "Failed to load tasks" });
@@ -87,7 +105,7 @@ export default async function handler(request, response) {
   let scanned = 0;
   let eventsCount = 0;
 
-  for (const taskDoc of taskSnap.docs) {
+  for (const taskDoc of taskDocs) {
     scanned += 1;
     try {
       const task = taskDoc.data();
@@ -96,6 +114,9 @@ export default async function handler(request, response) {
 
       const project = await getProject(task.projectId);
       const projectName = project?.name || null;
+      // Tenant guard for recipients below: a broken/hand-written task must not
+      // leak a notification into another organization.
+      const taskOrgId = task.organizationId || project?.organizationId || null;
 
       // Recipients: assignees by uid (legacy assigneeEmail fallback) + creator.
       let uids = Array.isArray(task.assigneeIds) ? task.assigneeIds.filter(Boolean) : [];
@@ -128,10 +149,16 @@ export default async function handler(request, response) {
         for (const uid of uids) {
           const user = await getUser(uid);
           if (!user) continue; // deleted account — nothing to deliver to
+          // Cross-tenant guard: when the task's org is known, the recipient
+          // must belong to it (stale assigneeIds / manually-edited docs).
+          if (taskOrgId && user.organizationId !== taskOrgId) {
+            console.warn("agent-monitor: recipient outside task org skipped", { uid, taskId: taskDoc.id });
+            continue;
+          }
           const noteRef = db.collection("agentNotifications").doc();
           batch.set(noteRef, {
             uid,
-            organizationId: task.organizationId || project?.organizationId || null,
+            organizationId: taskOrgId,
             taskId: taskDoc.id,
             projectId: task.projectId || null,
             type: event.type,
@@ -154,9 +181,17 @@ export default async function handler(request, response) {
       // duplicate the feed.
       await batch.commit();
 
-      for (const message of telegramQueue) {
-        await sendTelegramMessage(message.chatId, message.text);
-      }
+      // Parallel + logged: a hung/refused Telegram send must neither stall the
+      // sweep (sendTelegramMessage now has its own timeout) nor fail silently.
+      const sendResults = await Promise.allSettled(
+        telegramQueue.map((message) => sendTelegramMessage(message.chatId, message.text))
+      );
+      sendResults.forEach((result, index) => {
+        const value = result.status === "fulfilled" ? result.value : null;
+        if (result.status === "rejected" || (value && value.ok === false)) {
+          console.error("agent-monitor: telegram send failed", telegramQueue[index].chatId, result.reason || value);
+        }
+      });
     } catch (error) {
       // One broken task must not kill the whole sweep.
       console.error("agent-monitor: task sweep failed", taskDoc.id, error);

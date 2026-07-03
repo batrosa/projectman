@@ -29,9 +29,16 @@ function makeFakeDb({ tasks = {}, projects = {}, users = {} }) {
         return {
           where(field, op, value) {
             if (field !== "status" || op !== "==" || value !== "in-progress") throw new Error("unexpected tasks query");
-            return {
+            // Paginated sweep chain: orderBy/limit are no-ops here, startAfter
+            // marks the second page — the fake returns everything on page one,
+            // so the pagination loop must see an empty follow-up page.
+            const chain = {
+              afterCursor: false,
+              orderBy() { return this; },
               limit() { return this; },
+              startAfter() { this.afterCursor = true; return this; },
               async get() {
+                if (this.afterCursor) return { docs: [] };
                 return {
                   docs: Object.entries(tasks).map(([id, data]) => ({
                     id,
@@ -41,6 +48,7 @@ function makeFakeDb({ tasks = {}, projects = {}, users = {} }) {
                 };
               },
             };
+            return chain;
           },
           doc(id) { return taskRef(id); },
         };
@@ -146,10 +154,44 @@ describe("POST /api/agent-monitor", () => {
     delete process.env.CRON_SECRET;
   });
 
-  it("405 on GET", async () => {
+  it("405 only on non-GET/POST methods (Vercel Cron invokes with GET)", async () => {
+    const res = mockResponse();
+    await handler(makeRequest({ method: "PUT" }), res);
+    expect(res.statusCode).toBe(405);
+  });
+
+  it("GET with the correct secret runs the sweep (the daily Vercel cron path)", async () => {
+    holder.db = makeFakeDb({ tasks: {}, projects: {}, users: {} }).db;
     const res = mockResponse();
     await handler(makeRequest({ method: "GET" }), res);
-    expect(res.statusCode).toBe(405);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it("recipient from ANOTHER organization is skipped (cross-tenant guard)", async () => {
+    const fake = makeFakeDb({
+      tasks: {
+        "t-cross": {
+          status: "in-progress", subStatus: "in_work", title: "Смета",
+          deadline: "2026-07-01", projectId: "p1", organizationId: "org-1",
+          assigneeIds: ["u-foreign"], createdByUid: "u-local",
+        },
+      },
+      projects: { p1: { name: "П", organizationId: "org-1" } },
+      users: {
+        "u-foreign": { organizationId: "org-OTHER", telegramChatId: "666" },
+        "u-local": { organizationId: "org-1", telegramChatId: "111" },
+      },
+    });
+    holder.db = fake.db;
+
+    const res = mockResponse();
+    await handler(makeRequest(), res);
+    expect(res.statusCode).toBe(200);
+    // Only the same-org creator got the feed entry + telegram.
+    expect(fake.state.notes).toHaveLength(1);
+    expect(fake.state.notes[0].uid).toBe("u-local");
+    expect(telegramCalls.map((c) => c.chatId)).toEqual(["111"]);
   });
 
   it("401 without/with wrong secret, and 401 when CRON_SECRET env is missing (fail closed)", async () => {
