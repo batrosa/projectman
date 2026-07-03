@@ -8095,6 +8095,13 @@ function appendAgentTaskProposal(proposal) {
     heading.textContent = `Задачи из документа «${proposal.file || ''}» (проект «${proposal.projectName || ''}»)`;
     card.appendChild(heading);
 
+    if (proposal.truncated) {
+        const warn = document.createElement('div');
+        warn.className = 'agent-notify-time';
+        warn.textContent = '⚠️ Документ большой — показана часть задач. Создайте эти и попросите следующую порцию.';
+        card.appendChild(warn);
+    }
+
     const table = document.createElement('table');
     table.className = 'agent-task-proposal-table';
     const thead = document.createElement('thead');

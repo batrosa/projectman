@@ -16,10 +16,12 @@ import { callerCanManageProject } from "./award-xp.js";
 const CONTEXT_CHAR_LIMIT = 45000;
 const MAX_HISTORY_TURNS = 8;
 const MAX_MESSAGE_CHARS = 4000;
-// Output-token cap for the model reply. Was 900, which truncated long answers
-// mid-word (e.g. a 20-row project table). 2000 comfortably fits a detailed
-// Markdown table without a large cost/latency hit.
-const MAX_OUTPUT_TOKENS = 2000;
+// Output-token cap for the model reply. Was 900 (truncated long answers), then
+// 2000 — which still cut propose_tasks JSON mid-array on a big roadmap
+// document. 3000 fits a 20-task JSON block (the prompt also caps the block at
+// 20 tasks per portion) plus detailed Markdown tables; the extractor can
+// additionally salvage complete tasks if a model still overruns.
+const MAX_OUTPUT_TOKENS = 3000;
 // Mirrors the frontend access model (see script.js): users.allowedProjects with
 // an empty/absent array means "all projects"; a lone sentinel id means "none".
 const NO_ACCESS_SENTINEL = "__no_access__";
@@ -49,7 +51,7 @@ const SYSTEM_PROMPT_RULES = [
   "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
   `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
   PROJECTMAN_CAPABILITY_GUIDE,
-  "ФОРМИРОВАНИЕ ЗАДАЧ ИЗ ДОКУМЕНТА: если пользователь просит сформировать/создать/поставить задачи из загруженного документа (файла проекта), НЕ пиши обычный ответ — верни РОВНО ОДИН блок кода: ```json {\"action\":\"propose_tasks\",\"file\":\"<точное имя файла из данных>\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"Имя Фамилия\"}]} ``` — без текста до и после блока. Названия задач краткие и понятные; ответственного и срок бери ТОЛЬКО из документа; если срок не указан — null; не выдумывай задачи, которых в документе нет. Если нужного документа нет в данных — ответь обычным текстом, что документ не найден.",
+  "ФОРМИРОВАНИЕ ЗАДАЧ ИЗ ДОКУМЕНТА: если пользователь просит сформировать/создать/поставить задачи из загруженного документа (файла проекта), НЕ пиши обычный ответ — верни РОВНО ОДИН блок кода: ```json {\"action\":\"propose_tasks\",\"file\":\"<точное имя файла из данных>\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"Имя Фамилия\"}]} ``` — без текста до и после блока. В блоке НЕ БОЛЬШЕ 20 задач за раз: если в документе их больше — включи первые 20 по порядку документа (пользователь попросит следующую порцию отдельно). Названия задач краткие и понятные; ответственного и срок бери ТОЛЬКО из документа; если срок не указан — null; не выдумывай задачи, которых в документе нет. Если нужного документа нет в данных — ответь обычным текстом, что документ не найден.",
   "По умолчанию отвечай кратко (1-3 тезиса), простым нетехническим языком. Но если пользователь просит подробности, список, таблицу или схему — дай полный, хорошо структурированный ответ и НЕ сокращай данные.",
   "Обычные ответы пиши обычным текстом или короткими пунктами. Таблицу (Markdown: строка заголовков, строка-разделитель | --- | --- |, строки данных) делай ТОЛЬКО когда она действительно уместна: когда перечисляешь НЕСКОЛЬКО (2+) однотипных объектов с общими полями — список задач с исполнителями/сроками/статусами, сравнение проектов и т.п. — ИЛИ когда пользователь прямо просит таблицу. НЕ оборачивай в таблицу один объект, короткий факт, приветствие или пояснение (например «что за задача X» про одну задачу — ответь обычным текстом, а не таблицей «поле—значение»). Для акцентов можно **жирный**, для простых перечней — списки. Ссылки [текст](url) и изображения не вставляй.",
   "НЕ рисуй псевдографику и ASCII-диаграммы (сетки из | и —, стрелочные таймлайны, «нарисованные» схемы) — в чате они не отображаются и выглядят сломанно. Блоки кода (```) используй только для настоящего кода/конфигов. Если просят «схему», «диаграмму», «график», «таймлайн» или «дорожную карту» — представь это Markdown-таблицей (например: Этап | Период | Статус) или структурированным списком по этапам/годам, а не рисунком из символов.",
@@ -250,7 +252,19 @@ async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, ca
   const extracted = extractProposal(rawAnswer);
   if (!extracted.found) return null;
   if (extracted.error) {
-    return { error: "Не смог корректно разобрать задачи из документа. Попробуйте переформулировать запрос." };
+    // Log the tail — the usual culprit is the model hitting max_tokens
+    // mid-JSON on a huge document, and the tail shows exactly where it died.
+    console.error("agent-chat: propose_tasks parse failed", {
+      answerLength: rawAnswer.length,
+      tail: rawAnswer.slice(-160),
+    });
+    return { error: "Не смог корректно разобрать задачи из документа — похоже, список получился слишком большим. Попросите порцию поменьше, например: «первые 10 задач из документа X» или задачи по конкретному разделу." };
+  }
+
+  // Salvaged from a truncated payload: keep it within the validator's cap and
+  // tell the client the list is partial.
+  if (extracted.truncated && Array.isArray(extracted.proposal.tasks)) {
+    extracted.proposal.tasks = extracted.proposal.tasks.slice(0, 30);
   }
 
   const validated = validateProposal(extracted.proposal);
@@ -311,6 +325,9 @@ async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, ca
       projectName: file.projectName || "без названия",
       tasks,
       canCreate,
+      // Partial list recovered from a token-capped answer — the card warns
+      // the user so they can ask for the next portion after creating these.
+      truncated: extracted.truncated === true,
     },
   };
 }
