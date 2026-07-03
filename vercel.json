@@ -3,6 +3,9 @@
     "api/webhook.js": {
       "memory": 256,
       "maxDuration": 10
+    },
+    "api/agent-chat.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

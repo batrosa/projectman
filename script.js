@@ -8214,11 +8214,31 @@ async function sendAgentMessage(message, history) {
         throw err;
     }
     const idToken = await currentUser.getIdToken();
-    const res = await fetch('/api/agent-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ message, history }),
-    });
+    // Hard client-side timeout: without it a stalled connection leaves
+    // «Агент печатает…» hanging forever (the server itself answers in well
+    // under a minute — 2 models × 9s OpenRouter timeout + Firestore reads).
+    // Feature-detected: environments without AbortController (old browsers,
+    // the vm test harness) just skip the timeout rather than crash.
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 75000) : null;
+    let res;
+    try {
+        res = await fetch('/api/agent-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ message, history }),
+            ...(controller ? { signal: controller.signal } : {}),
+        });
+    } catch (error) {
+        if (error && error.name === 'AbortError') {
+            const err = new Error('timeout');
+            err.code = 'timeout';
+            throw err;
+        }
+        throw error;
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
     let data = null;
     try {
         data = await res.json();
@@ -8334,6 +8354,8 @@ async function handleAgentChatSubmit(event) {
 
         if (error && error.code === 'not-authenticated') {
             appendAgentChatMessage('error', 'Вы вышли из аккаунта. Войдите заново, чтобы продолжить общение с агентом.');
+        } else if (error && error.code === 'timeout') {
+            appendAgentChatMessage('error', 'Агент отвечает слишком долго. Запрос прерван — попробуйте ещё раз (при большом документе сформулируйте запрос точнее).');
         } else {
             // fetch() itself rejected — network failure (offline, DNS, CORS,
             // timeout before headers, etc.), not a server-returned status.
