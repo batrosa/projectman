@@ -1,5 +1,30 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit, formatRecentDialogue } from "./agent-chat.js";
+import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit, formatRecentDialogue, isCreateAffirmation, lastAssistantListContent } from "./agent-chat.js";
+
+describe("isCreateAffirmation + lastAssistantListContent (создание из списка агента)", () => {
+  it("короткие команды создания распознаются, болтовня — нет", () => {
+    expect(isCreateAffirmation("создавай")).toBe(true);
+    expect(isCreateAffirmation("сам создай карточку для потверждения")).toBe(true);
+    expect(isCreateAffirmation("создай без ответсвенных")).toBe(true);
+    expect(isCreateAffirmation("подтверждаю")).toBe(true);
+    expect(isCreateAffirmation("спасибо")).toBe(false);
+    expect(isCreateAffirmation("когда эльдар заходил")).toBe(false);
+    expect(isCreateAffirmation("")).toBe(false);
+  });
+
+  it("находит последний ответ агента со списком (нумерация или таблица)", () => {
+    const history = [
+      { role: "assistant", content: "Просто текст без списка" },
+      { role: "assistant", content: "Задачи:\n1. Получить ГПЗУ\n2. Разработать документацию" },
+      { role: "user", content: "создавай" },
+    ];
+    expect(lastAssistantListContent(history)).toContain("Получить ГПЗУ");
+    const table = [{ role: "assistant", content: "| № | Задача |\n| --- | --- |\n| 1 | Смета |" }];
+    expect(lastAssistantListContent(table)).toContain("Смета");
+    expect(lastAssistantListContent([{ role: "assistant", content: "без списка" }])).toBe(null);
+    expect(lastAssistantListContent(null)).toBe(null);
+  });
+});
 
 describe("formatRecentDialogue", () => {
   it("keeps the last turns with Russian roles — pronoun references («им двум») resolve from here", () => {

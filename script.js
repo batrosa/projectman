@@ -8634,7 +8634,7 @@ function appendAgentTaskProposal(proposal) {
         const cells = [
             t.title || '',
             t.deadline || '—',
-            t.assigneeDisplay || t.assigneeName || '',
+            t.assigneeDisplay || t.assigneeName || 'Не назначен',
             t.ok ? '✅ будет создана' : `⚠️ ${t.reason || 'не будет создана'}`
         ];
         cells.forEach(value => {
@@ -8654,7 +8654,9 @@ function appendAgentTaskProposal(proposal) {
     card.appendChild(scroller);
 
     // Срок опционален: строка без дедлайна тоже создаётся (deadline: null).
-    const okTasks = proposal.tasks.filter(t => t.ok && t.assigneeUid);
+    // Исполнитель опционален: ok-строка без assigneeUid создаётся как
+    // «Не назначен» (пользователь вправе просить «без ответственных»).
+    const okTasks = proposal.tasks.filter(t => t.ok);
     if (proposal.canCreate && okTasks.length > 0) {
         const btn = document.createElement('button');
         btn.className = 'primary-btn agent-task-proposal-create';
@@ -8694,7 +8696,7 @@ async function confirmAgentTaskProposal(proposal, okTasks, btn) {
                 action: 'create_tasks',
                 projectId: proposal.projectId,
                 file: proposal.source === 'text' ? '' : (proposal.file || ''),
-                tasks: okTasks.map(t => ({ title: t.title, deadline: t.deadline, assigneeUid: t.assigneeUid }))
+                tasks: okTasks.map(t => ({ title: t.title, deadline: t.deadline || null, assigneeUid: t.assigneeUid || null }))
             })
         });
         const data = await res.json().catch(() => ({}));

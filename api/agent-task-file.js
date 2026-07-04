@@ -19,11 +19,12 @@ const TASK_FILE_SYSTEM_PROMPT = [
   "Ты извлекаешь задачи из разового файла, прикрепленного в чате HoldingMan.",
   "Верни РОВНО ОДИН JSON-блок без текста до и после: ```json {\"action\":\"propose_tasks\",\"file\":\"<имя файла>\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"Имя Фамилия\"}],\"hasMore\":false} ```.",
   "В блоке не больше 30 задач. Иди по порядку документа.",
-  "Если задач больше 30, верни первые 30 и поставь hasMore=true.",
-  "Если задач или ответственных нет, верни tasks=[] и hasMore=false.",
+  "Если задач больше 30, верни первые 30 и поставь hasMore=true. Если пользователь просит N первых задач — верни ровно первые N (и hasMore=true, если в файле их больше).",
+  "tasks=[] возвращай ТОЛЬКО если в файле вообще нет списка работ/задач. Отсутствие ответственных или сроков — НЕ причина возвращать пустой список.",
   "Название задачи делай кратким, без номера строки, но не выдумывай задачи, которых нет в файле.",
   "Ответственного и срок бери из файла. Если пользователь явно написал общего ответственного или общий срок, используй эти значения для всех задач вместо файла.",
-  "Если срока нет ни в файле, ни в запросе пользователя, deadline=null.",
+  "Если ответственного нет в файле, или пользователь просит «без ответственных» — assigneeName=\"\" (пустая строка): задача создастся как «Не назначен».",
+  "Если срока нет ни в файле, ни в запросе пользователя, или пользователь просит «без сроков» — deadline=null.",
   "Не показывай технические id.",
 ].join(" ");
 
@@ -320,7 +321,7 @@ async function buildFallbackTaskProposal({ fileText, users, file, project, userM
 
 function buildTaskProposalFromProposal({ proposal, users, file, project, truncated }) {
   if (Array.isArray(proposal?.tasks) && proposal.tasks.length === 0) {
-    return { answer: "Создавать нечего: в файле не найден список задач с ответственными." };
+    return { answer: "Создавать нечего: не нашёл в файле список работ/задач. Если он там есть — напишите, в каких колонках/разделе искать." };
   }
 
   const validated = validateProposal({
@@ -329,7 +330,7 @@ function buildTaskProposalFromProposal({ proposal, users, file, project, truncat
   });
   if (!validated.ok) {
     return { answer: validated.error.includes("ни одна строка")
-      ? "Создавать нечего: в файле не найден список задач с ответственными."
+      ? "Создавать нечего: в файле не найден список задач (нужны хотя бы названия работ)."
       : `Не получилось сформировать задачи: ${validated.error}.` };
   }
 
@@ -343,6 +344,11 @@ function buildTaskProposalFromProposal({ proposal, users, file, project, truncat
   const tasks = validated.tasks.map((t) => {
     if (t.rowError) {
       return { title: t.title || "-", deadline: t.deadline, assigneeName: t.assigneeName, ok: false, reason: REASON_TEXT[t.rowError] || t.rowError };
+    }
+    // Ответственный ОПЦИОНАЛЕН: строка без исполнителя (или запрос «без
+    // ответственных») создаётся как «Не назначен».
+    if (!t.assigneeName) {
+      return { ...t, deadline: t.deadline || null, assigneeUid: null, assigneeDisplay: "Не назначен", ok: true };
     }
     const match = matchAssignee(users, t.assigneeName);
     if (match.error) return { ...t, ok: false, reason: REASON_TEXT[match.error] || match.error };

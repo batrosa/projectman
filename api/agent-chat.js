@@ -81,6 +81,7 @@ const SYSTEM_PROMPT_RULES = [
   "Если запрос неоднозначен (подходит несколько проектов, участников или задач) — задай ОДИН короткий уточняющий вопрос, а не отказывай и не гадай.",
   "Не отвечай «нет данных» или «не могу», если ответ выводится из данных ниже (проекты, задачи, сроки, участники, их активность, файлы). Сначала поищи в данных.",
   "Если пользователь пытается создать задачу, не отвечай текстом «создал» или «создаю»: сервер должен вернуть карточку предпросмотра, а реальное создание будет только после кнопки подтверждения.",
+  "У тебя НЕТ возможности что-либо «отправить в систему», «инициировать создание» или «сформировать карточку» самому. ЗАПРЕЩЕНО писать «запрос отправлен», «запрос обработан», «карточка сформирована», «подборка отправлена» — это ложь: если карточки предпросмотра нет в чате, значит НИЧЕГО не создано и не отправлено. В HoldingMan НЕТ раздела или кнопки «Массовое создание». Если пользователь просит создать показанный тобой список задач, а карточка не появилась — попроси его написать команду создания заново одной фразой (например: «создай задачи из списка выше, без сроков и ответственных»).",
   "Не говори «в предоставленном контексте» — говори «в данных проекта» или «в системе».",
   "Информационные ответы в чате данные не меняют. Создание задач выполняется отдельным серверным действием только после карточки предпросмотра.",
 ].join(" ");
@@ -94,6 +95,7 @@ const TEXT_TASK_SYSTEM_PROMPT = [
   "Если срок не указан, deadline=null.",
   "Ответственного сопоставляй только с участниками HoldingMan из списка. Если форма имени в запросе склонена, верни точное имя из списка. Если участник не найден или есть сомнение, верни имя как написал пользователь.",
   "Если ответственные названы местоимением или косвенно («им», «ему», «этим двум», «обоим», «ей») — определи КОНКРЕТНЫХ людей по разделу «Последние сообщения диалога»: бери тех, кого пользователь обсуждал последними. НИКОГДА не подставляй человека, которого пользователь не называл и который не упоминался в диалоге; автора запроса по умолчанию не назначай. Если однозначно определить людей нельзя — верни \"tasks\": [] (пустой список).",
+  "Если пользователь просит «без ответственных» или ответственный не указан — assigneeName=\"\" (пустая строка): задача создастся как «Не назначен». Отсутствие ответственных или сроков — НЕ причина возвращать пустой список задач.",
   "Если пользователь описывает несколько задач для одного ответственного или срока, примени общий ответственный/срок к каждой задаче.",
   "Если текст содержит «Исходное поручение» и «Уточнения пользователя», бери название задачи и срок из исходного поручения, а проект/ответственного уточняй последними сообщениями пользователя.",
   "Если пользователь исправляет исполнителя фразой вроде «давай Тэке Исаеву», замени исполнителя, но не меняй название исходной задачи.",
@@ -319,12 +321,37 @@ function looksLikeTextTaskCreationRequest(message) {
   return createVerb.test(text) && taskHint.test(text);
 }
 
+// Короткая команда-подтверждение создания («создавай», «создай их», «сам
+// создай карточку», «подтверждаю») — без полноценного поручения в ней самой.
+export function isCreateAffirmation(message) {
+  const text = normalizeLookup(message);
+  if (!text || text.length > 80) return false;
+  return /(создай|создавай|создать|подтвержда|заведи|оформи|поставь их|давай их)/u.test(text);
+}
+
+// Последний ответ АГЕНТА, содержащий пронумерованный/маркированный список или
+// таблицу — источник задач для «создавай» после показанного агентом списка.
+export function lastAssistantListContent(history) {
+  const turns = Array.isArray(history) ? history : [];
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const turn = turns[i];
+    if (turn?.role !== "assistant") continue;
+    const content = String(turn.content || "");
+    if (/^\s*\d+[.)]\s+\S/m.test(content) || /\|\s*-{3,}\s*\|/.test(content) || /^\s*[-•]\s+\S/m.test(content)) {
+      return content;
+    }
+  }
+  return null;
+}
+
 function getTextTaskCreationRequest(message, history) {
   if (looksLikeTextTaskCreationRequest(message)) {
     return { message, fromHistory: false };
   }
 
-  if (!isLikelyTextTaskContinuation(message)) return null;
+  if (!isLikelyTextTaskContinuation(message)) {
+    return affirmationFromAssistantList(message, history);
+  }
   const turns = Array.isArray(history) ? history : [];
   let baseIndex = -1;
   for (let i = turns.length - 1; i >= 0; i -= 1) {
@@ -334,7 +361,7 @@ function getTextTaskCreationRequest(message, history) {
       break;
     }
   }
-  if (baseIndex < 0) return null;
+  if (baseIndex < 0) return affirmationFromAssistantList(message, history);
 
   const base = String(turns[baseIndex].content || "").trim();
   const clarifications = turns
@@ -352,6 +379,26 @@ function getTextTaskCreationRequest(message, history) {
       "Уточнения пользователя после исходного поручения:",
       ...clarifications.map((item) => `- ${item}`),
     ].join("\n"),
+  };
+}
+
+// Прод-кейс: агент сам показал список задач текстом, пользователь пишет
+// «создавай» — исходного ПОЛЬЗОВАТЕЛЬСКОГО поручения в истории нет, и раньше
+// запрос уходил в обычный чат, где модель ВРАЛА («запрос отправлен», выдуманное
+// «Массовое создание»). Теперь такая команда строит поручение из последнего
+// списка агента и запускает настоящий конвейер карточки.
+function affirmationFromAssistantList(message, history) {
+  if (!isCreateAffirmation(message)) return null;
+  const listContent = lastAssistantListContent(history);
+  if (!listContent) return null;
+  return {
+    fromHistory: true,
+    message: [
+      "Создай задачи из показанного ранее списка (он приведён ниже, из предыдущего ответа агента).",
+      `Команда пользователя к созданию (учти уточнения — например «без сроков», «без ответственных», «первые N»): ${String(message || "").trim()}`,
+      "Список из предыдущего ответа агента:",
+      String(listContent).slice(0, 3000),
+    ].join("\n\n"),
   };
 }
 
@@ -519,7 +566,7 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, project }) {
   });
   if (!validated.ok) {
     return { answer: validated.error.includes("ни одна строка")
-      ? "Создавать нечего: в сообщении не нашёл задачу с ответственным."
+      ? "Не понял, какие задачи создать. Назовите их (например: «поставь задачу проверить договор, без срока и ответственного») — и я подготовлю карточку."
       : `Не получилось сформировать задачи: ${validated.error}.` };
   }
 
@@ -533,6 +580,11 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, project }) {
   const tasks = validated.tasks.map((t) => {
     if (t.rowError) {
       return { title: t.title || "-", deadline: t.deadline, assigneeName: t.assigneeName, ok: false, reason: REASON_TEXT[t.rowError] || t.rowError };
+    }
+    // Ответственный ОПЦИОНАЛЕН: «поставь задачи без ответственных» — легальный
+    // запрос, задача создаётся как «Не назначен» (как и вручную).
+    if (!t.assigneeName) {
+      return { ...t, deadline: t.deadline || null, assigneeUid: null, assigneeDisplay: "Не назначен", ok: true };
     }
     const match = matchAssignee(users, t.assigneeName);
     if (match.error) return { ...t, ok: false, reason: REASON_TEXT[match.error] || match.error };
@@ -644,7 +696,8 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
 
   // Every assignee must be a real member of the caller's org — reject the
   // whole request otherwise (no partial creation surprises).
-  const uniqueUids = [...new Set(payload.tasks.map((t) => t.assigneeUid))];
+  // null/пустой uid легален — задача «Не назначен»; проверяем только реальных.
+  const uniqueUids = [...new Set(payload.tasks.map((t) => t.assigneeUid).filter(Boolean))];
   const usersByUid = new Map();
   for (const uid of uniqueUids) {
     try {
@@ -671,11 +724,12 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
   const batch = db.batch();
   const telegramQueue = [];
   for (const t of payload.tasks) {
-    const user = usersByUid.get(t.assigneeUid);
-    const assigneeDisplay = user.displayName
-      || `${user.firstName || ""} ${user.lastName || ""}`.trim()
-      || user.email
-      || "Исполнитель";
+    const user = t.assigneeUid ? usersByUid.get(t.assigneeUid) : null;
+    // Без исполнителя — «Не назначен», ровно как при ручном создании без
+    // выбора ответственного.
+    const assigneeDisplay = user
+      ? (user.displayName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Исполнитель")
+      : "Не назначен";
     const taskRef = db.collection("tasks").doc();
     // Field shape mirrors the client's createTask() exactly, so boards,
     // filters, the reader carve-out and the monitor treat these tasks like any
@@ -686,8 +740,8 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       title: t.title,
       description,
       assignee: assigneeDisplay,
-      assigneeEmail: user.email || "",
-      assigneeIds: [t.assigneeUid],
+      assigneeEmail: (user && user.email) || "",
+      assigneeIds: t.assigneeUid ? [t.assigneeUid] : [],
       deadline: t.deadline,
       status: "in-progress",
       subStatus: "assigned",
@@ -699,6 +753,9 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       createdByUid: decoded.uid,
     });
 
+    // Уведомление и Telegram — только реальному исполнителю; у задачи «Не
+    // назначен» получателя нет.
+    if (!user) continue;
     const deadlinePart = t.deadline ? ` Срок: ${t.deadline}.` : "";
     const text = `🆕 Новая задача: «${t.title}». Ответственный: ${assigneeDisplay}.${deadlinePart} Проект «${projectName}». Поставлена ИИ-агентом по поручению: ${createdByName}.`;
     const noteRef = db.collection("agentNotifications").doc();
