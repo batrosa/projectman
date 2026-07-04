@@ -75,7 +75,8 @@ const SYSTEM_PROMPT_RULES = [
   "Ты видишь ТОЛЬКО проекты, к которым у пользователя есть доступ (они перечислены ниже в данных), и их задачи — не проси открыть раздел или выбрать проект, если данные уже есть. Если пользователь спрашивает про проект, которого НЕТ в этих данных, — вежливо ответь, что у него нет доступа к этому проекту или такого проекта нет среди его проектов; НЕ раскрывай по нему никаких данных и не придумывай их.",
   "Если факта нет в данных — прямо скажи, что этого пока нет в системе. Не выдумывай.",
   "Никогда не придумывай кнопки, разделы, статусы или функции, которых нет в приложении.",
-  "Участники организации перечислены в данных (members). Не говори, что участника нет в системе, если он есть в списке members. У каждого участника могут быть поля «последний_вход» (последний вход в систему), «был_в_сети» (последняя активность), «уровень», «xp», «задач_завершено» — отвечай на вопросы «когда заходил», «когда был в сети», «какой уровень/XP» ПО ЭТИМ ПОЛЯМ, время указано по Москве. Если поля нет у участника — он ещё не заходил в систему.",
+  "Участники организации перечислены в данных: members — это объект, где КЛЮЧ — имя участника, а значение — его данные. Не говори, что участника нет в системе, если его имя есть среди ключей members. У участника могут быть поля «последний_вход» (последний вход в систему), «был_в_сети» (последняя активность), «уровень», «xp», «задач_завершено» — отвечай на вопросы «когда заходил», «когда был в сети», «какой уровень/XP» ПО ЭТИМ ПОЛЯМ, время указано по Москве. Если поля нет у участника — он ещё не заходил в систему.",
+  "КРИТИЧНО про точность: отвечая о конкретном участнике или задаче, найди запись РОВНО с этим именем (ключ в members / название задачи) и бери значения ТОЛЬКО из этой записи. Брать значения из соседних записей ЗАПРЕЩЕНО. Перед отправкой ответа сверь: имя, которое ты называешь, совпадает с ключом записи, из которой взяты цифры и даты. Перепутать данные двух людей — грубая ошибка.",
   "Понимай запросы «с полуслова»: сокращённые и разговорные названия проектов и имён («абрау» — проект «Абрау-Дюрсо», «по елисеевскому» — «Елисеевский парк»), опечатки, склонения, регистр. Сначала сопоставь слова пользователя с реальными проектами/задачами/участниками из данных, и только если совпадений нет — скажи об этом.",
   "Если запрос неоднозначен (подходит несколько проектов, участников или задач) — задай ОДИН короткий уточняющий вопрос, а не отказывай и не гадай.",
   "Не отвечай «нет данных» или «не могу», если ответ выводится из данных ниже (проекты, задачи, сроки, участники, их активность, файлы). Сначала поищи в данных.",
@@ -280,7 +281,9 @@ export default async function handler(request, response) {
     const attempt = await fetchJsonWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${openRouterKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...openRouterModelBody([model]), temperature: 0.2, max_tokens: MAX_OUTPUT_TOKENS, messages }),
+      // 0.1: основной чат — фактовые lookup'ы по данным организации;
+      // творческий разброс тут только повышает шанс перепутать записи.
+      body: JSON.stringify({ ...openRouterModelBody([model]), temperature: 0.1, max_tokens: MAX_OUTPUT_TOKENS, messages }),
     }, Math.min(LLM_PER_MODEL_MS, remainingMs));
 
     if (!attempt.ok) {
@@ -1021,6 +1024,22 @@ function buildBoundedStructured(context, budget) {
       ...(Number.isFinite(u.completedTasksCount) ? { задач_завершено: u.completedTasksCount } : {}),
     }));
 
+  // Участники подаются модели ОБЪЕКТОМ «Имя → данные», а не массивом:
+  // прод-инцидент — модель, сканируя массив, взяла «последний_вход» СОСЕДНЕЙ
+  // записи (спросили про Эльдара, ответила временем Амирхана). Точечный
+  // lookup по ключу-имени такой класс ошибок практически исключает.
+  const membersByName = {};
+  for (const member of includedMembers) {
+    const { name, ...rest } = member;
+    let key = name;
+    let n = 2;
+    while (Object.prototype.hasOwnProperty.call(membersByName, key)) {
+      key = `${name} (${n})`;
+      n += 1;
+    }
+    membersByName[key] = rest;
+  }
+
   // Tasks get whatever's left of the structured budget after projects
   // actually used their slice (not the reserved projectsBudget) — a small
   // org with few/short project names leaves more room for tasks, the side
@@ -1033,7 +1052,7 @@ function buildBoundedStructured(context, budget) {
       deadline: t.deadline, статус: humanTaskStatus(t),
     }));
 
-  const structured = JSON.stringify({ projects: includedProjects, members: includedMembers, tasks: includedTasks });
+  const structured = JSON.stringify({ projects: includedProjects, members: membersByName, tasks: includedTasks });
   return { structured, omittedTaskCount, omittedProjectCount, omittedMemberCount };
 }
 

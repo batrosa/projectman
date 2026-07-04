@@ -120,7 +120,9 @@ describe("compactContext", () => {
       ],
     };
     const result = compactContext(context);
-    expect(result).toContain('"name":"Тэко Исаев"');
+    // members — ОБЪЕКТ «Имя → данные» (точечный lookup; прод-инцидент: при
+    // массиве модель взяла «последний_вход» соседней записи).
+    expect(result).toContain('"Тэко Исаев":{');
     expect(result).toContain('"последний_вход":"03.07.2026, 11:01"');
     expect(result).toContain('"был_в_сети"');
     expect(result).toContain('"уровень":2');
@@ -128,8 +130,21 @@ describe("compactContext", () => {
     expect(result).toContain('"задач_завершено":4');
     // У никогда не заходившего участника полей активности нет вовсе
     // (промпт трактует отсутствие как «ещё не заходил»).
-    const memberChunk = result.slice(result.indexOf("Новичок"));
+    const memberChunk = result.slice(result.indexOf('"Новичок Безвхода"'));
     expect(memberChunk.slice(0, 120)).not.toContain("последний_вход");
+  });
+
+  it("duplicate member display names get unique keys instead of silently overwriting", () => {
+    const context = {
+      projects: [], tasks: [], files: [],
+      members: [
+        { id: "a", displayName: "Иван Иванов", orgRole: "employee", level: 1 },
+        { id: "b", displayName: "Иван Иванов", orgRole: "moderator", level: 3 },
+      ],
+    };
+    const result = compactContext(context);
+    expect(result).toContain('"Иван Иванов":{');
+    expect(result).toContain('"Иван Иванов (2)":{');
   });
 
   it("always includes full structured project/task data even under a tight file-text budget", () => {
