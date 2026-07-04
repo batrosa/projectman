@@ -1881,6 +1881,10 @@ body.read-only #agent-notify-btn,
 body.read-only #agent-notify-read-all,
 body.read-only #agent-chat-btn,
 body.read-only #settings-btn,
+body.read-only #calendar-btn,
+body.read-only #cal-prev-month,
+body.read-only #cal-next-month,
+body.read-only #cal-today-btn,
 body.read-only #submit-completion-btn,
 body.read-only #cancel-completion-btn,
 body.read-only .close-modal,
@@ -2216,6 +2220,68 @@ body:not(.light-mode) .agent-md-pre { background: rgba(0, 0, 0, 0.28); }
     padding: 1rem 1.5rem;
     border-top: 1px solid var(--border);
     background: var(--card-bg);
+}
+
+.agent-chat-attach-btn {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-color);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.agent-chat-attach-btn:hover {
+    background: rgba(99, 102, 241, 0.10);
+    border-color: rgba(99, 102, 241, 0.35);
+}
+
+.agent-chat-attach-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.agent-chat-file-chip {
+    flex-shrink: 0;
+    margin: 0.75rem 1.5rem 0;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(99, 102, 241, 0.10);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.agent-chat-file-chip[hidden] {
+    display: none !important;
+}
+
+.agent-chat-file-chip-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-chat-file-chip-remove {
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .agent-chat-input {
@@ -4677,6 +4743,17 @@ body.light-mode .pin-hint {
 
 /* ========== Organization Screens ========== */
 
+.org-menu-card {
+    width: min(920px, calc(100vw - 2rem));
+    max-width: 920px;
+}
+
+.org-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
 /* Choice buttons */
 .org-choice-btn {
     display: flex;
@@ -4732,6 +4809,152 @@ body.light-mode .pin-hint {
 .org-choice-btn>i:last-child {
     color: var(--text-secondary);
     font-size: 0.9rem;
+}
+
+.org-memberships-panel {
+    margin-top: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.18);
+}
+
+.org-memberships-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.org-memberships-head h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.org-memberships-head p {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.org-refresh-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.org-list-state {
+    min-height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.org-list-state i {
+    color: var(--primary);
+}
+
+.org-table-wrap {
+    overflow-x: auto;
+}
+
+.org-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.org-table th,
+.org-table td {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.org-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    font-weight: 700;
+    background: rgba(15, 23, 42, 0.12);
+}
+
+.org-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.org-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.06);
+}
+
+.org-table-name {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 220px;
+}
+
+.org-table-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    color: white;
+    flex-shrink: 0;
+}
+
+.org-table-title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.org-table-title strong {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+}
+
+.org-active-label {
+    color: var(--primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.org-role-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--primary);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.org-enter-btn {
+    min-width: 94px;
+    justify-content: center;
+    padding: 0.55rem 0.8rem;
 }
 
 /* Back button */
@@ -4998,6 +5221,20 @@ body.light-mode .org-choice-btn:hover {
     background: rgba(99, 102, 241, 0.1);
 }
 
+body.light-mode .org-memberships-panel {
+    background: rgba(248, 250, 252, 0.95);
+    border-color: #e2e8f0;
+}
+
+body.light-mode .org-memberships-head,
+body.light-mode .org-table th {
+    background: rgba(99, 102, 241, 0.06);
+}
+
+body.light-mode .org-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.05);
+}
+
 body.light-mode .org-menu-btn {
     background: rgba(99, 102, 241, 0.08);
     border-color: rgba(99, 102, 241, 0.15);
@@ -5019,6 +5256,23 @@ body.light-mode .org-dropdown-header {
 
 body.light-mode .org-invite-code-row code {
     background: #f1f5f9;
+}
+
+@media (max-width: 720px) {
+    .org-menu-card {
+        width: min(100vw - 1rem, 520px);
+        max-height: calc(100vh - 1rem);
+        overflow-y: auto;
+    }
+
+    .org-actions-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .org-table th,
+    .org-table td {
+        padding: 0.75rem;
+    }
 }
 
 /* Role badges */
@@ -6889,7 +7143,9 @@ body.light-mode .leaderboard-empty {
     display: flex;
     gap: 0.65rem;
     align-items: flex-start;
+    position: relative;
     padding: 0.65rem 0.75rem;
+    padding-right: 2.6rem;
     border-radius: 10px;
     cursor: pointer;
     transition: background 0.15s ease;
@@ -6915,6 +7171,7 @@ body.light-mode .agent-notify-item:hover {
 
 .agent-notify-body {
     min-width: 0;
+    flex: 1;
 }
 
 .agent-notify-text {
@@ -6933,6 +7190,50 @@ body.light-mode .agent-notify-item:hover {
     opacity: 0.6;
     text-align: center;
     padding: 1.25rem 0.5rem;
+}
+
+.agent-notify-delete {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.45rem;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.agent-notify-item:hover .agent-notify-delete,
+.agent-notify-item:focus-within .agent-notify-delete {
+    opacity: 1;
+}
+
+.agent-notify-delete:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+}
+
+.agent-notify-delete i {
+    margin: 0;
+    color: inherit;
+}
+
+.agent-notify-item.deleting {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+@media (hover: none) {
+    .agent-notify-delete {
+        opacity: 0.75;
+    }
 }
 
 /* ===== Agent task-proposal card (создание задач из документа) ===== */

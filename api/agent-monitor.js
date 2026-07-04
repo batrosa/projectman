@@ -134,6 +134,7 @@ export default async function handler(request, response) {
       if (task.createdByUid) uids.push(task.createdByUid);
       uids = [...new Set(uids)];
       if (uids.length === 0) continue;
+      const assigneeNames = await getTaskAssigneeNames(task, taskOrgId);
 
       const batch = db.batch();
       const flagUpdates = {};
@@ -144,6 +145,7 @@ export default async function handler(request, response) {
           title: task.title || "Без названия",
           projectName,
           deadline: task.deadline,
+          assigneeNames,
         });
 
         for (const uid of uids) {
@@ -155,17 +157,24 @@ export default async function handler(request, response) {
             console.warn("agent-monitor: recipient outside task org skipped", { uid, taskId: taskDoc.id });
             continue;
           }
-          const noteRef = db.collection("agentNotifications").doc();
-          batch.set(noteRef, {
-            uid,
-            organizationId: taskOrgId,
-            taskId: taskDoc.id,
-            projectId: task.projectId || null,
-            type: event.type,
-            text,
-            createdAt: FieldValue.serverTimestamp(),
-            readAt: null,
-          });
+          // Правила ленты требуют organizationId == орг читателя: заметка с
+          // org=null (legacy-задача без организации) была бы «мёртвой» — никто
+          // её не увидит. Не пишем такую; Telegram-дубль всё равно уходит.
+          if (taskOrgId) {
+            const noteRef = db.collection("agentNotifications").doc();
+            batch.set(noteRef, {
+              uid,
+              organizationId: taskOrgId,
+              taskId: taskDoc.id,
+              projectId: task.projectId || null,
+              type: event.type,
+              text,
+              createdAt: FieldValue.serverTimestamp(),
+              readAt: null,
+            });
+          } else {
+            console.warn("agent-monitor: task without org — feed entry skipped, telegram only", taskDoc.id);
+          }
           if (user.telegramChatId) telegramQueue.push({ chatId: user.telegramChatId, text });
         }
 
@@ -199,4 +208,41 @@ export default async function handler(request, response) {
   }
 
   return response.status(200).json({ ok: true, scanned, events: eventsCount });
+
+  async function getTaskAssigneeNames(task, taskOrgId) {
+    const names = [];
+    const ids = Array.isArray(task.assigneeIds) ? task.assigneeIds.filter(Boolean) : [];
+    for (const uid of ids) {
+      const user = await getUser(uid);
+      if (taskOrgId && user?.organizationId && user.organizationId !== taskOrgId) continue;
+      const name = displayName(user);
+      if (name) names.push(name);
+    }
+    if (names.length === 0 && task.assigneeEmail) {
+      const emails = String(task.assigneeEmail).toLowerCase().split(",").map((e) => e.trim()).filter(Boolean);
+      for (const email of emails) {
+        try {
+          const q = await db.collection("users").where("email", "==", email).limit(1).get();
+          const user = q.empty ? null : q.docs[0].data();
+          if (taskOrgId && user?.organizationId && user.organizationId !== taskOrgId) continue;
+          const name = displayName(user) || email;
+          if (name) names.push(name);
+        } catch (error) {
+          console.error("agent-monitor: assignee email display resolve failed", email, error);
+        }
+      }
+    }
+    if (names.length === 0 && task.assignee && task.assignee !== "Не назначен") {
+      names.push(task.assignee);
+    }
+    return [...new Set(names)];
+  }
+}
+
+function displayName(user) {
+  if (!user) return "";
+  return user.displayName
+    || `${user.firstName || ""} ${user.lastName || ""}`.trim()
+    || user.email
+    || "";
 }

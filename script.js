@@ -104,6 +104,8 @@ function setViewportHeightVar() {
 
 // Auto-fix broken cache on mobile - detects if CSS failed to load properly
 function checkAndFixBrokenCache() {
+    if (hasActiveTelegramBotLogin()) return;
+
     // Check if main app container has proper layout
     const appContainer = document.querySelector('.app-container');
     const sidebar = document.querySelector('.sidebar');
@@ -585,12 +587,18 @@ async function callOrgApi(action, payload = {}) {
 // unique invite code, creates the org and makes the caller its owner).
 async function createOrganization(name) {
     if (!state.currentUser) throw new Error('Не авторизован');
-    const result = await callOrgApi('create', { name: name.trim() });
-    const org = result.organization;
-    state.currentUser.organizationId = org.id;
-    state.currentUser.orgRole = 'owner';
-    state.orgRole = 'owner';
-    return org;
+    orgSwitchInProgress = true;
+    try {
+        const result = await callOrgApi('create', { name: name.trim() });
+        const org = result.organization;
+        state.currentUser.organizationId = org.id;
+        state.currentUser.orgRole = 'owner';
+        state.currentUser.allowedProjects = [];
+        state.orgRole = 'owner';
+        return org;
+    } finally {
+        setTimeout(() => { orgSwitchInProgress = false; }, 0);
+    }
 }
 
 // Join organization by invite code
@@ -607,25 +615,32 @@ async function joinOrganization(inviteCode) {
     if (!currentUser) throw new Error('Не авторизован');
     const idToken = await currentUser.getIdToken();
 
-    const response = await fetch('/api/join-org', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ inviteCode: code }),
-    });
+    orgSwitchInProgress = true;
+    try {
+        const response = await fetch('/api/join-org', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ inviteCode: code }),
+        });
 
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-        throw new Error(result.error || 'Не удалось вступить в организацию');
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || 'Не удалось вступить в организацию');
+        }
+
+        const org = result.organization;
+        const orgRole = result.orgRole || 'employee';
+
+        // Reflect membership in local state
+        state.currentUser.organizationId = org.id;
+        state.currentUser.orgRole = orgRole;
+        state.currentUser.allowedProjects = Array.isArray(result.allowedProjects) ? result.allowedProjects : [];
+        state.orgRole = orgRole;
+
+        return org;
+    } finally {
+        setTimeout(() => { orgSwitchInProgress = false; }, 0);
     }
-
-    const org = result.organization;
-
-    // Reflect membership in local state
-    state.currentUser.organizationId = org.id;
-    state.currentUser.orgRole = 'employee';
-    state.orgRole = 'employee';
-
-    return org;
 }
 
 // Leave organization (for non-owners)
@@ -701,11 +716,186 @@ async function findOrganizationByCode(code) {
     }
 }
 
+async function loadMyOrganizations() {
+    const result = await callOrgApi('list');
+    state.organizations = Array.isArray(result.organizations) ? result.organizations : [];
+    return state.organizations;
+}
+
+async function switchOrganization(organizationId) {
+    orgSwitchInProgress = true;
+    try {
+        const result = await callOrgApi('switch', { organizationId });
+        const org = result.organization;
+        if (!org?.id) throw new Error('Организация не найдена');
+        state.organization = org;
+        state.orgRole = result.orgRole || 'employee';
+        state.currentUser.organizationId = org.id;
+        state.currentUser.orgRole = state.orgRole;
+        state.currentUser.allowedProjects = Array.isArray(result.allowedProjects) ? result.allowedProjects : [];
+        return org;
+    } finally {
+        setTimeout(() => { orgSwitchInProgress = false; }, 0);
+    }
+}
+
+const ORG_ROLE_LABELS = {
+    owner: 'Владелец',
+    admin: 'Администратор',
+    moderator: 'Модератор',
+    employee: 'Исполнитель',
+    reader: 'Исполнитель',
+};
+
+function orgRoleLabel(role) {
+    return ORG_ROLE_LABELS[role] || 'Исполнитель';
+}
+
+function mergeOrganizationRosterUsers(legacyUsers = [], membershipUsers = []) {
+    const byId = new Map();
+    legacyUsers.forEach(user => {
+        if (user?.id) byId.set(user.id, user);
+    });
+    membershipUsers.forEach(user => {
+        if (!user?.id) return;
+        byId.set(user.id, { ...(byId.get(user.id) || {}), ...user });
+    });
+    return Array.from(byId.values());
+}
+
+function setOrgListState(mode) {
+    if (elements.orgListLoading) elements.orgListLoading.style.display = mode === 'loading' ? 'flex' : 'none';
+    if (elements.orgListEmpty) elements.orgListEmpty.style.display = mode === 'empty' ? 'flex' : 'none';
+    if (elements.orgTableWrap) elements.orgTableWrap.style.display = mode === 'table' ? 'block' : 'none';
+}
+
+function renderOrganizationList() {
+    const body = elements.orgMembershipsBody;
+    if (!body) return;
+    body.innerHTML = '';
+
+    const orgs = Array.isArray(state.organizations) ? state.organizations : [];
+    if (orgs.length === 0) {
+        setOrgListState('empty');
+        return;
+    }
+
+    setOrgListState('table');
+    orgs.forEach(org => {
+        const row = document.createElement('tr');
+        const isActive = org.id === state.currentUser?.organizationId || org.active;
+        row.innerHTML = `
+            <td>
+                <div class="org-table-name">
+                    <div class="org-table-icon"><i class="fa-solid fa-building"></i></div>
+                    <div class="org-table-title">
+                        <strong>${escapeHtml(org.name || 'Организация')}</strong>
+                        ${isActive ? '<span class="org-active-label">Активная сейчас</span>' : ''}
+                    </div>
+                </div>
+            </td>
+            <td>${Number(org.projectsCount || 0)}</td>
+            <td>${Number(org.membersCount || 0)}</td>
+            <td><span class="org-role-pill">${escapeHtml(orgRoleLabel(org.role))}</span></td>
+            <td>
+                <button class="primary-btn org-enter-btn" data-org-id="${escapeHtml(org.id)}">
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i> Войти
+                </button>
+            </td>
+        `;
+        const enterBtn = row.querySelector('.org-enter-btn');
+        if (enterBtn) {
+            enterBtn.addEventListener('click', () => enterOrganization(org.id, enterBtn));
+        }
+        body.appendChild(row);
+    });
+}
+
+async function refreshOrganizationList() {
+    if (!state.currentUser) return;
+    if (elements.orgListEmpty) {
+        elements.orgListEmpty.innerHTML = '<i class="fa-regular fa-folder-open"></i><span>Вы пока не состоите ни в одной организации</span>';
+    }
+    setOrgListState('loading');
+    if (elements.orgRefreshBtn) elements.orgRefreshBtn.disabled = true;
+    try {
+        await loadMyOrganizations();
+        renderOrganizationList();
+    } catch (error) {
+        console.error('Error loading organizations:', error);
+        state.organizations = [];
+        renderOrganizationList();
+        if (elements.orgListEmpty) {
+            elements.orgListEmpty.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(error.message || 'Не удалось загрузить организации')}</span>`;
+        }
+    } finally {
+        if (elements.orgRefreshBtn) elements.orgRefreshBtn.disabled = false;
+    }
+}
+
+function stopOrgWorkspaceSubscriptions() {
+    if (projectsListenerUnsubscribe) {
+        projectsListenerUnsubscribe();
+        projectsListenerUnsubscribe = null;
+    }
+    if (usersListenerUnsubscribe) {
+        usersListenerUnsubscribe();
+        usersListenerUnsubscribe = null;
+    }
+    if (taskListenerUnsubscribe) {
+        taskListenerUnsubscribe();
+        taskListenerUnsubscribe = null;
+    }
+    if (projectFilesListenerUnsubscribe) {
+        projectFilesListenerUnsubscribe();
+        projectFilesListenerUnsubscribe = null;
+    }
+    unsubscribeFromMyTasks();
+    unsubscribeFromAgentNotifications();
+}
+
+function resetWorkspaceState() {
+    state.projects = [];
+    state.tasks = [];
+    state.users = [];
+    state.activeProjectId = null;
+    state.boardView = 'assigned';
+    state.initialLoadDone = false;
+    projectFiles = [];
+    if (elements.projectList) elements.projectList.innerHTML = '';
+    renderBoard();
+    renderUsersList();
+    renderProjectAccessTab();
+}
+
+async function enterOrganization(organizationId, button = null) {
+    const originalHtml = button?.innerHTML;
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Вход...';
+    }
+    try {
+        stopOrgWorkspaceSubscriptions();
+        resetWorkspaceState();
+        await switchOrganization(organizationId);
+        hideOrgSelectionScreen();
+        enterApp();
+    } catch (error) {
+        console.error('Error entering organization:', error);
+        alert(error.message || 'Не удалось войти в организацию');
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+        }
+    }
+}
+
 // Show organization selection screen
 function showOrgSelectionScreen(clearOrg = false) {
     // Remove read-only class to enable buttons
     document.body.classList.remove('read-only');
 
+    stopOrgWorkspaceSubscriptions();
     elements.authOverlay.style.display = 'none';
     elements.orgOverlay.style.display = 'flex';
     elements.orgChoiceScreen.style.display = 'block';
@@ -735,13 +925,22 @@ function showOrgSelectionScreen(clearOrg = false) {
     // Only clear organization from state if explicitly requested (user switching)
     if (clearOrg) {
         state.organization = null;
+        state.orgRole = null;
+        if (state.currentUser) {
+            state.currentUser.organizationId = null;
+            state.currentUser.orgRole = null;
+            state.currentUser.allowedProjects = [];
+        }
     }
+    resetWorkspaceState();
 
     // Show welcome message
     if (state.currentUser) {
         const name = state.currentUser.firstName || state.currentUser.email;
         elements.orgWelcomeName.textContent = `Привет, ${name}!`;
     }
+
+    refreshOrganizationList();
 
     // Apply pending invite code if exists (may auto-join and skip this screen)
     applyPendingInviteCode();
@@ -785,12 +984,6 @@ async function applyPendingInviteCode() {
     pendingInviteCode = null;
     sessionStorage.removeItem('pendingInviteCode');
 
-    // Check if user is already in an organization
-    if (state.currentUser?.organizationId) {
-        alert('Вы уже состоите в организации.\n\nЧтобы присоединиться к другой, сначала покиньте текущую.');
-        return;
-    }
-
     // Try to auto-join the organization
     try {
         const org = await findOrganizationByCode(code);
@@ -798,9 +991,7 @@ async function applyPendingInviteCode() {
             // Auto join!
             const joinedOrg = await joinOrganization(code);
             state.organization = joinedOrg;
-            state.orgRole = 'employee';
             state.currentUser.organizationId = joinedOrg.id;
-            state.currentUser.orgRole = 'employee';
 
             hideOrgSelectionScreen();
             enterApp();
@@ -850,6 +1041,12 @@ function setupOrgEventListeners() {
     if (elements.orgLogoutBtn) {
         elements.orgLogoutBtn.addEventListener('click', () => {
             logout();
+        });
+    }
+
+    if (elements.orgRefreshBtn) {
+        elements.orgRefreshBtn.addEventListener('click', () => {
+            refreshOrganizationList();
         });
     }
 
@@ -929,9 +1126,7 @@ function setupOrgEventListeners() {
             try {
                 const org = await joinOrganization(code);
                 state.organization = org;
-                state.orgRole = 'employee';
                 state.currentUser.organizationId = org.id;
-                state.currentUser.orgRole = 'employee';
 
                 // Clear pending invite code
                 sessionStorage.removeItem('pendingInviteCode');
@@ -1018,8 +1213,8 @@ function setupOrgEventListeners() {
             const name = state.organization?.name || 'организации';
             const inviteUrl = `${window.location.origin}?invite=${code}`;
             const shareData = {
-                title: 'Приглашение в ProjectMan',
-                text: `Присоединяйтесь к "${name}" в ProjectMan!\nКод: ${code}`,
+                title: 'Приглашение в HoldingMan',
+                text: `Присоединяйтесь к "${name}" в HoldingMan!\nКод: ${code}`,
                 url: inviteUrl
             };
 
@@ -1047,6 +1242,14 @@ function setupOrgEventListeners() {
     }
 
     // Leave organization (for non-owners)
+    if (elements.orgSwitchMenuBtn) {
+        elements.orgSwitchMenuBtn.addEventListener('click', () => {
+            elements.orgDropdown.style.display = 'none';
+            elements.orgHeader.classList.remove('open');
+            showOrgSelectionScreen(false);
+        });
+    }
+
     if (elements.orgLeaveBtn) {
         elements.orgLeaveBtn.addEventListener('click', async () => {
             if (state.orgRole === 'owner') {
@@ -1290,6 +1493,7 @@ function canRemoveUserFromOrg(targetRole) {
 
 // Enter app after organization is set
 function enterApp() {
+    sessionStorage.removeItem('swControllerReloaded');
     hideOrgSelectionScreen();
     hideAuthScreen();
     hideLoadingScreen(); // Hide loading ONLY when fully entering app
@@ -1357,6 +1561,8 @@ function applyRoleRestrictions() {
     if (deleteProjectBtn) {
         deleteProjectBtn.style.display = canManageProjects() ? 'block' : 'none';
     }
+
+    updateAgentChatAttachVisibility();
 }
 
 // ========== END ORGANIZATION FUNCTIONS ==========
@@ -1436,6 +1642,7 @@ let state = {
     initialLoadDone: false, // To prevent selecting first project on every update
     currentUser: null, // { uid, email, firstName, lastName, role, allowedProjects, organizationId, orgRole }
     organization: null, // { id, name, inviteCode, ownerId, ... }
+    organizations: [], // Organizations where the current user has membership
 };
 
 // DOM Elements
@@ -1545,6 +1752,11 @@ const elements = {
     orgJoinPreview: document.getElementById('org-join-preview'),
     orgJoinName: document.getElementById('org-join-name'),
     orgJoinMembers: document.getElementById('org-join-members'),
+    orgRefreshBtn: document.getElementById('org-refresh-btn'),
+    orgListLoading: document.getElementById('org-list-loading'),
+    orgListEmpty: document.getElementById('org-list-empty'),
+    orgTableWrap: document.getElementById('org-table-wrap'),
+    orgMembershipsBody: document.getElementById('org-memberships-body'),
     orgWelcomeName: document.getElementById('org-welcome-name'),
     orgHeader: document.getElementById('org-header'),
     orgMenuBtn: document.getElementById('org-menu-btn'),
@@ -1555,6 +1767,7 @@ const elements = {
     orgInviteCodeDisplay: document.getElementById('org-invite-code-display'),
     orgCopyCode: document.getElementById('org-copy-code'),
     orgShareBtn: document.getElementById('org-share-btn'),
+    orgSwitchMenuBtn: document.getElementById('org-switch-menu-btn'),
     orgLeaveBtn: document.getElementById('org-leave-btn'),
     orgDeleteBtn: document.getElementById('org-delete-btn'),
     orgRegenerateCode: document.getElementById('org-regenerate-code'),
@@ -1567,6 +1780,9 @@ const elements = {
     agentChatForm: document.getElementById('agent-chat-form'),
     agentChatInput: document.getElementById('agent-chat-input'),
     agentChatSendBtn: document.getElementById('agent-chat-send-btn'),
+    agentChatAttachBtn: document.getElementById('agent-chat-attach-btn'),
+    agentChatFileInput: document.getElementById('agent-chat-file-input'),
+    agentChatFileChip: document.getElementById('agent-chat-file-chip'),
 };
 
 // Init
@@ -1615,6 +1831,9 @@ function init() {
 
             // Reload when controller changes (new SW activated)
             navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (hasActiveTelegramBotLogin()) return;
+                if (sessionStorage.getItem('swControllerReloaded')) return;
+                sessionStorage.setItem('swControllerReloaded', '1');
                 window.location.reload();
             });
         });
@@ -1635,7 +1854,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '5.9'; // FIX ORG ROLE PERMISSIONS FOR PROJECTS AND TASKS
+    const CURRENT_VERSION = '6.3'; // Multi-org roster legacy fallback
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -1708,6 +1927,7 @@ function showUpdateNotification() {
 let projectsListenerUnsubscribe = null;
 let usersListenerUnsubscribe = null;
 let ownUserDocListenerUnsubscribe = null;
+let orgSwitchInProgress = false;
 
 // Live listener on the current user's OWN doc. Catches being removed from the
 // organization (kicked, or org deleted) or an orgRole change and applies it
@@ -1728,6 +1948,7 @@ function subscribeToOwnUserDoc() {
 
         // Removed from / moved out of the organization we're currently in.
         if (state.organization && data.organizationId !== state.organization.id) {
+            if (orgSwitchInProgress) return;
             if (ownUserDocListenerUnsubscribe) {
                 ownUserDocListenerUnsubscribe();
                 ownUserDocListenerUnsubscribe = null;
@@ -1801,41 +2022,7 @@ function setupRealtimeListeners() {
         console.error("Error listening to projects:", error);
     });
 
-    // Listen for Users — SCOPED to the caller's organization. The Firestore
-    // rules restrict user reads to same-org members (+ self), so a broad
-    // collection read would now fail wholesale. Scoping changes nothing visible:
-    // state.users was already client-filtered to orgId below. No org yet
-    // (onboarding) → read only our own doc, which self-read always allows.
-    const usersQuery = orgId
-        ? db.collection('users').where('organizationId', '==', orgId)
-        : db.collection('users').where(firebase.firestore.FieldPath.documentId(), '==', state.currentUser?.uid || '__none__');
-    usersListenerUnsubscribe = usersQuery.onSnapshot(snapshot => {
-        const users = [];
-        const seenIds = new Set(); // Prevent duplicates
-
-        snapshot.forEach(doc => {
-            const data = doc.data();
-
-            // Skip if we've already seen this ID (shouldn't happen, but safeguard)
-            if (seenIds.has(doc.id)) {
-                console.warn('Duplicate user detected:', doc.id);
-                return;
-            }
-            seenIds.add(doc.id);
-
-            // Include users ONLY if:
-            // 1. We have orgId AND user's organizationId matches exactly
-            // 2. OR we don't have orgId (legacy mode - include all)
-            if (orgId) {
-                // Strict filter: only users in THIS organization
-                if (data.organizationId === orgId) {
-                    users.push({ id: doc.id, ...data });
-                }
-            } else {
-                // Legacy mode: include all users
-                users.push({ id: doc.id, ...data });
-            }
-        });
+    const publishUsers = (users) => {
         state.users = users;
         console.log('Users loaded:', users.length, 'for org:', orgId); // Debug
 
@@ -1868,9 +2055,69 @@ function setupRealtimeListeners() {
         renderProjectAccessTab(); // Update admin panel - project access (by project)
         renderLoginHistoryTab(); // Update admin panel - logins/online
         renderAdminUsersStatsPanel(); // Update admin panel - users stats
-    }, error => {
-        console.error("Error listening to users:", error);
-    });
+    };
+
+    // Listen for users from BOTH sources during the multi-org migration:
+    // 1) organizationMemberships is the durable multi-org roster.
+    // 2) users.where(organizationId) is the legacy roster and a safe fallback
+    // while existing orgs are being backfilled server-side.
+    if (orgId) {
+        let membershipUsers = [];
+        let legacyUsers = [];
+        const mergeAndPublishUsers = () => {
+            publishUsers(mergeOrganizationRosterUsers(legacyUsers, membershipUsers));
+        };
+
+        const membershipUnsub = db.collection('organizationMemberships')
+            .where('organizationId', '==', orgId)
+            .onSnapshot(snapshot => {
+                const users = [];
+                const seenIds = new Set();
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const userId = data.userId || '';
+                    if (!userId || seenIds.has(userId) || data.organizationId !== orgId) return;
+                    seenIds.add(userId);
+                    users.push({ id: userId, ...data });
+                });
+                membershipUsers = users;
+                mergeAndPublishUsers();
+            }, error => {
+                console.error("Error listening to organization memberships:", error);
+                membershipUsers = [];
+                mergeAndPublishUsers();
+            });
+
+        const legacyUsersUnsub = db.collection('users')
+            .where('organizationId', '==', orgId)
+            .onSnapshot(snapshot => {
+                const users = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.organizationId === orgId) users.push({ id: doc.id, ...data });
+                });
+                legacyUsers = users;
+                mergeAndPublishUsers();
+            }, error => {
+                console.error("Error listening to legacy org users:", error);
+                legacyUsers = [];
+                mergeAndPublishUsers();
+            });
+
+        usersListenerUnsubscribe = () => {
+            membershipUnsub();
+            legacyUsersUnsub();
+        };
+    } else {
+        const usersQuery = db.collection('users').where(firebase.firestore.FieldPath.documentId(), '==', state.currentUser?.uid || '__none__');
+        usersListenerUnsubscribe = usersQuery.onSnapshot(snapshot => {
+            const users = [];
+            snapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
+            publishUsers(users);
+        }, error => {
+            console.error("Error listening to users:", error);
+        });
+    }
 
 
 }
@@ -3028,7 +3275,10 @@ function createTaskCard(task) {
         completionOnTime = getTaskWasCompletedOnTime(task);
         if (completionOnTime === true) addTag('В срок', 'tag-ontime');
         else if (completionOnTime === false) addTag('Просрочено', 'tag-overdue');
-    } else if (currentSubStatus !== 'done') {
+    } else if (currentSubStatus !== 'done' && task.deadline) {
+        // Только при реальном сроке: new Date(null) даёт 1970 год, и задача
+        // БЕЗ срока (создание через агента разрешает deadline: null) ложно
+        // помечалась «Просрочено».
         if (diffDays < 0) addTag('Просрочено', 'tag-overdue');
         else if (diffDays === 0) addTag('Сегодня', 'tag-today');
         else addTag(`${diffDays} дн.`, 'tag-days');
@@ -3039,7 +3289,7 @@ function createTaskCard(task) {
     }
 
     const timeLeft = deadlineDate - now;
-    if (task.status !== 'done') {
+    if (task.status !== 'done' && task.deadline) {
         // For active tasks we keep the legacy coloring (deadline-red/green).
         // For "completed / on review" we DO NOT color by "now" (admin may check late) —
         // the tags already communicate "В срок/Просрочено".
@@ -3056,7 +3306,7 @@ function createTaskCard(task) {
     clockIcon.className = 'fa-regular fa-clock';
 
     const deadlineText = document.createElement('span');
-    deadlineText.textContent = formatDate(task.deadline);
+    deadlineText.textContent = task.deadline ? formatDate(task.deadline) : 'Без срока';
 
     deadlineDiv.appendChild(clockIcon);
     deadlineDiv.appendChild(deadlineText);
@@ -4012,6 +4262,7 @@ function closeModalElement(modal) {
     modal.classList.remove('active');
     if (elements.agentChatModal && modal === elements.agentChatModal) {
         agentChatState.generation += 1;
+        clearAgentChatFileSelection();
     }
     // Detach the calendar's live tasks listener when it is dismissed so it
     // doesn't keep running in the background after the calendar is closed.
@@ -4583,7 +4834,66 @@ function setupEventListeners() {
 
 // Authentication Functions
 
+const TELEGRAM_BOT_PENDING_KEY = 'projectman.telegramBotLogin.pending';
 let telegramBotLoginAttempt = 0;
+let telegramBotLoginResumeInFlight = false;
+let organizationLoadRetryInFlight = false;
+
+function getPendingTelegramBotLogin() {
+    try {
+        const raw = sessionStorage.getItem(TELEGRAM_BOT_PENDING_KEY);
+        if (!raw) return null;
+        const pending = JSON.parse(raw);
+        const expiresAtMs = Date.parse(pending.expiresAt || '');
+        if (!pending.code || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+            sessionStorage.removeItem(TELEGRAM_BOT_PENDING_KEY);
+            return null;
+        }
+        return pending;
+    } catch {
+        sessionStorage.removeItem(TELEGRAM_BOT_PENDING_KEY);
+        return null;
+    }
+}
+
+function savePendingTelegramBotLogin(code, expiresAt) {
+    if (!code || !expiresAt) return;
+    sessionStorage.setItem(TELEGRAM_BOT_PENDING_KEY, JSON.stringify({ code, expiresAt }));
+}
+
+function clearPendingTelegramBotLogin() {
+    sessionStorage.removeItem(TELEGRAM_BOT_PENDING_KEY);
+}
+
+function hasActiveTelegramBotLogin() {
+    return Boolean(getPendingTelegramBotLogin());
+}
+
+async function resumeTelegramBotLoginIfPending() {
+    if (telegramBotLoginResumeInFlight) return;
+    if (firebase.auth().currentUser) {
+        clearPendingTelegramBotLogin();
+        return;
+    }
+    const pending = getPendingTelegramBotLogin();
+    if (!pending) return;
+
+    const attemptId = ++telegramBotLoginAttempt;
+    telegramBotLoginResumeInFlight = true;
+    try {
+        setTelegramBotLoginBusy(true);
+        setLoginErrorMessage('Ждём подтверждение входа в Telegram-боте...');
+        await pollTelegramBotLogin(pending.code, pending.expiresAt, attemptId);
+    } catch (error) {
+        if (attemptId === telegramBotLoginAttempt) {
+            clearPendingTelegramBotLogin();
+            setLoginErrorMessage(error.message || 'Не удалось завершить вход через Telegram-бота.');
+        }
+    } finally {
+        telegramBotLoginResumeInFlight = false;
+        if (attemptId === telegramBotLoginAttempt) setTelegramBotLoginBusy(false);
+    }
+}
 
 function setLoginErrorMessage(message) {
     if (elements.loginError) elements.loginError.textContent = message || '';
@@ -4669,7 +4979,7 @@ window.startTelegramBotLogin = async function startTelegramBotLogin() {
         botWindow = window.open('', '_blank');
         if (botWindow) {
             botWindow.opener = null;
-            botWindow.document.title = 'ProjectMan Telegram';
+            botWindow.document.title = 'HoldingMan Telegram';
         }
 
         const res = await fetch('/api/telegram-bot-login-start', { method: 'POST' });
@@ -4677,6 +4987,7 @@ window.startTelegramBotLogin = async function startTelegramBotLogin() {
         if (!res.ok || !data.ok || !data.code || !data.botUrl) {
             throw new Error(data.error || 'Не удалось начать вход через бота.');
         }
+        savePendingTelegramBotLogin(data.code, data.expiresAt);
 
         if (botWindow) {
             botWindow.location.href = data.botUrl;
@@ -4702,9 +5013,10 @@ window.startTelegramBotLogin = async function startTelegramBotLogin() {
 async function pollTelegramBotLogin(code, expiresAt, attemptId) {
     const expiresAtMs = Date.parse(expiresAt || '');
     const deadlineMs = Number.isFinite(expiresAtMs) ? expiresAtMs : Date.now() + 5 * 60 * 1000;
+    let delayMs = 0;
 
     while (attemptId === telegramBotLoginAttempt && Date.now() < deadlineMs) {
-        await wait(2000);
+        if (delayMs > 0) await wait(delayMs);
         const res = await fetch('/api/telegram-bot-login-status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -4712,9 +5024,13 @@ async function pollTelegramBotLogin(code, expiresAt, attemptId) {
         });
         const data = await res.json().catch(() => ({}));
 
-        if (data.status === 'pending') continue;
+        if (data.status === 'pending') {
+            delayMs = Math.min(delayMs + 500, 2000);
+            continue;
+        }
         if (res.ok && data.ok && data.status === 'confirmed' && data.token) {
-            setLoginErrorMessage('');
+            clearPendingTelegramBotLogin();
+            setLoginErrorMessage('Вход подтверждён. Загружаем рабочее пространство...');
             await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
             await firebase.auth().signInWithCustomToken(data.token);
             return;
@@ -4722,11 +5038,13 @@ async function pollTelegramBotLogin(code, expiresAt, attemptId) {
         throw new Error(data.error || 'Telegram-бот не подтвердил вход.');
     }
 
+    clearPendingTelegramBotLogin();
     throw new Error('Ссылка для входа устарела. Нажмите «Войти через бота» ещё раз.');
 }
 
 function onAuthStateChanged(user) {
     if (user) {
+        clearPendingTelegramBotLogin();
         // User is signed in
         loadUserRole(user);
     } else {
@@ -4853,31 +5171,51 @@ async function loadUserRole(user) {
 
 // Continuation after the profile-name gate: route to org selection or the app.
 function continueToAppOrOrg() {
-    // No organization at all → org selection screen (correct).
-    if (!state.currentUser.organizationId) {
-        showOrgSelectionScreen();
-        return;
-    }
-
     // Member whose organization failed to load (transient read error after a
     // fresh sign-in). Do NOT send them to the join screen — that shows
-    // "you're already in this org". Retry once via a full reload; a
-    // sessionStorage guard prevents an infinite reload loop.
+    // "you're already in this org". Retry in-place; a full reload produced a
+    // visible login → reload → login flash in the Telegram-bot flow.
     if (!state.organization) {
-        if (state.orgLoadFailed && !sessionStorage.getItem('orgReloadTried')) {
-            sessionStorage.setItem('orgReloadTried', '1');
-            setTimeout(() => window.location.reload(), 600);
+        if (state.orgLoadFailed) {
+            retryOrganizationLoadAndContinue();
             return;
         }
         showOrgSelectionScreen();
         return;
     }
 
-    // Success — clear the reload guard and enter the app.
-    sessionStorage.removeItem('orgReloadTried');
+    // Auth is complete, but the user chooses which organization to enter.
+    showOrgSelectionScreen();
+}
 
-    // User has organization, proceed to app
-    finishAuth(state.currentUser.role);
+async function retryOrganizationLoadAndContinue() {
+    if (organizationLoadRetryInFlight) return;
+    organizationLoadRetryInFlight = true;
+    const orgId = state.currentUser?.organizationId;
+    setLoginErrorMessage('Вход выполнен. Загружаем организацию...');
+    try {
+        for (let attempt = 1; attempt <= 4 && orgId; attempt += 1) {
+            try {
+                const org = await getOrganization(orgId);
+                if (org) {
+                    state.organization = org;
+                    state.orgLoadFailed = false;
+                    setLoginErrorMessage('');
+                    continueToAppOrOrg();
+                    return;
+                }
+            } catch (error) {
+                console.warn(`Organization retry failed (${attempt}/4):`, error?.message || error);
+            }
+            if (attempt < 4) await wait(500 * attempt);
+        }
+        hideLoadingScreen();
+        elements.authOverlay.style.display = 'flex';
+        elements.authScreen.style.display = 'block';
+        setLoginErrorMessage('Вход выполнен, но организация не загрузилась. Проверьте сеть и обновите страницу через несколько секунд.');
+    } finally {
+        organizationLoadRetryInFlight = false;
+    }
 }
 
 function finishAuth(role) {
@@ -4917,6 +5255,7 @@ function showAuthScreen() {
     elements.authOverlay.style.display = 'flex';
     elements.authScreen.style.display = 'block';
     if (elements.roleScreen) elements.roleScreen.style.display = 'none';
+    setTimeout(resumeTelegramBotLoginIfPending, 0);
 }
 
 // showRoleSelection removed as it's no longer used
@@ -5225,7 +5564,7 @@ function renderUsersList() {
                 }
 
                 try {
-                    await db.collection('users').doc(userId).set({ orgRole: newRole }, { merge: true });
+                    await callOrgApi('updateMemberRole', { userId, orgRole: newRole });
                     // Update the data attribute for future changes
                     e.target.dataset.currentRole = newRole;
                     playClickSound();
@@ -5854,7 +6193,7 @@ async function sendNewTaskNotificationToAssignee(assignee, taskTitle, projectNam
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Срок:</b> ${deadline || 'Не указан'}
 
-Откройте ProjectMan для подробностей.`;
+Откройте HoldingMan для подробностей.`;
 
     await sendTelegramNotification(chatId, message);
 }
@@ -5969,9 +6308,8 @@ function effectiveAllowedIds(user) {
 
 async function writeAllowedProjects(userId, ids) {
     try {
-        // set-merge touching only allowedProjects satisfies isOrgUserManagerUpdate.
-        await db.collection('users').doc(userId).set({ allowedProjects: ids }, { merge: true });
-        // The users onSnapshot listener re-renders the tab automatically.
+        await callOrgApi('updateMemberAccess', { userId, allowedProjects: ids });
+        // The membership listener re-renders the tab automatically.
     } catch (error) {
         console.error('Error updating project access:', error);
         alert('Ошибка при изменении доступа: ' + (error.message || error));
@@ -6449,9 +6787,21 @@ let agentNotifications = [];
 function subscribeToAgentNotifications() {
     if (agentNotifyUnsubscribe) { agentNotifyUnsubscribe(); agentNotifyUnsubscribe = null; }
     const uid = state.currentUser?.uid;
-    if (!uid || !db) return;
+    const orgId = getCurrentOrganizationId();
+    // Strict tenant isolation: the feed is scoped to uid AND the CURRENT
+    // organization. Without the org filter, notifications from a previous
+    // organization followed the user into the new one (they key on uid).
+    // enterApp() re-runs this after join/create-org, so an org switch swaps
+    // the listener to the new org. No org yet → empty feed.
+    if (!uid || !db || !orgId) {
+        agentNotifications = [];
+        renderAgentNotifyBadge();
+        renderAgentNotifyList();
+        return;
+    }
     agentNotifyUnsubscribe = db.collection('agentNotifications')
         .where('uid', '==', uid)
+        .where('organizationId', '==', orgId)
         .orderBy('createdAt', 'desc')
         .limit(50)
         .onSnapshot(snap => {
@@ -6507,8 +6857,21 @@ function renderAgentNotifyList() {
         when.textContent = formatDateTimeRu(n.createdAt) || '';
         body.appendChild(text);
         body.appendChild(when);
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'agent-notify-delete';
+        deleteBtn.title = 'Удалить уведомление';
+        deleteBtn.setAttribute('aria-label', 'Удалить уведомление');
+        const deleteIcon = document.createElement('i');
+        deleteIcon.className = 'fa-solid fa-xmark';
+        deleteBtn.appendChild(deleteIcon);
+        deleteBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            deleteAgentNotification(n, item);
+        });
         item.appendChild(icon);
         item.appendChild(body);
+        item.appendChild(deleteBtn);
         item.addEventListener('click', () => {
             markAgentNotificationRead(n);
             if (n.taskId) openTaskFromNotification(n.taskId);
@@ -6534,6 +6897,30 @@ function markAllAgentNotificationsRead() {
         { readAt: firebase.firestore.FieldValue.serverTimestamp() }
     ));
     batch.commit().catch(err => console.warn('agent-notify mark all failed:', err?.message || err));
+}
+
+async function deleteAgentNotification(n, itemEl) {
+    if (!n?.id) return;
+    try {
+        itemEl?.classList.add('deleting');
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('not-authenticated');
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/agent-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ action: 'delete_notification', id: n.id })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || 'delete failed');
+        agentNotifications = agentNotifications.filter(item => item.id !== n.id);
+        renderAgentNotifyBadge();
+        renderAgentNotifyList();
+    } catch (err) {
+        itemEl?.classList.remove('deleting');
+        console.warn('agent-notify delete failed:', err?.message || err);
+        alert('Не удалось удалить уведомление. Попробуйте ещё раз.');
+    }
 }
 
 // Открыть задачу из уведомления. Задача может быть не в state.tasks (другой
@@ -7813,6 +8200,8 @@ function closeDayTasksModal() {
 // not for "the LLM had a bad day".
 
 const AGENT_CHAT_MAX_HISTORY_TURNS = 8; // mirrors MAX_HISTORY_TURNS in api/agent-chat.js
+const AGENT_TASK_FILE_MAX_BYTES = 3 * 1024 * 1024;
+const AGENT_TASK_FILE_ALLOWED_EXTENSIONS = ['md', 'xlsx', 'xlsm', 'pdf', 'docx'];
 
 const agentChatState = {
     // { role: 'user' | 'assistant', content: string }[] — capped to the last
@@ -7860,11 +8249,133 @@ const agentChatState = {
     // to the wrong turn or re-enabling an input that no longer represents
     // the current chat.
     generation: 0,
+    // One-off local File selected for "create tasks from attached file".
+    // It is never persisted and is cleared as soon as a request starts.
+    pendingFile: null,
 };
 
 function truncateAgentChatHistory(history) {
     if (!Array.isArray(history)) return [];
     return history.slice(-AGENT_CHAT_MAX_HISTORY_TURNS);
+}
+
+function canUseAgentTaskFileUpload() {
+    return canManageTasks();
+}
+
+function updateAgentChatAttachVisibility() {
+    if (!elements.agentChatAttachBtn) return;
+    const allowed = canUseAgentTaskFileUpload();
+    elements.agentChatAttachBtn.hidden = !allowed;
+    elements.agentChatAttachBtn.style.display = allowed ? 'flex' : 'none';
+    if (!allowed) clearAgentChatFileSelection();
+}
+
+function agentTaskFileExtension(filename) {
+    const clean = String(filename || '').toLowerCase().split('?')[0].split('#')[0];
+    const idx = clean.lastIndexOf('.');
+    return idx >= 0 ? clean.slice(idx + 1) : '';
+}
+
+function clearAgentChatFileSelection() {
+    agentChatState.pendingFile = null;
+    if (elements.agentChatFileInput) elements.agentChatFileInput.value = '';
+    renderAgentChatFileChip();
+}
+
+function renderAgentChatFileChip() {
+    const chip = elements.agentChatFileChip;
+    if (!chip) return;
+    chip.textContent = '';
+    const file = agentChatState.pendingFile;
+    if (!file) {
+        chip.hidden = true;
+        return;
+    }
+    chip.hidden = false;
+
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-paperclip';
+    chip.appendChild(icon);
+
+    const name = document.createElement('span');
+    name.className = 'agent-chat-file-chip-name';
+    name.textContent = `${file.name} (${formatFileSize(file.size)})`;
+    chip.appendChild(name);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'agent-chat-file-chip-remove';
+    remove.title = 'Убрать файл';
+    remove.setAttribute('aria-label', 'Убрать файл');
+    const removeIcon = document.createElement('i');
+    removeIcon.className = 'fa-solid fa-xmark';
+    remove.appendChild(removeIcon);
+    remove.addEventListener('click', clearAgentChatFileSelection);
+    chip.appendChild(remove);
+}
+
+function handleAgentChatFileSelect(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!canUseAgentTaskFileUpload()) {
+        event.target.value = '';
+        appendAgentChatMessage('error', 'Создавать задачи через файл может владелец, админ или модератор.');
+        return;
+    }
+
+    const ext = agentTaskFileExtension(file.name);
+    if (!AGENT_TASK_FILE_ALLOWED_EXTENSIONS.includes(ext)) {
+        event.target.value = '';
+        appendAgentChatMessage('error', 'Поддерживаются только md, xlsx, xlsm, pdf и docx.');
+        return;
+    }
+    if (file.size > AGENT_TASK_FILE_MAX_BYTES) {
+        event.target.value = '';
+        appendAgentChatMessage('error', `Файл больше ${formatFileSize(AGENT_TASK_FILE_MAX_BYTES)}. Для создания задач через чат лимит 3 МБ.`);
+        return;
+    }
+
+    agentChatState.pendingFile = file;
+    renderAgentChatFileChip();
+}
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            resolve(result.includes(',') ? result.split(',').pop() : result);
+        };
+        reader.onerror = () => reject(reader.error || new Error('file read failed'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function getAgentTaskTargetProject() {
+    if (state.activeProjectId) {
+        const project = state.projects.find(p => p.id === state.activeProjectId);
+        if (project) return project;
+        return { id: state.activeProjectId, name: '' };
+    }
+
+    const activeItemId = document.querySelector('.project-item.active')?.dataset?.id;
+    if (activeItemId) {
+        const project = state.projects.find(p => p.id === activeItemId);
+        if (project) return project;
+        return { id: activeItemId, name: '' };
+    }
+
+    const title = elements.projectTitle?.textContent?.trim();
+    if (title && title !== 'Выберите проект') {
+        const normalizedTitle = title.toLowerCase();
+        const project = state.projects.find(p => String(p.name || '').trim().toLowerCase() === normalizedTitle);
+        if (project) return project;
+        return { id: '', name: title };
+    }
+
+    return { id: '', name: '' };
 }
 
 // Renders plain text as safe DOM nodes: text via `.textContent` (never
@@ -8092,7 +8603,10 @@ function appendAgentTaskProposal(proposal) {
 
     const heading = document.createElement('div');
     heading.className = 'agent-task-proposal-title';
-    heading.textContent = `Задачи из документа «${proposal.file || ''}» (проект «${proposal.projectName || ''}»)`;
+    const proposalSourceTitle = proposal.source === 'text'
+        ? 'Задачи из текстового запроса'
+        : `Задачи из документа «${proposal.file || ''}»`;
+    heading.textContent = `${proposalSourceTitle} (проект «${proposal.projectName || ''}»)`;
     card.appendChild(heading);
 
     if (proposal.truncated) {
@@ -8139,7 +8653,8 @@ function appendAgentTaskProposal(proposal) {
     scroller.appendChild(table);
     card.appendChild(scroller);
 
-    const okTasks = proposal.tasks.filter(t => t.ok && t.assigneeUid && t.deadline);
+    // Срок опционален: строка без дедлайна тоже создаётся (deadline: null).
+    const okTasks = proposal.tasks.filter(t => t.ok && t.assigneeUid);
     if (proposal.canCreate && okTasks.length > 0) {
         const btn = document.createElement('button');
         btn.className = 'primary-btn agent-task-proposal-create';
@@ -8178,7 +8693,7 @@ async function confirmAgentTaskProposal(proposal, okTasks, btn) {
             body: JSON.stringify({
                 action: 'create_tasks',
                 projectId: proposal.projectId,
-                file: proposal.file || '',
+                file: proposal.source === 'text' ? '' : (proposal.file || ''),
                 tasks: okTasks.map(t => ({ title: t.title, deadline: t.deadline, assigneeUid: t.assigneeUid }))
             })
         });
@@ -8204,6 +8719,7 @@ async function confirmAgentTaskProposal(proposal, okTasks, btn) {
 function setAgentChatInputDisabled(disabled) {
     if (elements.agentChatInput) elements.agentChatInput.disabled = disabled;
     if (elements.agentChatSendBtn) elements.agentChatSendBtn.disabled = disabled;
+    if (elements.agentChatAttachBtn) elements.agentChatAttachBtn.disabled = disabled || !canUseAgentTaskFileUpload();
 }
 
 // Sends one message to the global agent endpoint. Attaches the current
@@ -8228,12 +8744,19 @@ async function sendAgentMessage(message, history) {
     // the vm test harness) just skip the timeout rather than crash.
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 75000) : null;
+    const targetProject = getAgentTaskTargetProject();
     let res;
     try {
         res = await fetch('/api/agent-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-            body: JSON.stringify({ message, history }),
+            body: JSON.stringify({
+                message,
+                history,
+                projectId: targetProject.id || '',
+                projectName: targetProject.name || '',
+                clientToday: localDateStr(new Date())
+            }),
             ...(controller ? { signal: controller.signal } : {}),
         });
     } catch (error) {
@@ -8257,6 +8780,57 @@ async function sendAgentMessage(message, history) {
     return { status: res.status, data };
 }
 
+async function sendAgentTaskFileMessage(message, file) {
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) {
+        const err = new Error('not-authenticated');
+        err.code = 'not-authenticated';
+        throw err;
+    }
+    if (!file) throw new Error('file-required');
+
+    const idToken = await currentUser.getIdToken();
+    const base64 = await readFileAsBase64(file);
+    const targetProject = getAgentTaskTargetProject();
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 75000) : null;
+    let res;
+    try {
+        res = await fetch('/api/agent-task-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({
+                message,
+                projectId: targetProject.id || '',
+                projectName: targetProject.name || '',
+                file: {
+                    filename: file.name,
+                    mimeType: file.type || '',
+                    sizeBytes: file.size,
+                    base64
+                }
+            }),
+            ...(controller ? { signal: controller.signal } : {}),
+        });
+    } catch (error) {
+        if (error && error.name === 'AbortError') {
+            const err = new Error('timeout');
+            err.code = 'timeout';
+            throw err;
+        }
+        throw error;
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+    let data = null;
+    try {
+        data = await res.json();
+    } catch {
+        data = null;
+    }
+    return { status: res.status, data };
+}
+
 async function handleAgentChatSubmit(event) {
     event.preventDefault();
     if (!elements.agentChatInput) return;
@@ -8270,7 +8844,13 @@ async function handleAgentChatSubmit(event) {
     if (elements.agentChatInput.disabled) return;
 
     const message = elements.agentChatInput.value.trim();
-    if (!message) return;
+    const fileForRequest = agentChatState.pendingFile;
+    if (!message && !fileForRequest) return;
+    if (fileForRequest && !canUseAgentTaskFileUpload()) {
+        appendAgentChatMessage('error', 'Создавать задачи через файл может владелец, админ или модератор.');
+        clearAgentChatFileSelection();
+        return;
+    }
 
     // Bump the generation counter for this send. Any previously in-flight
     // send's callback will see its captured generation is now stale and bail
@@ -8278,14 +8858,19 @@ async function handleAgentChatSubmit(event) {
     agentChatState.generation += 1;
     const myGeneration = agentChatState.generation;
 
-    appendAgentChatMessage('user', message);
-    agentChatState.history.push({ role: 'user', content: message });
+    const renderedUserMessage = fileForRequest
+        ? (message ? `${message}\n\nФайл: ${fileForRequest.name}` : `Файл: ${fileForRequest.name}`)
+        : message;
+
+    appendAgentChatMessage('user', renderedUserMessage);
+    agentChatState.history.push({ role: 'user', content: renderedUserMessage });
     agentChatState.history = truncateAgentChatHistory(agentChatState.history);
 
     elements.agentChatInput.value = '';
+    if (fileForRequest) clearAgentChatFileSelection();
     autoResizeAgentChatInput();
     setAgentChatInputDisabled(true);
-    const pendingBubble = appendAgentChatMessage('pending', 'Агент печатает…');
+    const pendingBubble = appendAgentChatMessage('pending', fileForRequest ? 'Агент анализирует файл…' : 'Агент печатает…');
 
     // History sent to the server is everything BEFORE this user turn (the
     // server appends the current `message` itself) — matches the shape
@@ -8293,7 +8878,9 @@ async function handleAgentChatSubmit(event) {
     const historyForRequest = truncateAgentChatHistory(agentChatState.history.slice(0, -1));
 
     try {
-        const { status, data } = await sendAgentMessage(message, historyForRequest);
+        const { status, data } = fileForRequest
+            ? await sendAgentTaskFileMessage(message, fileForRequest)
+            : await sendAgentMessage(message, historyForRequest);
 
         // Staleness guard: if a newer send has started (or the chat was
         // reset/closed) since this request went out, drop the result. Do NOT
@@ -8302,13 +8889,16 @@ async function handleAgentChatSubmit(event) {
 
         if (status === 200 && data && data.ok) {
             if (data.taskProposal && typeof data.taskProposal === 'object') {
-                // Предпросмотр задач из документа: карточка + кнопка. В историю
+                // Предпросмотр задач из текста/документа: карточка + кнопка. В историю
                 // для LLM кладём компактный текст, а не карточку.
                 appendAgentTaskProposal(data.taskProposal);
                 const total = Array.isArray(data.taskProposal.tasks) ? data.taskProposal.tasks.length : 0;
                 const okCount = Array.isArray(data.taskProposal.tasks)
                     ? data.taskProposal.tasks.filter(t => t.ok).length : 0;
-                const summary = `Предложены задачи из документа «${data.taskProposal.file || ''}»: к созданию ${okCount} из ${total}.`;
+                const proposalSource = data.taskProposal.source === 'text'
+                    ? 'из текстового запроса'
+                    : `из документа «${data.taskProposal.file || ''}»`;
+                const summary = `Предложены задачи ${proposalSource}: к созданию ${okCount} из ${total}.`;
                 agentChatState.history.push({ role: 'assistant', content: summary });
                 agentChatState.history = truncateAgentChatHistory(agentChatState.history);
             } else {
@@ -8400,6 +8990,7 @@ function initAgentChat() {
     if (!elements.agentChatBtn || !elements.agentChatModal) return;
 
     renderAgentChatEmptyState();
+    updateAgentChatAttachVisibility();
 
     elements.agentChatBtn.addEventListener('click', () => {
         playClickSound();
@@ -8407,6 +8998,14 @@ function initAgentChat() {
         elements.agentChatModal.classList.add('active');
         elements.agentChatInput?.focus();
     });
+
+    if (elements.agentChatAttachBtn && elements.agentChatFileInput) {
+        elements.agentChatAttachBtn.addEventListener('click', () => {
+            if (!canUseAgentTaskFileUpload()) return;
+            elements.agentChatFileInput.click();
+        });
+        elements.agentChatFileInput.addEventListener('change', handleAgentChatFileSelect);
+    }
 
     if (elements.agentChatForm) {
         elements.agentChatForm.addEventListener('submit', handleAgentChatSubmit);

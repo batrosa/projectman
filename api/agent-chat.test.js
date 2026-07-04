@@ -104,6 +104,34 @@ describe("normalizeHistory", () => {
 
 
 describe("compactContext", () => {
+  it("members carry activity fields (последний_вход/был_в_сети, МСК) plus level/XP — the agent answers 'когда заходил' from these", () => {
+    const context = {
+      projects: [],
+      tasks: [],
+      files: [],
+      members: [
+        {
+          id: "u1", displayName: "Тэко Исаев", orgRole: "owner", telegramChatId: "1",
+          lastLoginAt: "2026-07-03T08:01:00.215Z", // 11:01 МСК
+          lastSeenAt: { seconds: 1783070400 }, // Timestamp-подобный объект
+          level: 2, totalXP: 60, completedTasksCount: 4,
+        },
+        { id: "u2", displayName: "Новичок Безвхода", orgRole: "employee" },
+      ],
+    };
+    const result = compactContext(context);
+    expect(result).toContain('"name":"Тэко Исаев"');
+    expect(result).toContain('"последний_вход":"03.07.2026, 11:01"');
+    expect(result).toContain('"был_в_сети"');
+    expect(result).toContain('"уровень":2');
+    expect(result).toContain('"xp":60');
+    expect(result).toContain('"задач_завершено":4');
+    // У никогда не заходившего участника полей активности нет вовсе
+    // (промпт трактует отсутствие как «ещё не заходил»).
+    const memberChunk = result.slice(result.indexOf("Новичок"));
+    expect(memberChunk.slice(0, 120)).not.toContain("последний_вход");
+  });
+
   it("always includes full structured project/task data even under a tight file-text budget", () => {
     const context = {
       projects: [{ id: "p1", name: "Project One" }],
@@ -440,13 +468,16 @@ function mockResponse() {
 }
 
 // In-memory fake Firestore implementing only the chains api/agent-chat.js
-// uses: users/{uid}.get(), projects/tasks .where(organizationId).get(), and
+// uses: users/{uid}.get(), users.where(organizationId), projects/tasks .where(organizationId).get(), and
 // per-project files subcollection .where(extractionStatus).get().
 // `userGetError` / `queryError` simulate a Firestore-side exception (e.g.
 // permission error, transient outage) at each respective call site.
-function makeFakeDb({ userDoc, projects = [], tasks = [], filesByProject = {}, userGetError, queryError } = {}) {
+function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesByProject = {}, agentNotifications = {}, userGetError, queryError } = {}) {
   const filesCalls = [];
   const rateLimitDocs = new Map();
+  const notifications = new Map(Object.entries(agentNotifications));
+  const userDocs = new Map(orgUsers.filter((u) => u && u.id).map((u) => [u.id, u]));
+  if (userDoc) userDocs.set("user-1", userDoc);
   const docsSnapshot = (docs) => ({
     size: docs.length,
     docs: docs.map((doc) => ({ id: doc.id, data: () => doc })),
@@ -465,6 +496,7 @@ function makeFakeDb({ userDoc, projects = [], tasks = [], filesByProject = {}, u
   };
   return {
     filesCalls,
+    notifications,
     async runTransaction(fn) {
       const tx = {
         async get(ref) {
@@ -484,13 +516,37 @@ function makeFakeDb({ userDoc, projects = [], tasks = [], filesByProject = {}, u
           },
         };
       }
+      if (name === "agentNotifications") {
+        return {
+          doc(id) {
+            return {
+              async get() {
+                const data = notifications.get(id);
+                return { exists: Boolean(data), data: () => data };
+              },
+              async delete() {
+                notifications.delete(id);
+              },
+            };
+          },
+        };
+      }
       if (name === "users") {
         return {
+          where(field, op, value) {
+            return query(() => {
+              const docs = orgUsers.length > 0
+                ? orgUsers
+                : (userDoc ? [{ id: "user-1", ...userDoc }] : []);
+              return docs.filter((u) => field !== "organizationId" || op !== "==" || u.organizationId === value);
+            });
+          },
           doc(uid) {
             return {
               async get() {
                 if (userGetError) throw userGetError;
-                return { exists: !!userDoc, data: () => userDoc };
+                const data = userDocs.get(uid) || null;
+                return { exists: !!data, data: () => data };
               },
             };
           },
@@ -616,15 +672,47 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(res.body.answer).toBe("AI answer");
   });
 
-  it("sends the real ProjectMan capability map to the model before answering control-workflow questions", async () => {
+  it("delete_notification action deletes only caller-owned agent notification without calling the LLM", async () => {
+    state.db = makeFakeDb({
+      agentNotifications: {
+        "n-mine": { uid: "user-1", text: "mine" },
+        "n-other": { uid: "user-2", text: "other" },
+      },
+    });
+    const res = mockResponse();
+    await handler(makeRequest({ action: "delete_notification", id: "n-mine" }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, deleted: true });
+    expect(state.db.notifications.has("n-mine")).toBe(false);
+    expect(state.db.notifications.has("n-other")).toBe(true);
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("delete_notification action rejects another user's notification", async () => {
+    state.db = makeFakeDb({
+      agentNotifications: { "n-other": { uid: "user-2", text: "other" } },
+    });
+    const res = mockResponse();
+    await handler(makeRequest({ action: "delete_notification", id: "n-other" }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(state.db.notifications.has("n-other")).toBe(true);
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("sends the real HoldingMan capability map to the model before answering control-workflow questions", async () => {
     state.db = makeFakeDb({
       userDoc: { organizationId: "org-1" },
+      orgUsers: [
+        { id: "u-eldar", organizationId: "org-1", firstName: "Эльдар", lastName: "Исаев", displayName: "Эльдар Исаев", orgRole: "employee" },
+      ],
       projects: [{ id: "p1", name: "Абрау-Дюрсо", organizationId: "org-1" }],
       tasks: [{ id: "t1", projectId: "p1", title: "Получить изменённый ГПЗУ", organizationId: "org-1" }],
       filesByProject: {},
     });
     const res = mockResponse();
-    await handler(makeRequest({ message: "как контролить Абрау в ProjectMan?" }), res);
+    await handler(makeRequest({ message: "как контролить Абрау в HoldingMan?" }), res);
 
     expect(res.statusCode).toBe(200);
     expect(fetchJsonWithTimeout).toHaveBeenCalledTimes(1);
@@ -632,14 +720,143 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     const payload = JSON.parse(options.body);
     const systemPrompt = payload.messages[0].content;
 
-    expect(systemPrompt).toContain("Карта реального функционала ProjectMan");
-    expect(systemPrompt).toContain("Статусы задач: «Задача поставлена», «В работе», «Завершена»");
-    expect(systemPrompt).toContain("нет drag-and-drop перетаскивания карточек");
+    expect(systemPrompt).toContain("Карта реального функционала HoldingMan");
+    expect(systemPrompt).toContain("Личный кабинет");
+    expect(systemPrompt).toContain("XP");
+    expect(systemPrompt).toContain("База 10 XP");
+    expect(systemPrompt).toContain("members");
+    expect(systemPrompt).toContain("Эльдар Исаев");
+    expect(systemPrompt).toContain("Статусы задач: «Задача поставлена»/assigned");
+    expect(systemPrompt).toContain("нет drag-and-drop");
     expect(systemPrompt).toContain("Календарь показывает задачи по дедлайну");
-    expect(systemPrompt).toContain("В ProjectMan НЕТ");
+    expect(systemPrompt).toContain("В HoldingMan НЕТ");
     expect(systemPrompt).toContain("конструктора отчётов/отчёта");
     expect(systemPrompt).toContain("Outlook или Google Calendar");
     expect(systemPrompt).toContain("Если пользователь просит функцию, которой нет");
+  });
+
+  it("returns a task proposal for a plain-text create-task request", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "admin", firstName: "Руководитель", lastName: "Проекта" },
+      orgUsers: [
+        { id: "u-eldar", organizationId: "org-1", firstName: "Эльдар", lastName: "Исаев", displayName: "Эльдар Исаев" },
+      ],
+      projects: [{ id: "p-abrau", name: "Абрау-Дюрсо", organizationId: "org-1" }],
+      tasks: [],
+      filesByProject: {},
+    });
+    fetchJsonWithTimeout.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: {
+        choices: [{
+          message: {
+            content: "```json\n{\"action\":\"propose_tasks\",\"file\":\"текстовый запрос\",\"tasks\":[{\"title\":\"Проверка связи\",\"deadline\":\"2026-07-03\",\"assigneeName\":\"Эльдар Исаев\"}],\"hasMore\":false}\n```",
+          },
+        }],
+      },
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      message: "поставь задачу эльдару исаеву в проекте абрау проверка связи, срок сегодня",
+      clientToday: "2026-07-03",
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.taskProposal).toMatchObject({
+      source: "text",
+      file: "текстовый запрос",
+      projectId: "p-abrau",
+      projectName: "Абрау-Дюрсо",
+      canCreate: true,
+    });
+    expect(res.body.taskProposal.tasks).toEqual([
+      expect.objectContaining({
+        title: "Проверка связи",
+        deadline: "2026-07-03",
+        assigneeUid: "u-eldar",
+        assigneeDisplay: "Эльдар Исаев",
+        ok: true,
+      }),
+    ]);
+    expect(fetchJsonWithTimeout).toHaveBeenCalledTimes(1);
+    const [, options] = fetchJsonWithTimeout.mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.messages[1].content).toContain("Текущая дата: 2026-07-03.");
+  });
+
+  it("continues a text task creation flow after the user only clarifies the project", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "owner", firstName: "Тэко", lastName: "Исаев" },
+      orgUsers: [
+        { id: "u-eldar", organizationId: "org-1", firstName: "Эльдар", lastName: "Исаев", displayName: "Эльдар Исаев" },
+      ],
+      projects: [{ id: "p-abrau", name: "Абрау-Дюрсо", organizationId: "org-1" }],
+      tasks: [],
+      filesByProject: {},
+    });
+    fetchJsonWithTimeout.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              action: "propose_tasks",
+              file: "текстовый запрос",
+              tasks: [{ title: "Проверка связи СКРО", deadline: "2026-07-03", assigneeName: "Эльдар Исаев" }],
+              hasMore: false,
+            }),
+          },
+        }],
+      },
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      message: "абрау",
+      clientToday: "2026-07-03",
+      history: [
+        { role: "user", content: "добавь задачу эльдару исаеву на предмет проверка связи скро сегодня" },
+        { role: "assistant", content: "Не понял, в какой проект поставить задачу." },
+      ],
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.taskProposal).toMatchObject({
+      source: "text",
+      projectId: "p-abrau",
+      projectName: "Абрау-Дюрсо",
+    });
+    expect(res.body.taskProposal.tasks[0]).toMatchObject({
+      title: "Проверка связи СКРО",
+      assigneeUid: "u-eldar",
+      ok: true,
+    });
+    const [, options] = fetchJsonWithTimeout.mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.messages[1].content).toContain("Исходное поручение");
+    expect(payload.messages[1].content).toContain("- абрау");
+  });
+
+  it("does not call the model when an employee asks the agent to create a task", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "employee" },
+      projects: [{ id: "p1", name: "Абрау-Дюрсо", organizationId: "org-1" }],
+      tasks: [],
+      filesByProject: {},
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({ message: "поставь задачу Ивану Иванову в проекте Абрау срок сегодня" }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.answer).toContain("У исполнителя нет прав");
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
   });
 
   it("queries each project's files subcollection (parallelized via Promise.all, not sequentially awaited per-project)", async () => {

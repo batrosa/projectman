@@ -179,8 +179,8 @@ describe("POST /api/agent-monitor", () => {
       },
       projects: { p1: { name: "П", organizationId: "org-1" } },
       users: {
-        "u-foreign": { organizationId: "org-OTHER", telegramChatId: "666" },
-        "u-local": { organizationId: "org-1", telegramChatId: "111" },
+        "u-foreign": { organizationId: "org-OTHER", telegramChatId: "666", firstName: "Чужой", lastName: "Пользователь" },
+        "u-local": { organizationId: "org-1", telegramChatId: "111", firstName: "Локальный", lastName: "Автор" },
       },
     });
     holder.db = fake.db;
@@ -191,6 +191,7 @@ describe("POST /api/agent-monitor", () => {
     // Only the same-org creator got the feed entry + telegram.
     expect(fake.state.notes).toHaveLength(1);
     expect(fake.state.notes[0].uid).toBe("u-local");
+    expect(fake.state.notes[0].text).not.toContain("Чужой Пользователь");
     expect(telegramCalls.map((c) => c.chatId)).toEqual(["111"]);
   });
 
@@ -226,7 +227,7 @@ describe("POST /api/agent-monitor", () => {
       },
       projects: { p1: { name: "Лазурный берег", organizationId: "org-1" } },
       users: {
-        "u-assignee": { telegramChatId: "111", organizationId: "org-1" },
+        "u-assignee": { telegramChatId: "111", organizationId: "org-1", firstName: "Тэко", lastName: "Исаев" },
         "u-creator": { telegramChatId: "222", organizationId: "org-1" },
       },
     });
@@ -251,6 +252,7 @@ describe("POST /api/agent-monitor", () => {
       expect(n.organizationId).toBe("org-1");
       expect(n.text).toContain("Смета");
       expect(n.text).toContain("Лазурный берег");
+      expect(n.text).toContain("Ответственный: Тэко Исаев");
       expect(n.readAt).toBe(null);
     }
 
@@ -261,6 +263,7 @@ describe("POST /api/agent-monitor", () => {
     // Telegram duplicated to both linked recipients.
     const chats = telegramCalls.map((c) => c.chatId).sort();
     expect(chats).toEqual(["111", "222"]);
+    expect(telegramCalls[0].text).toContain("Ответственный: Тэко Исаев");
   });
 
   it("same-day rerun is a no-op (notifiedOverdueOn == today) — no duplicate spam", async () => {

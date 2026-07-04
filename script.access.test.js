@@ -18,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_SOURCE = fs.readFileSync(path.join(__dirname, "script.js"), "utf8");
 
 let ctx;
-let writes; // captured Firestore writes: { id, allowedProjects }
+let writes; // captured server writes: { id, allowedProjects }
 
 beforeAll(() => {
   const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
@@ -46,20 +46,16 @@ beforeAll(() => {
   vm.createContext(context);
   vm.runInContext(SCRIPT_SOURCE, context, { filename: "script.js" });
 
-  // Stub the Firestore handle (script assigns `db` only during init, which
-  // never runs here) so grant/revoke capture what they'd persist.
+  // Stub the server org API so grant/revoke capture what they'd persist.
   writes = [];
-  context.__db = {
-    collection: () => ({
-      doc: (id) => ({
-        set: (data) => {
-          writes.push({ id, allowedProjects: data.allowedProjects });
-          return Promise.resolve();
-        },
-      }),
-    }),
+  context.__callOrgApi = async (action, payload) => {
+    if (action === "updateMemberAccess") {
+      writes.push({ id: payload.userId, allowedProjects: payload.allowedProjects });
+      return { ok: true };
+    }
+    throw new Error(`unexpected action ${action}`);
   };
-  vm.runInContext("db = __db", context);
+  vm.runInContext("callOrgApi = __callOrgApi", context);
 
   ctx = context;
 });
@@ -139,6 +135,34 @@ describe("effectiveAllowedIds", () => {
     const u = { id: "u1", orgRole: "employee", allowedProjects: ["p1", "pX", SENTINEL()] };
     setState([u]);
     expect(fn(u)).toEqual(["p1"]);
+  });
+});
+
+describe("mergeOrganizationRosterUsers", () => {
+  it("keeps legacy org users visible and overlays multi-org membership fields", () => {
+    const merge = getFn("mergeOrganizationRosterUsers");
+    const users = merge(
+      [
+        { id: "u1", firstName: "Эльдар", lastName: "Исаев", orgRole: "employee", allowedProjects: ["p1"] },
+        { id: "u2", firstName: "Амирхан", lastName: "Абигасанов", orgRole: "employee" },
+      ],
+      [
+        { id: "u1", userId: "u1", organizationId: "org1", orgRole: "moderator", allowedProjects: ["p2"] },
+      ],
+    );
+
+    expect(users).toHaveLength(2);
+    expect(users.find(u => u.id === "u1")).toMatchObject({
+      firstName: "Эльдар",
+      lastName: "Исаев",
+      orgRole: "moderator",
+      allowedProjects: ["p2"],
+    });
+    expect(users.find(u => u.id === "u2")).toMatchObject({
+      firstName: "Амирхан",
+      lastName: "Абигасанов",
+      orgRole: "employee",
+    });
   });
 });
 

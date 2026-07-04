@@ -8,6 +8,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 
+const MEMBERSHIP_COLLECTION = "organizationMemberships";
+
 async function parseJsonBody(request) {
   if (request.body && typeof request.body === "object") return request.body;
   if (typeof request.body === "string") return JSON.parse(request.body || "{}");
@@ -15,6 +17,31 @@ async function parseJsonBody(request) {
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const text = Buffer.concat(chunks).toString("utf8");
   return text ? JSON.parse(text) : {};
+}
+
+function membershipDocId(orgId, userId) {
+  return `${orgId}_${userId}`;
+}
+
+function membershipRef(db, orgId, userId) {
+  return db.collection(MEMBERSHIP_COLLECTION).doc(membershipDocId(orgId, userId));
+}
+
+function publicUserFields(userData = {}) {
+  return {
+    firstName: userData.firstName || "",
+    lastName: userData.lastName || "",
+    displayName: userData.displayName || "",
+    email: userData.email || "",
+    telegramChatId: userData.telegramChatId || null,
+    telegramUsername: userData.telegramUsername || null,
+    profilePhotoUrl: userData.profilePhotoUrl || null,
+    totalXP: userData.totalXP || 0,
+    level: userData.level || 1,
+    completedTasksCount: userData.completedTasksCount || 0,
+    onTimeTasksCount: userData.onTimeTasksCount || 0,
+    noRevisionTasksCount: userData.noRevisionTasksCount || 0,
+  };
 }
 
 export default async function handler(request, response) {
@@ -47,7 +74,6 @@ export default async function handler(request, response) {
 
   const db = adminDb();
 
-  // Caller must not already belong to an organization (one org per user).
   let userData;
   try {
     const userSnap = await db.collection("users").doc(decoded.uid).get();
@@ -56,9 +82,6 @@ export default async function handler(request, response) {
   } catch (error) {
     console.error("join-org: failed to load caller", error);
     return response.status(500).json({ error: "Не удалось проверить пользователя" });
-  }
-  if (userData.organizationId) {
-    return response.status(409).json({ error: "Вы уже состоите в организации" });
   }
 
   // Validate the invite code against real organizations (server-side, Admin SDK).
@@ -75,6 +98,30 @@ export default async function handler(request, response) {
   const orgData = orgDoc.data() || {};
 
   try {
+    const existingMember = await membershipRef(db, orgDoc.id, decoded.uid).get();
+    if (existingMember.exists) {
+      const membership = existingMember.data() || {};
+      const orgRole = membership.orgRole || "employee";
+      const allowedProjects = Array.isArray(membership.allowedProjects) ? membership.allowedProjects : undefined;
+      const patch = { organizationId: orgDoc.id, orgRole };
+      if (allowedProjects) patch.allowedProjects = allowedProjects;
+      else patch.allowedProjects = FieldValue.delete();
+      await db.collection("users").doc(decoded.uid).set(patch, { merge: true });
+      return response.status(200).json({
+        ok: true,
+        orgRole,
+        allowedProjects: allowedProjects || [],
+        organization: {
+          id: orgDoc.id,
+          name: orgData.name || "",
+          inviteCode: orgData.inviteCode || null,
+          membersCount: orgData.membersCount || 0,
+          ownerId: orgData.ownerId || null,
+          settings: orgData.settings || null,
+        },
+      });
+    }
+
     // Atomic: membership + membersCount++ in one WriteBatch, so a partial
     // failure can't leave the user in the org without the count (or vice versa).
     const batch = db.batch();
@@ -83,6 +130,18 @@ export default async function handler(request, response) {
       // Clear any stale per-project restriction from a previous org so it can't
       // follow the user in and hide/scramble access in the new org.
       { organizationId: orgDoc.id, orgRole: "employee", allowedProjects: FieldValue.delete() },
+      { merge: true }
+    );
+    batch.set(
+      membershipRef(db, orgDoc.id, decoded.uid),
+      {
+        organizationId: orgDoc.id,
+        userId: decoded.uid,
+        orgRole: "employee",
+        ...publicUserFields(userData),
+        joinedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
       { merge: true }
     );
     batch.update(db.collection("organizations").doc(orgDoc.id), {
@@ -96,6 +155,8 @@ export default async function handler(request, response) {
 
   return response.status(200).json({
     ok: true,
+    orgRole: "employee",
+    allowedProjects: [],
     organization: {
       id: orgDoc.id,
       name: orgData.name || "",

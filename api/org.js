@@ -10,6 +10,8 @@ import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing 0/O, 1/I
 const MAX_ORG_NAME = 80;
 const AUDIT_LOG_COLLECTION = "auditLogs";
+const MEMBERSHIP_COLLECTION = "organizationMemberships";
+const VALID_ORG_ROLES = new Set(["owner", "admin", "moderator", "employee", "reader"]);
 
 async function parseJsonBody(request) {
   if (request.body && typeof request.body === "object") return request.body;
@@ -51,6 +53,161 @@ async function generateUniqueCode(db) {
   return randomCode() + randomCode(); // astronomically unlikely fallback
 }
 
+function membershipDocId(orgId, userId) {
+  return `${orgId}_${userId}`;
+}
+
+function membershipRef(db, orgId, userId) {
+  return db.collection(MEMBERSHIP_COLLECTION).doc(membershipDocId(orgId, userId));
+}
+
+function publicUserFields(userData = {}) {
+  return {
+    firstName: userData.firstName || "",
+    lastName: userData.lastName || "",
+    displayName: userData.displayName || "",
+    email: userData.email || "",
+    telegramChatId: userData.telegramChatId || null,
+    telegramUsername: userData.telegramUsername || null,
+    profilePhotoUrl: userData.profilePhotoUrl || null,
+    totalXP: userData.totalXP || 0,
+    level: userData.level || 1,
+    completedTasksCount: userData.completedTasksCount || 0,
+    onTimeTasksCount: userData.onTimeTasksCount || 0,
+    noRevisionTasksCount: userData.noRevisionTasksCount || 0,
+  };
+}
+
+function activeUserPatch(orgId, orgRole, allowedProjects) {
+  const patch = { organizationId: orgId, orgRole };
+  if (Array.isArray(allowedProjects)) patch.allowedProjects = allowedProjects;
+  else patch.allowedProjects = FieldValue.delete();
+  return patch;
+}
+
+function membershipPatch({ organizationId, userId, orgRole, userData, allowedProjects, includeJoinedAt = false }) {
+  const patch = {
+    organizationId,
+    userId,
+    orgRole,
+    ...publicUserFields(userData),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (Array.isArray(allowedProjects)) patch.allowedProjects = allowedProjects;
+  if (includeJoinedAt) patch.joinedAt = FieldValue.serverTimestamp();
+  return patch;
+}
+
+async function ensureActiveMembership(db, userId, userData) {
+  const orgId = userData && userData.organizationId;
+  if (!orgId) return;
+  const ref = membershipRef(db, orgId, userId);
+  const snap = await ref.get();
+  if (snap.exists) return;
+  await ref.set(membershipPatch({
+    organizationId: orgId,
+    userId,
+    orgRole: userData.orgRole || "employee",
+    allowedProjects: Array.isArray(userData.allowedProjects) ? userData.allowedProjects : undefined,
+    userData,
+    includeJoinedAt: true,
+  }), { merge: true });
+}
+
+async function backfillLegacyMembershipsForOrg(db, orgId) {
+  if (!orgId) return { legacyUsers: 0, memberships: 0 };
+  const [legacyUsersSnap, membershipsSnap] = await Promise.all([
+    db.collection("users").where("organizationId", "==", orgId).get(),
+    db.collection(MEMBERSHIP_COLLECTION).where("organizationId", "==", orgId).get(),
+  ]);
+  const existingUserIds = new Set();
+  membershipsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    if (data.userId) existingUserIds.add(data.userId);
+  });
+
+  const CHUNK = 450;
+  let batch = db.batch();
+  let ops = 0;
+  const flush = async () => {
+    if (ops > 0) {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    }
+  };
+
+  for (const userDoc of legacyUsersSnap.docs) {
+    const userData = userDoc.data() || {};
+    const alreadyExists = existingUserIds.has(userDoc.id);
+    batch.set(
+      membershipRef(db, orgId, userDoc.id),
+      membershipPatch({
+        organizationId: orgId,
+        userId: userDoc.id,
+        orgRole: userData.orgRole || "employee",
+        allowedProjects: Array.isArray(userData.allowedProjects) ? userData.allowedProjects : undefined,
+        userData,
+        includeJoinedAt: !alreadyExists,
+      }),
+      { merge: true }
+    );
+    ops += 1;
+    if (ops >= CHUNK) await flush();
+  }
+  await flush();
+
+  return {
+    legacyUsers: legacyUsersSnap.size,
+    memberships: Math.max(membershipsSnap.size, legacyUsersSnap.size),
+  };
+}
+
+async function loadCaller(db, uid) {
+  const userSnap = await db.collection("users").doc(uid).get();
+  if (!userSnap.exists) return null;
+  return userSnap.data() || {};
+}
+
+async function countOrgProjects(db, orgId) {
+  const snap = await db.collection("projects").where("organizationId", "==", orgId).get();
+  return snap.size;
+}
+
+async function countOrgMemberships(db, orgId, fallback = 0) {
+  try {
+    const [membershipsSnap, legacyUsersSnap] = await Promise.all([
+      db.collection(MEMBERSHIP_COLLECTION).where("organizationId", "==", orgId).get(),
+      db.collection("users").where("organizationId", "==", orgId).get(),
+    ]);
+    return Math.max(membershipsSnap.size || 0, legacyUsersSnap.size || 0, fallback || 0);
+  } catch {
+    return fallback || 0;
+  }
+}
+
+async function buildOrganizationRow(db, membershipDoc, activeOrgId) {
+  const membership = membershipDoc.data() || {};
+  const orgId = membership.organizationId;
+  if (!orgId) return null;
+  const orgSnap = await db.collection("organizations").doc(orgId).get();
+  if (!orgSnap.exists) return null;
+  await backfillLegacyMembershipsForOrg(db, orgId);
+  const orgData = orgSnap.data() || {};
+  const [projectsCount, membersCount] = await Promise.all([
+    countOrgProjects(db, orgId),
+    countOrgMemberships(db, orgId, orgData.membersCount || 0),
+  ]);
+  return {
+    id: orgId,
+    name: orgData.name || "",
+    role: membership.orgRole || "employee",
+    projectsCount,
+    membersCount,
+    active: orgId === activeOrgId,
+  };
+}
+
 export default async function handler(request, response) {
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
@@ -76,6 +233,89 @@ export default async function handler(request, response) {
 
   const action = String(body.action || "");
   const db = adminDb();
+
+  // ── List organizations where the caller is a member. This is server-side
+  // because the client cannot safely list organization docs or infer counts.
+  if (action === "list") {
+    try {
+      const userData = await loadCaller(db, decoded.uid);
+      if (!userData) return response.status(403).json({ error: "Профиль не найден" });
+      await ensureActiveMembership(db, decoded.uid, userData);
+
+      const membershipsSnap = await db.collection(MEMBERSHIP_COLLECTION)
+        .where("userId", "==", decoded.uid)
+        .get();
+      const rows = (await Promise.all(
+        membershipsSnap.docs.map((doc) => buildOrganizationRow(db, doc, userData.organizationId || null))
+      ))
+        .filter(Boolean)
+        .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "ru"));
+
+      return response.status(200).json({ ok: true, organizations: rows });
+    } catch (error) {
+      console.error("org list failed", error);
+      return response.status(500).json({ error: "Не удалось загрузить организации" });
+    }
+  }
+
+  // ── Switch the caller's ACTIVE organization. Existing Firestore rules and
+  // client screens still use users/{uid}.organizationId/orgRole as the active
+  // org scope, while organizationMemberships is the durable multi-org registry.
+  if (action === "switch") {
+    const orgId = String(body.organizationId || "").trim();
+    if (!orgId) return response.status(400).json({ error: "organizationId required" });
+    try {
+      const [userData, memberSnap, orgSnap] = await Promise.all([
+        loadCaller(db, decoded.uid),
+        membershipRef(db, orgId, decoded.uid).get(),
+        db.collection("organizations").doc(orgId).get(),
+      ]);
+      if (!userData) return response.status(403).json({ error: "Профиль не найден" });
+      if (!memberSnap.exists || !orgSnap.exists) {
+        return response.status(403).json({ error: "Нет доступа к этой организации" });
+      }
+      const backfill = await backfillLegacyMembershipsForOrg(db, orgId);
+      const membership = memberSnap.data() || {};
+      const orgRole = membership.orgRole || "employee";
+      const allowedProjects = Array.isArray(membership.allowedProjects) ? membership.allowedProjects : undefined;
+      const batch = db.batch();
+      batch.set(
+        db.collection("users").doc(decoded.uid),
+        activeUserPatch(orgId, orgRole, allowedProjects),
+        { merge: true }
+      );
+      batch.set(
+        membershipRef(db, orgId, decoded.uid),
+        membershipPatch({
+          organizationId: orgId,
+          userId: decoded.uid,
+          orgRole,
+          allowedProjects,
+          userData,
+        }),
+        { merge: true }
+      );
+      await batch.commit();
+      const orgData = orgSnap.data() || {};
+      const membersCount = Math.max(orgData.membersCount || 0, backfill.memberships || 0, backfill.legacyUsers || 0);
+      return response.status(200).json({
+        ok: true,
+        orgRole,
+        allowedProjects: allowedProjects || [],
+        organization: {
+          id: orgId,
+          name: orgData.name || "",
+          inviteCode: orgData.inviteCode || null,
+          ownerId: orgData.ownerId || null,
+          membersCount,
+          settings: orgData.settings || null,
+        },
+      });
+    } catch (error) {
+      console.error("org switch failed", error);
+      return response.status(500).json({ error: "Не удалось войти в организацию" });
+    }
+  }
 
   // ── Preview an org by invite code (for the "you're about to join X" card).
   // Returns only name + member count for a VALID code; without the code nothing
@@ -114,8 +354,6 @@ export default async function handler(request, response) {
       console.error("org create: load caller failed", error);
       return response.status(500).json({ error: "Не удалось проверить пользователя" });
     }
-    if (userData.organizationId) return response.status(409).json({ error: "Вы уже состоите в организации" });
-
     try {
       const existing = await db.collection("organizations").where("name", "==", name).limit(1).get();
       if (!existing.empty) return response.status(409).json({ error: "Организация с таким названием уже существует" });
@@ -135,11 +373,26 @@ export default async function handler(request, response) {
         plan: "free",
         settings: { maxUsers: 100, allowInvites: true },
       };
-      const orgRef = await db.collection("organizations").add(orgData);
-      await db.collection("users").doc(decoded.uid).set(
-        { organizationId: orgRef.id, orgRole: "owner" },
+      const orgRef = db.collection("organizations").doc();
+      const batch = db.batch();
+      batch.set(orgRef, orgData);
+      batch.set(
+        membershipRef(db, orgRef.id, decoded.uid),
+        membershipPatch({
+          organizationId: orgRef.id,
+          userId: decoded.uid,
+          orgRole: "owner",
+          userData,
+          includeJoinedAt: true,
+        }),
         { merge: true }
       );
+      batch.set(
+        db.collection("users").doc(decoded.uid),
+        activeUserPatch(orgRef.id, "owner"),
+        { merge: true }
+      );
+      await batch.commit();
       await writeAuditLog(db, {
         action: "org.create",
         actorUid: decoded.uid,
@@ -199,14 +452,17 @@ export default async function handler(request, response) {
       return response.status(500).json({ error: "Не удалось проверить пользователя" });
     }
     const orgId = userData && userData.organizationId;
-    if (!orgId) return response.status(200).json({ ok: true }); // already not in an org
-    if (userData.orgRole === "owner") {
+    if (!orgId) return response.status(200).json({ ok: true }); // already not in an active org
+    const memberSnap = await membershipRef(db, orgId, decoded.uid).get();
+    const membership = memberSnap.exists ? (memberSnap.data() || {}) : {};
+    if ((membership.orgRole || userData.orgRole) === "owner") {
       return response.status(403).json({ error: "Владелец не может покинуть организацию" });
     }
     try {
       // Atomic: clear membership + membersCount-- in one batch so a partial
       // failure can't desync the counter from actual membership.
       const batch = db.batch();
+      if (memberSnap.exists) batch.delete(membershipRef(db, orgId, decoded.uid));
       batch.set(
         db.collection("users").doc(decoded.uid),
         { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
@@ -234,7 +490,7 @@ export default async function handler(request, response) {
     if (!targetUid) return response.status(400).json({ error: "userId required" });
     if (targetUid === decoded.uid) return response.status(400).json({ error: "Используйте выход из организации" });
 
-    let callerData, targetData;
+    let callerData, targetData, targetMemberSnap;
     try {
       const [callerSnap, targetSnap] = await Promise.all([
         db.collection("users").doc(decoded.uid).get(),
@@ -250,23 +506,34 @@ export default async function handler(request, response) {
     if (!orgId || !["owner", "admin"].includes(callerData.orgRole)) {
       return response.status(403).json({ error: "Недостаточно прав" });
     }
-    if (!targetData || targetData.organizationId !== orgId) {
+    try {
+      targetMemberSnap = await membershipRef(db, orgId, targetUid).get();
+    } catch (error) {
+      console.error("org removeMember: load membership failed", error);
+      return response.status(500).json({ error: "Не удалось проверить участника" });
+    }
+    if (!targetData || !targetMemberSnap.exists) {
       return response.status(404).json({ error: "Участник не найден в вашей организации" });
     }
-    if (targetData.orgRole === "owner") {
+    const targetMembership = targetMemberSnap.data() || {};
+    const targetRole = targetMembership.orgRole || targetData.orgRole || "employee";
+    if (targetRole === "owner") {
       return response.status(403).json({ error: "Нельзя удалить владельца" });
     }
-    if (callerData.orgRole === "admin" && targetData.orgRole === "admin") {
+    if (callerData.orgRole === "admin" && targetRole === "admin") {
       return response.status(403).json({ error: "Администратор не может удалить другого администратора" });
     }
     try {
       // Atomic: clear the target's membership + membersCount-- in one batch.
       const batch = db.batch();
-      batch.set(
-        db.collection("users").doc(targetUid),
-        { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
-        { merge: true }
-      );
+      batch.delete(membershipRef(db, orgId, targetUid));
+      if (targetData.organizationId === orgId) {
+        batch.set(
+          db.collection("users").doc(targetUid),
+          { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },
+          { merge: true }
+        );
+      }
       batch.update(db.collection("organizations").doc(orgId), { membersCount: FieldValue.increment(-1) });
       await batch.commit();
       await writeAuditLog(db, {
@@ -274,12 +541,141 @@ export default async function handler(request, response) {
         actorUid: decoded.uid,
         organizationId: orgId,
         targetUid,
-        metadata: { targetRole: targetData.orgRole || null },
+        metadata: { targetRole },
       });
       return response.status(200).json({ ok: true });
     } catch (error) {
       console.error("org removeMember: write failed", error);
       return response.status(500).json({ error: "Не удалось удалить участника" });
+    }
+  }
+
+  if (action === "updateMemberRole") {
+    const targetUid = String(body.userId || "").trim();
+    const newRole = String(body.orgRole || "").trim();
+    if (!targetUid || !VALID_ORG_ROLES.has(newRole)) {
+      return response.status(400).json({ error: "Некорректная роль" });
+    }
+    if (newRole === "owner") {
+      return response.status(403).json({ error: "Роль владельца нельзя назначить вручную" });
+    }
+
+    let callerData, targetData, memberSnap;
+    try {
+      const [callerSnap, targetSnap] = await Promise.all([
+        db.collection("users").doc(decoded.uid).get(),
+        db.collection("users").doc(targetUid).get(),
+      ]);
+      callerData = callerSnap.exists ? callerSnap.data() : null;
+      targetData = targetSnap.exists ? targetSnap.data() : null;
+    } catch (error) {
+      console.error("org updateMemberRole: load failed", error);
+      return response.status(500).json({ error: "Не удалось проверить пользователей" });
+    }
+    const orgId = callerData && callerData.organizationId;
+    if (!orgId || !["owner", "admin"].includes(callerData.orgRole)) {
+      return response.status(403).json({ error: "Недостаточно прав" });
+    }
+    try {
+      memberSnap = await membershipRef(db, orgId, targetUid).get();
+    } catch (error) {
+      console.error("org updateMemberRole: membership load failed", error);
+      return response.status(500).json({ error: "Не удалось проверить участника" });
+    }
+    if (!targetData || !memberSnap.exists) {
+      return response.status(404).json({ error: "Участник не найден в вашей организации" });
+    }
+    const currentRole = (memberSnap.data() || {}).orgRole || targetData.orgRole || "employee";
+    if (currentRole === "owner") return response.status(403).json({ error: "Нельзя менять роль владельца" });
+    if (callerData.orgRole === "admin" && (currentRole === "admin" || newRole === "admin")) {
+      return response.status(403).json({ error: "Администратор не может управлять администраторами" });
+    }
+
+    try {
+      const batch = db.batch();
+      batch.set(membershipRef(db, orgId, targetUid), {
+        orgRole: newRole,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      if (targetData.organizationId === orgId) {
+        batch.set(db.collection("users").doc(targetUid), { orgRole: newRole }, { merge: true });
+      }
+      await batch.commit();
+      await writeAuditLog(db, {
+        action: "org.updateMemberRole",
+        actorUid: decoded.uid,
+        organizationId: orgId,
+        targetUid,
+        metadata: { oldRole: currentRole, newRole },
+      });
+      return response.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("org updateMemberRole: write failed", error);
+      return response.status(500).json({ error: "Не удалось изменить роль" });
+    }
+  }
+
+  if (action === "updateMemberAccess") {
+    const targetUid = String(body.userId || "").trim();
+    const allowedProjects = Array.isArray(body.allowedProjects)
+      ? body.allowedProjects.map((id) => String(id || "").trim()).filter(Boolean).slice(0, 500)
+      : [];
+    if (!targetUid) return response.status(400).json({ error: "userId required" });
+
+    let callerData, targetData, memberSnap;
+    try {
+      const [callerSnap, targetSnap] = await Promise.all([
+        db.collection("users").doc(decoded.uid).get(),
+        db.collection("users").doc(targetUid).get(),
+      ]);
+      callerData = callerSnap.exists ? callerSnap.data() : null;
+      targetData = targetSnap.exists ? targetSnap.data() : null;
+    } catch (error) {
+      console.error("org updateMemberAccess: load failed", error);
+      return response.status(500).json({ error: "Не удалось проверить пользователей" });
+    }
+    const orgId = callerData && callerData.organizationId;
+    if (!orgId || !["owner", "admin"].includes(callerData.orgRole)) {
+      return response.status(403).json({ error: "Недостаточно прав" });
+    }
+    try {
+      memberSnap = await membershipRef(db, orgId, targetUid).get();
+    } catch (error) {
+      console.error("org updateMemberAccess: membership load failed", error);
+      return response.status(500).json({ error: "Не удалось проверить участника" });
+    }
+    if (!targetData || !memberSnap.exists) {
+      return response.status(404).json({ error: "Участник не найден в вашей организации" });
+    }
+
+    try {
+      const projectIds = allowedProjects.filter((id) => id !== "__no_access__");
+      if (projectIds.length > 0) {
+        const projectSnaps = await Promise.all(projectIds.map((id) => db.collection("projects").doc(id).get()));
+        const invalid = projectSnaps.some((snap) => !snap.exists || (snap.data() || {}).organizationId !== orgId);
+        if (invalid) return response.status(400).json({ error: "В списке есть проект не из этой организации" });
+      }
+
+      const batch = db.batch();
+      batch.set(membershipRef(db, orgId, targetUid), {
+        allowedProjects,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      if (targetData.organizationId === orgId) {
+        batch.set(db.collection("users").doc(targetUid), { allowedProjects }, { merge: true });
+      }
+      await batch.commit();
+      await writeAuditLog(db, {
+        action: "org.updateMemberAccess",
+        actorUid: decoded.uid,
+        organizationId: orgId,
+        targetUid,
+        metadata: { allowedProjectsCount: allowedProjects.length },
+      });
+      return response.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("org updateMemberAccess: write failed", error);
+      return response.status(500).json({ error: "Не удалось изменить доступ" });
     }
   }
 
@@ -316,7 +712,10 @@ export default async function handler(request, response) {
       }
       deleteRefs.push(db.collection("organizations").doc(orgId));
 
-      const membersSnap = await db.collection("users").where("organizationId", "==", orgId).get();
+      const [membersSnap, activeUsersSnap] = await Promise.all([
+        db.collection(MEMBERSHIP_COLLECTION).where("organizationId", "==", orgId).get(),
+        db.collection("users").where("organizationId", "==", orgId).get(),
+      ]);
 
       // Commit in chunks well under Firestore's 500-ops/batch limit. Delete the
       // data + org doc FIRST, then clear members LAST — so a partial failure
@@ -332,6 +731,10 @@ export default async function handler(request, response) {
         if (++ops >= CHUNK) await flush();
       }
       for (const memberDoc of membersSnap.docs) {
+        batch.delete(memberDoc.ref);
+        if (++ops >= CHUNK) await flush();
+      }
+      for (const memberDoc of activeUsersSnap.docs) {
         batch.set(
           memberDoc.ref,
           { organizationId: null, orgRole: null, allowedProjects: FieldValue.delete() },

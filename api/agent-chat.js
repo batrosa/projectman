@@ -7,7 +7,7 @@
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildOpenRouterModels, openRouterModelBody, fetchJsonWithTimeout } from "../lib/openrouter-config.js";
-import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload, matchProposalFile } from "../lib/task-proposal.js";
+import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload } from "../lib/task-proposal.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 // Same manage bar as the rules/award flow: owner/admin manage any project in
 // their org; a moderator only projects in their allowedProjects.
@@ -31,27 +31,43 @@ const RATE_LIMIT_COLLECTION = "agentRateLimits";
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 20; // requests per window per user
 const OFF_TOPIC_RESPONSE =
-  "Я отвечаю только по ProjectMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
+  "Я отвечаю только по HoldingMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
+const TEXT_TASK_SOURCE_NAME = "текстовый запрос";
 
 const PROJECTMAN_CAPABILITY_GUIDE = [
-  "Карта реального функционала ProjectMan важнее общих знаний о системах управления проектами.",
-  "В ProjectMan есть: организации, роли owner/admin/moderator/employee, проекты, доступ пользователей к проектам, задачи, исполнители, дедлайн задачи, файлы задачи, файлы проекта, статусы задач, календарь по дедлайнам, раздел «Мои задачи», админ-панель, профиль/рейтинг, ИИ-агент и Telegram-уведомления при подключенном Telegram.",
-  "Статусы задач: «Задача поставлена», «В работе», «Завершена» (на проверке у руководителя), «Готово» (принята/архив). Статус меняют через бейдж/меню статуса задачи; нет drag-and-drop перетаскивания карточек.",
-  "Файлы: к задаче можно прикреплять до 2 файлов до 10 МБ; при завершении исполнитель добавляет комментарий о выполнении и 1-3 файла подтверждения; в «Файлы проекта» можно загружать md/xlsx/xlsm/pdf/docx до 10 МБ, их текст использует агент.",
-  "Календарь показывает задачи по дедлайну и список задач выбранного дня. В календаре нет фильтров по блоку/ответственному и нет синхронизации с Outlook или Google Calendar.",
-  "Уведомления: Telegram-уведомления о новых задачах, возврате на доработку, напоминаниях и просрочке при подключенном Telegram. Нет подписок, ежедневных дайджестов и пользовательских правил уведомлений.",
-  "В ProjectMan НЕТ: отдельного переключателя режима «Канбан», автоматической группировки задач по блокам, drag-and-drop смены статуса, отдельной плановой даты начала задачи, конструктора отчётов/отчёта «статус по блокам», чек-листов/подзадач, общего комментарного чата под задачей, подписок, daily digest, custom notification rules, Outlook/Google Calendar sync, планирования совещаний/стендапов внутри приложения.",
+  "Карта реального функционала HoldingMan важнее общих знаний о системах управления проектами.",
+  "Основные разделы: список проектов слева, доска выбранного проекта, «Мои задачи», «Уведомления», «ИИ-агент», «Панель управления», «Админ панель», «Личный кабинет», «Рейтинг сотрудников», «Календарь», «Файлы проекта», модалки задачи/подтверждения/возврата/информации о задаче.",
+  "Организации: пользователь работает внутри одной организации; в меню организации показываются название и роль. Код приглашения видят owner/admin, они же могут менять код. Owner может удалить организацию; не-owner может выйти из организации.",
+  "Панель управления: содержит переходы в «Админ панель», переключатель светлой/тёмной темы, «Личный кабинет», «Рейтинг сотрудников» и «Календарь». Это не отдельный проектный раздел, а меню настроек/инструментов.",
+  "Админ панель доступна owner/admin: вкладки «Пользователи», «Доступ к проектам», «История входов», «Данные о пользователях». В пользователях видны участники, роли, Telegram-статус, можно менять роли и исключать пользователей с учётом ограничений владельца. В доступах настраиваются allowedProjects по сотрудникам.",
+  "Личный кабинет: показывает аватар/фото профиля, имя, email, уровень, XP-прогресс, активные задачи, завершено всего, сколько выполнено в срок и сколько без доработок; фото можно обрезать перед сохранением.",
+  "Рейтинг сотрудников: показывает топ сотрудников начиная с 3 уровня, с podium/top-3, уровнем и метриками «в срок» и «без доработок».",
+  "Роли: owner имеет полный контроль. Admin управляет пользователями, проектами, задачами, доступами и кодом приглашения, но не удаляет организацию и не меняет владельца. Moderator создаёт/редактирует/удаляет/назначает/принимает задачи в разрешённых проектах. Employee/reader видит доступные проекты и свои задачи, берёт свои задачи в работу и отправляет их на проверку с подтверждением.",
+  "Доступ к проектам: owner/admin видят все проекты. Для moderator/employee можно задать allowedProjects; пустой список означает доступ ко всем, специальный запрет означает отсутствие доступных проектов. Назначать исполнителем можно участников с доступом к текущему проекту.",
+  "Проекты: owner/admin создают, переименовывают и удаляют проекты; у проекта может быть дедлайн. Доска проекта состоит из колонок «Назначенные», «В процессе», «На проверке», «Готово». Нет отдельного режима Канбан и нет drag-and-drop: статус меняют через действия/статус задачи.",
+  "Задача: поля — название, описание/комментарий, ответственные, дедлайн, до 2 прикреплённых файлов до 10 МБ. Новая задача создаётся со статусом «Задача поставлена» / subStatus assigned и попадает в «Назначенные». Можно назначать нескольких ответственных.",
+  "Статусы задач: «Задача поставлена»/assigned — ждёт принятия; «В работе»/in_work — исполнитель взял в работу; «Завершена»/completed — исполнитель отправил на проверку; «Готово»/done — руководитель принял, задача в архиве. Просрочка в календаре считается по дедлайну для незавершённых задач.",
+  "Выполнение задачи: исполнитель обязан добавить комментарий о выполнении и 1-3 файла подтверждения; после этого задача идёт на проверку. Руководитель может принять задачу в «Готово» или вернуть на доработку с причиной.",
+  "XP и рейтинг: очки начисляются сервером только при финальном принятии задачи в «Готово», транзакционно и один раз. База 10 XP, +5 XP если выполнено в срок, -3 XP если задача возвращалась на доработку, минимум 1 XP. Уровни: 1 Новичок 0 XP, 2 Стажёр 50, 3 Специалист 150, 4 Профессионал 300, 5 Эксперт 500, 6 Мастер 800, 7 Легенда 1200. Личный кабинет показывает XP, уровень, активные задачи, завершено всего, процент в срок и без доработок. Рейтинг доступен с 3 уровня; сортировка по score = 50% «в срок» + 50% «без доработок», затем по числу завершённых задач.",
+  "Файлы: к задаче можно прикреплять до 2 файлов до 10 МБ. В «Файлы проекта» owner/admin/moderator могут загружать md/xlsx/xlsm/pdf/docx до 10 МБ; текст этих файлов извлекается и используется агентом как база знаний для ответов, но не как прямой источник создания задач.",
+  "Создание задач через ИИ-агента работает в два способа: из простого текстового поручения в чате или через кнопку прикрепления разового файла до 3 МБ. В обоих случаях owner/admin/moderator получает карточку предпросмотра и нажимает кнопку создания; исполнитель не может создавать задачи через агента. Агент никогда не должен писать «создал» без карточки и подтверждения.",
+  "Календарь показывает задачи по дедлайну, цветные статусы, список задач выбранного дня и переход к задаче. В календаре нет фильтров по блоку/ответственному и нет синхронизации с Outlook или Google Calendar.",
+  "«Мои задачи» показывает активные задачи, где текущий пользователь назначен ответственным; клик открывает нужный проект и колонку задачи.",
+  "Уведомления: есть in-app «Уведомления агента» с прочтением/удалением уведомлений. Telegram-уведомления работают при подключенном Telegram: новые задачи, возврат на доработку, напоминания/просрочки от server-side monitor. Нет подписок, ежедневных дайджестов и пользовательских правил уведомлений.",
+  "Telegram: можно войти через Telegram-бота/Telegram auth; связанный telegramChatId используется для уведомлений. Если Telegram не подключён, пользователь всё равно получает in-app уведомления, но Telegram-сообщение не уйдёт.",
+  "ИИ-агент: отвечает только по HoldingMan и данным доступных проектов/участников/задач/файлов. Плюсик в чате для файлов виден только тем, кто может создавать задачи. Файл в чате разовый, не сохраняется в «Файлы проекта».",
+  "В HoldingMan НЕТ: отдельного переключателя режима «Канбан», автоматической группировки задач по блокам, drag-and-drop смены статуса, отдельной плановой даты начала задачи, конструктора отчётов/отчёта «статус по блокам», чек-листов/подзадач, общего комментарного чата под задачей, подписок, daily digest, custom notification rules, Outlook/Google Calendar sync, планирования совещаний/стендапов внутри приложения.",
   "Если пользователь спрашивает, как контролировать конкретный проект, предлагай только реальный workflow: разложить работу на проекты/задачи, при необходимости кодировать блоки в названии задачи или отдельными проектами, назначать исполнителей и дедлайны, прикреплять документы, смотреть «Мои задачи» и календарь по дедлайнам, менять статусы через меню статуса, проверять завершение по комментарию/файлам подтверждения, управлять доступами в админ-панели и использовать Telegram-уведомления.",
-  "Если пользователь просит функцию, которой нет, прямо скажи «в ProjectMan такой функции нет» и предложи ближайший реальный способ внутри текущего приложения.",
+  "Если пользователь просит функцию, которой нет, прямо скажи «в HoldingMan такой функции нет» и предложи ближайший реальный способ внутри текущего приложения.",
 ].join(" ");
 
 const SYSTEM_PROMPT_RULES = [
-  "Ты — ИИ Руководитель проекта, ассистент внутри системы управления задачами ProjectMan.",
+  "Ты — ИИ Руководитель проекта, ассистент внутри системы управления задачами HoldingMan.",
   "На приветствия, благодарности и короткие обращения (например «привет», «здравствуйте», «спасибо», «ок») отвечай коротко, дружелюбно и по-человечески, и предлагай помощь по проектам и задачам. Это НЕ повод для отказа.",
-  "Отвечай по темам ProjectMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
+  "Отвечай по темам HoldingMan: проекты, задачи, сроки, исполнители, файлы, уведомления, роли, вход и работа внутри организации.",
   `Отказ давай ТОЛЬКО на посторонние вопросы-факты, не связанные с работой организации (например «размер луны», «когда отменили крепостное право», погода, история, политика). В этом случае ответь строго этой фразой: ${OFF_TOPIC_RESPONSE}`,
   PROJECTMAN_CAPABILITY_GUIDE,
-  "ФОРМИРОВАНИЕ ЗАДАЧ ИЗ ДОКУМЕНТА: если пользователь просит сформировать/создать/поставить задачи из загруженного документа (файла проекта), НЕ пиши обычный ответ — верни РОВНО ОДИН блок кода: ```json {\"action\":\"propose_tasks\",\"file\":\"<точное имя файла из данных>\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"Имя Фамилия\"}],\"hasMore\":false} ``` — без текста до и после блока. В блоке НЕ БОЛЬШЕ 30 задач за раз, по порядку документа; если в документе задач больше, чем вошло в блок, поставь \"hasMore\": true (пользователь попросит следующую порцию, например «следующие задачи из документа X»); при запросе следующей порции продолжай с того места, где закончил. Названия задач краткие и понятные; ответственного и срок бери из документа; НО если пользователь в своём запросе ЯВНО указал, кого назначить ответственным и/или какой срок поставить (например «назначь все на Тэко Исаев со сроком 2026-08-15») — используй указанные пользователем значения для всех задач вместо данных документа. Если срока нет ни в документе, ни в запросе — null. Не выдумывай задачи, которых в документе нет. Если нужного документа нет в данных — ответь обычным текстом, что документ не найден.",
+  "Если пользователь просит создать задачи из текстового поручения, не отвечай запретом: серверный слой сам покажет карточку предпросмотра и проверит права. Если пользователь просит создать задачи из уже сохранённого «Файла проекта» обычным текстом, не делай вид, что можешь брать файл из хранилища для создания задач: для файлов нужно прикрепить разовый файл кнопкой в чате агента.",
   "По умолчанию отвечай кратко (1-3 тезиса), простым нетехническим языком. Но если пользователь просит подробности, список, таблицу или схему — дай полный, хорошо структурированный ответ и НЕ сокращай данные.",
   "Обычные ответы пиши обычным текстом или короткими пунктами. Таблицу (Markdown: строка заголовков, строка-разделитель | --- | --- |, строки данных) делай ТОЛЬКО когда она действительно уместна: когда перечисляешь НЕСКОЛЬКО (2+) однотипных объектов с общими полями — список задач с исполнителями/сроками/статусами, сравнение проектов и т.п. — ИЛИ когда пользователь прямо просит таблицу. НЕ оборачивай в таблицу один объект, короткий факт, приветствие или пояснение (например «что за задача X» про одну задачу — ответь обычным текстом, а не таблицей «поле—значение»). Для акцентов можно **жирный**, для простых перечней — списки. Ссылки [текст](url) и изображения не вставляй.",
   "НЕ рисуй псевдографику и ASCII-диаграммы (сетки из | и —, стрелочные таймлайны, «нарисованные» схемы) — в чате они не отображаются и выглядят сломанно. Блоки кода (```) используй только для настоящего кода/конфигов. Если просят «схему», «диаграмму», «график», «таймлайн» или «дорожную карту» — представь это Markdown-таблицей (например: Этап | Период | Статус) или структурированным списком по этапам/годам, а не рисунком из символов.",
@@ -59,8 +75,27 @@ const SYSTEM_PROMPT_RULES = [
   "Ты видишь ТОЛЬКО проекты, к которым у пользователя есть доступ (они перечислены ниже в данных), и их задачи — не проси открыть раздел или выбрать проект, если данные уже есть. Если пользователь спрашивает про проект, которого НЕТ в этих данных, — вежливо ответь, что у него нет доступа к этому проекту или такого проекта нет среди его проектов; НЕ раскрывай по нему никаких данных и не придумывай их.",
   "Если факта нет в данных — прямо скажи, что этого пока нет в системе. Не выдумывай.",
   "Никогда не придумывай кнопки, разделы, статусы или функции, которых нет в приложении.",
+  "Участники организации перечислены в данных (members). Не говори, что участника нет в системе, если он есть в списке members. У каждого участника могут быть поля «последний_вход» (последний вход в систему), «был_в_сети» (последняя активность), «уровень», «xp», «задач_завершено» — отвечай на вопросы «когда заходил», «когда был в сети», «какой уровень/XP» ПО ЭТИМ ПОЛЯМ, время указано по Москве. Если поля нет у участника — он ещё не заходил в систему.",
+  "Понимай запросы «с полуслова»: сокращённые и разговорные названия проектов и имён («абрау» — проект «Абрау-Дюрсо», «по елисеевскому» — «Елисеевский парк»), опечатки, склонения, регистр. Сначала сопоставь слова пользователя с реальными проектами/задачами/участниками из данных, и только если совпадений нет — скажи об этом.",
+  "Если запрос неоднозначен (подходит несколько проектов, участников или задач) — задай ОДИН короткий уточняющий вопрос, а не отказывай и не гадай.",
+  "Не отвечай «нет данных» или «не могу», если ответ выводится из данных ниже (проекты, задачи, сроки, участники, их активность, файлы). Сначала поищи в данных.",
+  "Если пользователь пытается создать задачу, не отвечай текстом «создал» или «создаю»: сервер должен вернуть карточку предпросмотра, а реальное создание будет только после кнопки подтверждения.",
   "Не говори «в предоставленном контексте» — говори «в данных проекта» или «в системе».",
-  "Ты только отвечаешь на вопросы, данные не меняешь.",
+  "Информационные ответы в чате данные не меняют. Создание задач выполняется отдельным серверным действием только после карточки предпросмотра.",
+].join(" ");
+
+const TEXT_TASK_SYSTEM_PROMPT = [
+  "Ты превращаешь текстовое поручение пользователя в предложение задач HoldingMan.",
+  "Верни РОВНО ОДИН JSON-блок без текста до и после: ```json {\"action\":\"propose_tasks\",\"file\":\"текстовый запрос\",\"tasks\":[{\"title\":\"...\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"точное имя участника\"}],\"hasMore\":false} ```.",
+  "Не больше 30 задач.",
+  "Название задачи делай кратким и предметным. Не добавляй слова «задача», «поставить», «создать», если они не часть сути работы.",
+  "Если срок указан относительным словом, переведи его в дату по указанной текущей дате: сегодня, завтра, послезавтра, до конца недели.",
+  "Если срок не указан, deadline=null.",
+  "Ответственного сопоставляй только с участниками HoldingMan из списка. Если форма имени в запросе склонена, верни точное имя из списка. Если участник не найден или есть сомнение, верни имя как написал пользователь.",
+  "Если пользователь описывает несколько задач для одного ответственного или срока, примени общий ответственный/срок к каждой задаче.",
+  "Если текст содержит «Исходное поручение» и «Уточнения пользователя», бери название задачи и срок из исходного поручения, а проект/ответственного уточняй последними сообщениями пользователя.",
+  "Если пользователь исправляет исполнителя фразой вроде «давай Тэке Исаеву», замени исполнителя, но не меняй название исходной задачи.",
+  "Не показывай технические id.",
 ].join(" ");
 
 export default async function handler(request, response) {
@@ -92,10 +127,12 @@ export default async function handler(request, response) {
 
   // Phase 2 of the create-tasks-from-document flow: the client's «Создать N
   // задач» button posts {action:'create_tasks', ...} instead of a chat message.
-  const isCreateAction = body && body.action === "create_tasks";
+  const action = body && body.action;
+  const isCreateAction = action === "create_tasks";
+  const isDeleteNotificationAction = action === "delete_notification";
 
   const message = String(body.message || "").trim().slice(0, MAX_MESSAGE_CHARS);
-  if (!isCreateAction && !message) return response.status(400).json({ error: "message is required" });
+  if (!isCreateAction && !isDeleteNotificationAction && !message) return response.status(400).json({ error: "message is required" });
   const history = normalizeHistory(body.history);
 
   // Scope is enforced by the system prompt (greet greetings, refuse only
@@ -109,6 +146,10 @@ export default async function handler(request, response) {
   // Per-user rate limit (best-effort; fails OPEN if the limiter itself errors,
   // so a limiter hiccup never blocks a legitimate user). Written via the Admin
   // SDK to agentRateLimits/{uid}, which clients can't touch (default-deny).
+  if (isDeleteNotificationAction) {
+    return handleDeleteNotification({ db, response, decoded, body });
+  }
+
   try {
     const now = Date.now();
     const rlRef = db.collection(RATE_LIMIT_COLLECTION).doc(decoded.uid);
@@ -179,6 +220,38 @@ export default async function handler(request, response) {
   }
 
   const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const textTaskRequest = getTextTaskCreationRequest(message, history);
+  if (textTaskRequest) {
+    if (!["owner", "admin", "moderator"].includes(callerData?.orgRole)) {
+      return response.status(200).json({ ok: true, answer: "Создавать задачи через агента может владелец, админ или модератор. У исполнителя нет прав на создание задач." });
+    }
+    if (!openRouterKey) {
+      return response.status(200).json({ ok: true, answer: "ИИ-агент временно недоступен (не настроен OpenRouter)." });
+    }
+
+    const projectResult = resolveTextTaskProject({
+      projects: context.projects,
+      body,
+      message: textTaskRequest.message,
+      callerData,
+    });
+    if (projectResult.answer) return response.status(200).json({ ok: true, answer: projectResult.answer });
+
+    const users = await loadOrgUsers(db, organizationId);
+    if (!users.ok) return response.status(200).json({ ok: true, answer: users.answer });
+
+    const proposal = await buildTextTaskProposal({
+      openRouterKey,
+      message: textTaskRequest.message,
+      clientToday: body.clientToday,
+      users: users.users,
+      project: projectResult.project,
+    });
+
+    if (proposal.answer) return response.status(200).json({ ok: true, answer: proposal.answer, model: proposal.model });
+    return response.status(200).json({ ok: true, taskProposal: proposal.taskProposal, model: proposal.model });
+  }
+
   if (!openRouterKey) {
     return response.status(200).json({ ok: true, answer: "ИИ-агент временно недоступен (не настроен OpenRouter)." });
   }
@@ -217,23 +290,6 @@ export default async function handler(request, response) {
     const answer = cleanAnswer(attempt.data?.choices?.[0]?.message?.content);
     if (!answer) continue;
 
-    // PHASE 1: did the model answer with a propose_tasks JSON block?
-    // (Only fires when the user asked to form tasks from a document — the
-    // system prompt mandates the block for that intent.) Any problem with
-    // the block degrades to a plain-text explanation, never a 500.
-    try {
-      const proposal = await tryBuildTaskProposal({ db, rawAnswer: answer, context, organizationId, callerData });
-      if (proposal) {
-        if (proposal.error) {
-          return response.status(200).json({ ok: true, answer: proposal.error, model });
-        }
-        return response.status(200).json({ ok: true, taskProposal: proposal.taskProposal, model });
-      }
-    } catch (error) {
-      console.error("agent-chat: task proposal post-processing failed", error);
-      return response.status(200).json({ ok: true, answer: "Не удалось подготовить список задач из документа, попробуйте ещё раз.", model });
-    }
-
     return response.status(200).json({ ok: true, answer, model });
   }
 
@@ -244,103 +300,297 @@ export default async function handler(request, response) {
   });
 }
 
-// ===== CREATE TASKS FROM A DOCUMENT (two-phase protocol) =====
+function looksLikeTextTaskCreationRequest(message) {
+  const text = normalizeLookup(message);
+  if (!text) return false;
+  if (/((из|по|на основе|согласно)\s+(файл|документ|таблиц)|xlsx|xlsm|xls|pdf|docx|md|прикреп|загруз)/u.test(text)) {
+    return false;
+  }
+  const createVerb = /(создай|создать|создайте|поставь|поставить|поставьте|назначь|назначить|назначьте|добавь|добавить|добавьте|заведи|завести|оформи|оформить|поручи|поручить)/u;
+  const taskHint = /(задач|поручени|исполнител|ответственн|срок|дедлайн|сегодня|завтра|послезавтра)/u;
+  return createVerb.test(text) && taskHint.test(text);
+}
 
-// PHASE 1 post-processing: if the LLM answered with a propose_tasks JSON
-// block, turn it into a validated proposal for the client's preview card.
-// Returns null (not our flow — treat the answer as normal chat),
-// { error } (human-readable Russian text to show instead), or
-// { taskProposal } for the preview card.
-async function tryBuildTaskProposal({ db, rawAnswer, context, organizationId, callerData }) {
-  const extracted = extractProposal(rawAnswer);
-  if (!extracted.found) return null;
-  if (extracted.error) {
-    // Log the tail — the usual culprit is the model hitting max_tokens
-    // mid-JSON on a huge document, and the tail shows exactly where it died.
-    console.error("agent-chat: propose_tasks parse failed", {
-      answerLength: rawAnswer.length,
-      tail: rawAnswer.slice(-160),
-    });
-    return { error: "Не смог корректно разобрать задачи из документа — похоже, список получился слишком большим. Попросите порцию поменьше, например: «первые 10 задач из документа X» или задачи по конкретному разделу." };
+function getTextTaskCreationRequest(message, history) {
+  if (looksLikeTextTaskCreationRequest(message)) {
+    return { message, fromHistory: false };
   }
 
-  const validated = validateProposal(extracted.proposal);
-  if (!validated.ok) {
-    return { error: `Не получилось сформировать задачи: ${validated.error}.` };
+  if (!isLikelyTextTaskContinuation(message)) return null;
+  const turns = Array.isArray(history) ? history : [];
+  let baseIndex = -1;
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const turn = turns[i];
+    if (turn?.role === "user" && looksLikeTextTaskCreationRequest(turn.content)) {
+      baseIndex = i;
+      break;
+    }
+  }
+  if (baseIndex < 0) return null;
+
+  const base = String(turns[baseIndex].content || "").trim();
+  const clarifications = turns
+    .slice(baseIndex + 1)
+    .filter((turn) => turn?.role === "user")
+    .map((turn) => String(turn.content || "").trim())
+    .filter(Boolean)
+    .slice(-4);
+  clarifications.push(message);
+
+  return {
+    fromHistory: true,
+    message: [
+      `Исходное поручение: ${base}`,
+      "Уточнения пользователя после исходного поручения:",
+      ...clarifications.map((item) => `- ${item}`),
+    ].join("\n"),
+  };
+}
+
+function isLikelyTextTaskContinuation(message) {
+  const text = normalizeLookup(message);
+  if (!text || text.length > 220) return false;
+  if (/^(спасибо|ок|понял|ясно|нет|да)$/u.test(text)) return false;
+  if (/(проект|ответственн|исполнител|назнач|давай|пусть|он есть|она есть|абрау|елисеев|каспий|лазурн|срок|дедлайн|сегодня|завтра|исаев|исаева|тэко|тэке|эльдар|амирхан)/u.test(text)) {
+    return true;
+  }
+  return text.split(" ").length <= 4;
+}
+
+function resolveTextTaskProject({ projects, body, message, callerData }) {
+  const list = Array.isArray(projects) ? projects : [];
+  let project = null;
+
+  const requestedId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  if (requestedId) {
+    project = list.find((p) => p?.id === requestedId) || null;
+    if (!project) {
+      return { answer: "Проект не найден среди доступных вам проектов." };
+    }
+  } else {
+    const lookupText = typeof body.projectName === "string" && body.projectName.trim()
+      ? body.projectName
+      : message;
+    const resolved = resolveProjectFromText(list, lookupText);
+    if (resolved.error === "ambiguous") {
+      return { answer: "Название проекта подходит к нескольким проектам. Откройте нужный проект или напишите его полное название." };
+    }
+    if (resolved.error) {
+      return { answer: "Не понял, в какой проект поставить задачу. Откройте проект или напишите его точное название в сообщении." };
+    }
+    project = resolved.project;
   }
 
-  // Bind the proposal to the document's project by filename. The LLM re-types
-  // the name rather than copying it (prod case: an underscore came back as a
-  // space), so matching is normalized + substring + single-document fallback —
-  // see matchProposalFile. The LLM only ever sees filenames, never project ids.
-  const allFiles = Array.isArray(context.files) ? context.files : [];
-  const fileMatch = matchProposalFile(allFiles, validated.file);
-  if (fileMatch.error === "not_found") {
-    console.error("agent-chat: proposal file not matched", {
-      wanted: validated.file,
-      available: allFiles.map((f) => f.filename),
-    });
-    return { error: `Документ «${validated.file}» не найден среди файлов ваших проектов (или из него не извлечён текст).` };
+  if (!callerCanManageProject(callerData?.orgRole, callerData?.allowedProjects, project.id)) {
+    return { answer: "Нет доступа к созданию задач в этом проекте." };
   }
-  if (fileMatch.error === "ambiguous") {
-    return { error: `Название «${validated.file}» подходит к нескольким файлам — уточните, какой документ использовать.` };
-  }
-  const file = fileMatch.file;
+  return { project };
+}
 
-  // Org members for assignee matching (by human name from the document).
-  let users = [];
+function resolveProjectFromText(projects, textValue) {
+  const text = normalizeLookup(textValue);
+  const list = Array.isArray(projects) ? projects : [];
+  if (!text || list.length === 0) return { error: "not_found" };
+
+  let hits = list.filter((project) => normalizeLookup(project?.name) === text);
+  if (hits.length === 1) return { project: hits[0] };
+  if (hits.length > 1) return { error: "ambiguous" };
+
+  hits = list.filter((project) => {
+    const name = normalizeLookup(project?.name);
+    if (!name) return false;
+    if (text.includes(name) || name.includes(text)) return true;
+    const words = name.split(" ").filter((word) => word.length >= 4);
+    return words.some((word) => text.includes(word));
+  });
+  if (hits.length === 1) return { project: hits[0] };
+  if (hits.length > 1) return { error: "ambiguous" };
+  return { error: "not_found" };
+}
+
+async function loadOrgUsers(db, organizationId) {
   try {
-    const usersSnap = await db.collection("users").where("organizationId", "==", organizationId).get();
-    users = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const snap = await db.collection("users").where("organizationId", "==", organizationId).get();
+    return { ok: true, users: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
   } catch (error) {
-    console.error("agent-chat proposal: failed to load org users", error);
-    return { error: "Не удалось загрузить список участников организации, попробуйте ещё раз." };
+    console.error("agent-chat: failed to load users", error);
+    return { ok: false, answer: "Не удалось загрузить участников организации, попробуйте ещё раз." };
+  }
+}
+
+async function buildTextTaskProposal({ openRouterKey, message, clientToday, users, project }) {
+  const today = isIsoDate(clientToday) ? clientToday : todayIsoDate();
+  const tomorrow = addDaysIso(today, 1);
+  const dayAfterTomorrow = addDaysIso(today, 2);
+  const membersText = users.map((u) => displayName(u)).filter(Boolean).join(", ");
+  const userPrompt = [
+    `Текущая дата: ${today}.`,
+    `Завтра: ${tomorrow}. Послезавтра: ${dayAfterTomorrow}.`,
+    `Проект для создаваемых задач: ${project.name || "без названия"}.`,
+    `Участники HoldingMan для сопоставления ответственных: ${membersText || "нет участников"}.`,
+    "Текстовое поручение пользователя:",
+    message,
+  ].join("\n\n");
+
+  const llm = await callModelForTextTaskProposal({ openRouterKey, userPrompt });
+  if (!llm.ok) {
+    return { answer: "Не удалось разобрать текстовое поручение. Попробуйте указать задачу, ответственного и срок одной фразой." };
+  }
+
+  const built = buildTextTaskProposalFromRaw({
+    rawAnswer: llm.answer,
+    users,
+    project,
+  });
+  return { ...built, model: llm.model };
+}
+
+async function callModelForTextTaskProposal({ openRouterKey, userPrompt }) {
+  const models = buildOpenRouterModels();
+  const deadline = Date.now() + 30_000;
+  for (const model of models) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs < 3000) break;
+    const attempt = await fetchJsonWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openRouterKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...openRouterModelBody([model]),
+        temperature: 0.1,
+        max_tokens: 1400,
+        messages: [
+          { role: "system", content: TEXT_TASK_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    }, Math.min(15_000, remainingMs));
+    if (!attempt.ok) continue;
+    const answer = String(attempt.data?.choices?.[0]?.message?.content || "").trim();
+    if (answer) return { ok: true, answer, model };
+  }
+  return { ok: false };
+}
+
+function buildTextTaskProposalFromRaw({ rawAnswer, users, project }) {
+  const extracted = extractProposal(rawAnswer);
+  if (!extracted.found || extracted.error) {
+    console.error("agent-chat text-create: propose_tasks parse failed", {
+      answerLength: String(rawAnswer || "").length,
+      tail: String(rawAnswer || "").slice(-160),
+    });
+    return { answer: "Не смог корректно разобрать текстовое поручение. Попробуйте написать: «поставь задачу Ивану Иванову: проверить договор, срок 2026-09-01»." };
+  }
+
+  const proposal = extracted.proposal;
+  if (Array.isArray(proposal?.tasks) && proposal.tasks.length === 0) {
+    return { answer: "Создавать нечего: в сообщении не нашёл задачу с ответственным." };
+  }
+
+  const validated = validateProposal({
+    ...proposal,
+    file: TEXT_TASK_SOURCE_NAME,
+  });
+  if (!validated.ok) {
+    return { answer: validated.error.includes("ни одна строка")
+      ? "Создавать нечего: в сообщении не нашёл задачу с ответственным."
+      : `Не получилось сформировать задачи: ${validated.error}.` };
   }
 
   const REASON_TEXT = {
-    not_found: "пользователь не найден в организации",
+    not_found: "ответственный не найден среди участников HoldingMan",
     ambiguous: "имя подходит нескольким пользователям",
-    no_deadline: "в документе не указан срок",
     no_title: "нет названия задачи",
-    bad_deadline: "некорректный срок в документе",
+    bad_deadline: "некорректный срок в запросе",
     no_assignee: "не указан ответственный",
   };
   const tasks = validated.tasks.map((t) => {
-    // Row-level problems from the validator (messy source document) — show
-    // the reason, keep the other rows creatable.
     if (t.rowError) {
-      return { title: t.title || "—", deadline: t.deadline, assigneeName: t.assigneeName, ok: false, reason: REASON_TEXT[t.rowError] || t.rowError };
+      return { title: t.title || "-", deadline: t.deadline, assigneeName: t.assigneeName, ok: false, reason: REASON_TEXT[t.rowError] || t.rowError };
     }
     const match = matchAssignee(users, t.assigneeName);
-    if (match.error) {
-      return { ...t, ok: false, reason: REASON_TEXT[match.error] || match.error };
-    }
-    if (!t.deadline) {
-      // Creation requires a real deadline (board rendering + the deadline
-      // monitor both assume one) — surface it in the preview instead.
-      return { ...t, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: false, reason: REASON_TEXT.no_deadline };
-    }
-    return { ...t, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: true };
+    if (match.error) return { ...t, ok: false, reason: REASON_TEXT[match.error] || match.error };
+    // Срок ОПЦИОНАЛЕН: задача без дедлайна создаётся (deadline null) — как и
+    // при ручном создании. Монитор такие задачи по срокам не пилит (нечего),
+    // «не взял в работу за час» работает как обычно.
+    return { ...t, deadline: t.deadline || null, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: true };
   });
 
-  const canCreate = callerCanManageProject(callerData?.orgRole, callerData?.allowedProjects, file.projectId);
   return {
     taskProposal: {
-      file: file.filename,
-      projectId: file.projectId,
-      projectName: file.projectName || "без названия",
+      source: "text",
+      file: TEXT_TASK_SOURCE_NAME,
+      projectId: project.id,
+      projectName: project.name || "без названия",
       tasks,
-      canCreate,
-      // Partial list: recovered from a token-capped answer, trimmed to the
-      // 30-task cap, or the model itself flagged hasMore (document has more
-      // tasks than the portion) — the card warns the user so they can ask for
-      // the next portion after creating these.
-      truncated: extracted.truncated === true
-        || validated.trimmed === true
-        || extracted.proposal.hasMore === true,
+      canCreate: true,
+      truncated: extracted.truncated === true || validated.trimmed === true || proposal.hasMore === true,
     },
   };
 }
+
+function displayName(user) {
+  return user.displayName
+    || `${user.firstName || ""} ${user.lastName || ""}`.trim()
+    || user.email
+    || "";
+}
+
+function getRoleNameRu(role) {
+  return ({
+    owner: "Владелец",
+    admin: "Администратор",
+    moderator: "Модератор",
+    employee: "Исполнитель",
+    reader: "Исполнитель",
+  })[role] || "Исполнитель";
+}
+
+// Firestore Timestamp | {seconds} | ISO string | Date → «ДД.ММ.ГГГГ, ЧЧ:ММ»
+// по Москве (или null). Для полей активности участников в контексте агента.
+function formatMskDateTime(value) {
+  if (!value) return null;
+  let date = null;
+  try {
+    if (typeof value.toDate === "function") date = value.toDate();
+    else if (typeof value === "object" && typeof value.seconds === "number") date = new Date(value.seconds * 1000);
+    else date = new Date(value);
+  } catch {
+    return null;
+  }
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  }).format(date);
+}
+
+function normalizeLookup(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[ё]/g, "е")
+    .replace(/[\s_-]+/g, " ")
+    .trim();
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return false;
+  const [year, month, day] = String(value).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function addDaysIso(isoDate, days) {
+  const [year, month, day] = String(isoDate).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+// ===== CREATE TASKS FROM A DOCUMENT (two-phase protocol) =====
 
 // PHASE 2: the confirmed «Создать N задач» click. Server-side validation +
 // the same manage bar as the main UI, then a single batch creating the task
@@ -422,7 +672,8 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       createdByUid: decoded.uid,
     });
 
-    const text = `🆕 Новая задача: «${t.title}». Срок: ${t.deadline} (проект «${projectName}»). Поставлена ИИ-агентом по поручению: ${createdByName}.`;
+    const deadlinePart = t.deadline ? ` Срок: ${t.deadline}.` : "";
+    const text = `🆕 Новая задача: «${t.title}». Ответственный: ${assigneeDisplay}.${deadlinePart} Проект «${projectName}». Поставлена ИИ-агентом по поручению: ${createdByName}.`;
     const noteRef = db.collection("agentNotifications").doc();
     batch.set(noteRef, {
       uid: t.assigneeUid,
@@ -456,6 +707,34 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
   });
 
   return response.status(200).json({ ok: true, created: payload.tasks.length });
+}
+
+async function handleDeleteNotification({ db, response, decoded, body }) {
+  const id = String(body.id || body.notificationId || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(id)) {
+    return response.status(400).json({ error: "Invalid notification id" });
+  }
+
+  const ref = db.collection("agentNotifications").doc(id);
+  let snap;
+  try {
+    snap = await ref.get();
+  } catch (error) {
+    console.error("agent-chat delete_notification: failed to load notification", error);
+    return response.status(500).json({ error: "Failed to load notification" });
+  }
+
+  if (!snap.exists) return response.status(200).json({ ok: true, deleted: false });
+  if (snap.data()?.uid !== decoded.uid) return response.status(403).json({ error: "Forbidden" });
+
+  try {
+    await ref.delete();
+  } catch (error) {
+    console.error("agent-chat delete_notification: failed to delete notification", error);
+    return response.status(500).json({ error: "Failed to delete notification" });
+  }
+
+  return response.status(200).json({ ok: true, deleted: true });
 }
 
 // Pure sliding-window rate-limit decision. Given the user's prior request
@@ -494,6 +773,7 @@ export function accessibleProjectIdsFor(userData) {
 const MAX_CONTEXT_PROJECTS = 200;
 const MAX_CONTEXT_TASKS = 1500;
 const MAX_CONTEXT_FILES_PER_PROJECT = 30;
+const MAX_CONTEXT_USERS = 300;
 
 async function loadOrganizationContext(db, organizationId, accessibleProjectIds = null) {
   // All queries here are single-field (`where(organizationId==)`,
@@ -506,6 +786,15 @@ async function loadOrganizationContext(db, organizationId, accessibleProjectIds 
   let projects = projectsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   if (projectsSnap.size >= MAX_CONTEXT_PROJECTS) {
     console.warn(`agent-chat: project context capped at ${MAX_CONTEXT_PROJECTS} (org ${organizationId})`);
+  }
+
+  const usersSnap = await db.collection("users")
+    .where("organizationId", "==", organizationId)
+    .limit(MAX_CONTEXT_USERS)
+    .get();
+  const members = usersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  if (usersSnap.size >= MAX_CONTEXT_USERS) {
+    console.warn(`agent-chat: members context capped at ${MAX_CONTEXT_USERS} (org ${organizationId})`);
   }
 
   // Restrict to the projects this user may see (null = no restriction).
@@ -566,7 +855,7 @@ async function loadOrganizationContext(db, organizationId, accessibleProjectIds 
     });
   });
 
-  return { projects, tasks, files };
+  return { projects, tasks, files, members };
 }
 
 // Budget split for CONTEXT_CHAR_LIMIT: 70% reserved for structured
@@ -586,7 +875,7 @@ const STRUCTURED_BUDGET_RATIO = 0.7;
 
 function compactContext(context) {
   const structuredBudget = Math.floor(CONTEXT_CHAR_LIMIT * STRUCTURED_BUDGET_RATIO);
-  let { structured, omittedTaskCount, omittedProjectCount } = buildBoundedStructured(context, structuredBudget);
+  let { structured, omittedTaskCount, omittedProjectCount, omittedMemberCount } = buildBoundedStructured(context, structuredBudget);
 
   // Defense in depth / root-cause guard: buildBoundedStructured's incremental
   // budgeting is only as good as the assumptions baked into it (e.g. that a
@@ -637,6 +926,9 @@ function compactContext(context) {
   if (omittedTaskCount > 0) {
     notices.push(`...[в контекст не поместилось ${omittedTaskCount} задач(и) — данные по ним не учтены]`);
   }
+  if (omittedMemberCount > 0) {
+    notices.push(`...[в контекст не поместилось ${omittedMemberCount} участник(ов) — данные по ним не учтены]`);
+  }
   if (structuredOverBudget) {
     notices.push("...[данные проектов/задач обрезаны по объёму — часть структурированных данных могла не попасть в контекст]");
   }
@@ -663,6 +955,7 @@ function compactContext(context) {
 // since buildBoundedStructured computes the task budget as
 // (structuredBudget - actual project JSON length), not a fixed ratio.
 const PROJECTS_BUDGET_RATIO = 0.15;
+const MEMBERS_BUDGET_RATIO = 0.12;
 
 // Builds the structured projects+tasks JSON incrementally. Both projects and
 // tasks are sorted most-recently-created first (createdAt desc; entries
@@ -698,28 +991,50 @@ function buildBoundedStructured(context, budget) {
   // therefore can never leak into a user-facing answer. Tasks reference their
   // project by name, not id.
   const projectNameById = new Map();
-  for (const p of context.projects) projectNameById.set(p.id, p.name || "без названия");
+  const projects = Array.isArray(context.projects) ? context.projects : [];
+  const tasksSource = Array.isArray(context.tasks) ? context.tasks : [];
+  const membersSource = Array.isArray(context.members) ? context.members : [];
+  for (const p of projects) projectNameById.set(p.id, p.name || "без названия");
 
   const projectsBudget = Math.floor(budget * PROJECTS_BUDGET_RATIO);
-  const sortedProjects = [...context.projects].sort((a, b) => projectRecency(b) - projectRecency(a));
+  const membersBudget = Math.floor(budget * MEMBERS_BUDGET_RATIO);
+  const sortedProjects = [...projects].sort((a, b) => projectRecency(b) - projectRecency(a));
+  const sortedMembers = [...membersSource].sort((a, b) => displayName(a).localeCompare(displayName(b), "ru"));
 
   const { included: includedProjects, omittedCount: omittedProjectCount, jsonLength: projectsJsonLength } =
     buildBoundedList(sortedProjects, projectsBudget, (p) => ({ name: p.name || "без названия" }));
+  const { included: includedMembers, omittedCount: omittedMemberCount, jsonLength: membersJsonLength } =
+    buildBoundedList(sortedMembers, membersBudget, (u) => ({
+      name: displayName(u) || "без имени",
+      role: getRoleNameRu(u.orgRole),
+      telegram: Boolean(u.telegramChatId),
+      // Активность — агент отвечает «когда последний раз заходил/был в сети»
+      // по этим полям (раньше их не было в контексте и агент говорил «нет
+      // данных», хотя в системе они есть). Пустые поля опускаем — экономия
+      // бюджета и явный сигнал «ещё не заходил».
+      ...(formatMskDateTime(u.lastLoginAt || u.lastLogin)
+        ? { последний_вход: formatMskDateTime(u.lastLoginAt || u.lastLogin) } : {}),
+      ...(formatMskDateTime(u.lastSeenAt || u.lastSeenClientAt)
+        ? { был_в_сети: formatMskDateTime(u.lastSeenAt || u.lastSeenClientAt) } : {}),
+      ...(Number.isFinite(u.level) ? { уровень: u.level } : {}),
+      ...(Number.isFinite(u.totalXP) ? { xp: u.totalXP } : {}),
+      ...(Number.isFinite(u.completedTasksCount) ? { задач_завершено: u.completedTasksCount } : {}),
+    }));
 
   // Tasks get whatever's left of the structured budget after projects
   // actually used their slice (not the reserved projectsBudget) — a small
   // org with few/short project names leaves more room for tasks, the side
   // that's usually much larger and more numerous.
-  const tasksBudget = budget - projectsJsonLength;
-  const sortedTasks = [...context.tasks].sort((a, b) => taskRecency(b) - taskRecency(a));
+  const tasksBudget = budget - projectsJsonLength - membersJsonLength;
+  const sortedTasks = [...tasksSource].sort((a, b) => taskRecency(b) - taskRecency(a));
   const { included: includedTasks, omittedCount: omittedTaskCount } =
     buildBoundedList(sortedTasks, tasksBudget, (t) => ({
       title: t.title, project: projectNameById.get(t.projectId) || "без проекта", assignee: t.assignee,
       deadline: t.deadline, статус: humanTaskStatus(t),
     }));
 
-  const structured = JSON.stringify({ projects: includedProjects, tasks: includedTasks });
-  return { structured, omittedTaskCount, omittedProjectCount };
+  const structured = JSON.stringify({ projects: includedProjects, members: includedMembers, tasks: includedTasks });
+  return { structured, omittedTaskCount, omittedProjectCount, omittedMemberCount };
 }
 
 // Shared incremental-budget builder: maps `items` through `toCompact` one at

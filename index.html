@@ -14,11 +14,11 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
 
-    <title>ProjectMan</title>
+    <title>HoldingMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=59.0" as="style">
-    <link rel="stylesheet" href="style.css?v=59.0">
+    <link rel="preload" href="style.css?v=60.0" as="style">
+    <link rel="stylesheet" href="style.css?v=60.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=70.0" defer></script>
+    <script src="script.js?v=71.0" defer></script>
 </head>
 
 <body>
@@ -605,7 +605,7 @@
                 </div>
             </div>
 
-            <div class="loading-brand">ProjectMan</div>
+            <div class="loading-brand">HoldingMan</div>
             <div class="loading-tagline">Управление задачами нового поколения</div>
 
             <div class="loading-spinner-modern">
@@ -638,7 +638,7 @@
                 <div class="auth-logo-bg"></div>
                 <i class="fa-solid fa-layer-group"></i>
             </div>
-            <h1 class="auth-brand">ProjectMan</h1>
+            <h1 class="auth-brand">HoldingMan</h1>
             <h2 id="auth-title" class="auth-title">Вход в систему</h2>
             <p id="auth-subtitle" class="auth-subtitle">Войдите через Telegram, чтобы продолжить</p>
 
@@ -665,7 +665,7 @@
     <div id="name-setup-overlay" class="login-overlay" style="display: none;">
         <div id="name-setup-screen" class="login-card" style="max-width: 450px;">
             <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
-                <i class="fa-solid fa-layer-group"></i> ProjectMan
+                <i class="fa-solid fa-layer-group"></i> HoldingMan
             </div>
             <h2 style="text-align: center;">Как вас зовут?</h2>
             <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
@@ -697,14 +697,14 @@
 
     <div id="org-overlay" class="login-overlay" style="display: none;">
         <!-- Choose: Create or Join -->
-        <div id="org-choice-screen" class="login-card" style="max-width: 450px;">
+        <div id="org-choice-screen" class="login-card org-menu-card">
             <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
-                <i class="fa-solid fa-layer-group"></i> ProjectMan
+                <i class="fa-solid fa-layer-group"></i> HoldingMan
             </div>
-            <h2 style="text-align: center;">Добро пожаловать!</h2>
-            <p id="org-welcome-name" style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;"></p>
+            <h2 style="text-align: center;">Организации</h2>
+            <p id="org-welcome-name" style="color: var(--text-secondary); margin-bottom: 1.5rem; text-align: center;"></p>
 
-            <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="org-actions-grid">
                 <button id="org-create-btn" class="org-choice-btn">
                     <div class="org-choice-icon"><i class="fa-solid fa-building"></i></div>
                     <div class="org-choice-text">
@@ -717,11 +717,45 @@
                 <button id="org-join-btn" class="org-choice-btn">
                     <div class="org-choice-icon"><i class="fa-solid fa-link"></i></div>
                     <div class="org-choice-text">
-                        <strong>У меня есть код</strong>
+                        <strong>Присоединиться</strong>
                         <span>Присоединитесь к существующей организации</span>
                     </div>
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
+            </div>
+
+            <div class="org-memberships-panel">
+                <div class="org-memberships-head">
+                    <div>
+                        <h3>Мои организации</h3>
+                        <p>Выберите рабочее пространство для входа</p>
+                    </div>
+                    <button id="org-refresh-btn" class="secondary-btn org-refresh-btn" type="button" title="Обновить список">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                </div>
+                <div id="org-list-loading" class="org-list-state">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Загрузка организаций...</span>
+                </div>
+                <div id="org-list-empty" class="org-list-state" style="display: none;">
+                    <i class="fa-regular fa-folder-open"></i>
+                    <span>Вы пока не состоите ни в одной организации</span>
+                </div>
+                <div class="org-table-wrap" id="org-table-wrap" style="display: none;">
+                    <table class="org-table">
+                        <thead>
+                            <tr>
+                                <th>Название</th>
+                                <th>Проекты</th>
+                                <th>Участники</th>
+                                <th>Роль</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="org-memberships-body"></tbody>
+                    </table>
+                </div>
             </div>
 
             <button id="org-logout-btn" class="secondary-btn"
@@ -825,6 +859,9 @@
                         </button>
                     </div>
                     <div class="org-dropdown-divider"></div>
+                    <button id="org-switch-menu-btn" class="org-dropdown-item">
+                        <i class="fa-solid fa-table-list"></i> В меню организаций
+                    </button>
                     <button id="org-leave-btn" class="org-dropdown-item org-leave">
                         <i class="fa-solid fa-right-from-bracket"></i> Покинуть организацию
                     </button>
@@ -836,7 +873,7 @@
             </div>
 
             <div class="brand" id="brand-logo">
-                <i class="fa-solid fa-layer-group"></i> ProjectMan
+                <i class="fa-solid fa-layer-group"></i> HoldingMan
             </div>
 
             <div class="projects-header">
@@ -1393,7 +1430,7 @@
             <div class="help-content">
                 <div class="help-section">
                     <h3><i class="fa-solid fa-rocket"></i> О приложении</h3>
-                    <p>ProjectMan — система управления задачами с двойным контролем выполнения. Приложение позволяет
+                    <p>HoldingMan — система управления задачами с двойным контролем выполнения. Приложение позволяет
                         создавать организации, проекты, назначать задачи сотрудникам и отслеживать их выполнение в
                         реальном времени.</p>
                 </div>
@@ -1595,7 +1632,14 @@
             <div id="agent-chat-messages" class="agent-chat-messages" aria-live="polite">
                 <!-- Chat turns are rendered here via safe DOM construction (textContent only) -->
             </div>
+            <div id="agent-chat-file-chip" class="agent-chat-file-chip" hidden></div>
             <form id="agent-chat-form" class="agent-chat-form">
+                <button type="button" id="agent-chat-attach-btn" class="agent-chat-attach-btn"
+                    title="Прикрепить файл с задачами" aria-label="Прикрепить файл с задачами" hidden>
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+                <input id="agent-chat-file-input" type="file" hidden
+                    accept=".md,.xlsx,.xlsm,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                 <textarea id="agent-chat-input" class="agent-chat-input" rows="1"
                     placeholder="Спросите про задачи, сроки, проекты организации..." maxlength="4000"
                     autocomplete="off"></textarea>

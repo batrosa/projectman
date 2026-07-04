@@ -141,7 +141,7 @@ describe("POST /api/telegram-auth", () => {
     }));
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
       chat_id: "222",
-      text: "✅ Вход в ProjectMan выполнен. Telegram-уведомления подключены.",
+      text: "✅ Вход в HoldingMan выполнен. Telegram-уведомления подключены.",
     });
 
     const created = state.db.users.get("tg_222");

@@ -158,6 +158,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Реестр членств в организациях. Пишется только сервером (api/org,
+    // api/join-org), читается участниками активной организации для списка
+    // сотрудников, ролей и доступа к проектам в multi-org сценарии.
+    match /organizationMemberships/{membershipId} {
+      allow read: if request.auth != null
+        && ('organizationId' in resource.data)
+        && isOrgMember(resource.data.organizationId);
+      allow create, update, delete: if isAdmin();
+    }
+
     // Функция: Пользователь — владелец организации (по своему orgRole) или админ организации
     function isOrgOwnerOrAdmin(orgId) {
       return hasOrgRole(orgId, ['owner', 'admin']);
@@ -328,10 +338,18 @@ service cloud.firestore {
     // Клиент: читает и помечает прочитанным ТОЛЬКО свои записи (readAt) —
     // подделать, переписать текст или удалить историю нельзя.
     match /agentNotifications/{noteId} {
-      allow get, list: if request.auth != null && resource.data.uid == request.auth.uid;
+      // Строгая изоляция организаций: свои записи И только ТЕКУЩЕЙ организации
+      // (uid переживает смену орг — без org-проверки уведомления прежней
+      // организации «переезжали» за пользователем в новую). Клиентский
+      // листенер обязан фильтровать where uid == И where organizationId ==.
+      allow get, list: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && resource.data.organizationId == myOrgId();
       allow update: if request.auth != null
         && resource.data.uid == request.auth.uid
+        && resource.data.organizationId == myOrgId()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      // Удаление — серверное (api/agent-chat delete_notification, Admin SDK).
       allow create, delete: if false;
     }
   }
