@@ -1,5 +1,33 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit } from "./agent-chat.js";
+import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit, formatRecentDialogue } from "./agent-chat.js";
+
+describe("formatRecentDialogue", () => {
+  it("keeps the last turns with Russian roles — pronoun references («им двум») resolve from here", () => {
+    const history = [
+      { role: "user", content: "когда эльдар заходил" },
+      { role: "assistant", content: "У Эльдара Исаева последний вход — 03.07.2026 в 15:54. У Амирхана Абигасанова — в 12:05." },
+    ];
+    const out = formatRecentDialogue(history);
+    expect(out).toContain("Пользователь: когда эльдар заходил");
+    expect(out).toContain("Агент: У Эльдара Исаева");
+    expect(out).toContain("Амирхана Абигасанова");
+  });
+
+  it("caps turns and per-turn length, skips empties, safe on garbage", () => {
+    const history = [
+      ...Array.from({ length: 10 }, (_, i) => ({ role: "user", content: `msg ${i}` })),
+      { role: "assistant", content: "x".repeat(1000) },
+      { role: "user", content: "   " },
+      null,
+    ];
+    const out = formatRecentDialogue(history);
+    expect(out).not.toContain("msg 0");
+    expect(out.split("\n").length).toBeLessThanOrEqual(6);
+    expect(out.length).toBeLessThan(6 * 320);
+    expect(formatRecentDialogue(null)).toBe("");
+    expect(formatRecentDialogue([])).toBe("");
+  });
+});
 import { fetchJsonWithTimeout } from "../lib/openrouter-config.js";
 
 const CONTEXT_CHAR_LIMIT = 45000;

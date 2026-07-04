@@ -93,6 +93,7 @@ const TEXT_TASK_SYSTEM_PROMPT = [
   "Если срок указан относительным словом, переведи его в дату по указанной текущей дате: сегодня, завтра, послезавтра, до конца недели.",
   "Если срок не указан, deadline=null.",
   "Ответственного сопоставляй только с участниками HoldingMan из списка. Если форма имени в запросе склонена, верни точное имя из списка. Если участник не найден или есть сомнение, верни имя как написал пользователь.",
+  "Если ответственные названы местоимением или косвенно («им», «ему», «этим двум», «обоим», «ей») — определи КОНКРЕТНЫХ людей по разделу «Последние сообщения диалога»: бери тех, кого пользователь обсуждал последними. НИКОГДА не подставляй человека, которого пользователь не называл и который не упоминался в диалоге; автора запроса по умолчанию не назначай. Если однозначно определить людей нельзя — верни \"tasks\": [] (пустой список).",
   "Если пользователь описывает несколько задач для одного ответственного или срока, примени общий ответственный/срок к каждой задаче.",
   "Если текст содержит «Исходное поручение» и «Уточнения пользователя», бери название задачи и срок из исходного поручения, а проект/ответственного уточняй последними сообщениями пользователя.",
   "Если пользователь исправляет исполнителя фразой вроде «давай Тэке Исаеву», замени исполнителя, но не меняй название исходной задачи.",
@@ -247,6 +248,10 @@ export default async function handler(request, response) {
       clientToday: body.clientToday,
       users: users.users,
       project: projectResult.project,
+      // Недавний диалог: «поставь ИМ двум задачи…» — ответственные названы
+      // местоимением, разрешить его можно только по предыдущим репликам
+      // (прод-инцидент: без диалога модель подставила не того человека).
+      history,
     });
 
     if (proposal.answer) return response.status(200).json({ ok: true, answer: proposal.answer, model: proposal.model });
@@ -411,6 +416,23 @@ function resolveProjectFromText(projects, textValue) {
   return { error: "not_found" };
 }
 
+// Последние реплики диалога для текстового создания задач: «поставь им двум…»
+// разрешимо только по контексту разговора. Компактно: до 6 последних реплик,
+// каждая обрезается, роли по-русски. Pure — экспортируется для тестов.
+export function formatRecentDialogue(history, { maxTurns = 6, maxChars = 300 } = {}) {
+  const turns = (Array.isArray(history) ? history : [])
+    .filter((turn) => turn && typeof turn.content === "string" && turn.content.trim())
+    .slice(-maxTurns);
+  if (turns.length === 0) return "";
+  return turns
+    .map((turn) => {
+      const who = turn.role === "assistant" ? "Агент" : "Пользователь";
+      const text = turn.content.trim().replace(/\s+/g, " ").slice(0, maxChars);
+      return `${who}: ${text}`;
+    })
+    .join("\n");
+}
+
 async function loadOrgUsers(db, organizationId) {
   try {
     const snap = await db.collection("users").where("organizationId", "==", organizationId).get();
@@ -421,16 +443,18 @@ async function loadOrgUsers(db, organizationId) {
   }
 }
 
-async function buildTextTaskProposal({ openRouterKey, message, clientToday, users, project }) {
+async function buildTextTaskProposal({ openRouterKey, message, clientToday, users, project, history }) {
   const today = isIsoDate(clientToday) ? clientToday : todayIsoDate();
   const tomorrow = addDaysIso(today, 1);
   const dayAfterTomorrow = addDaysIso(today, 2);
   const membersText = users.map((u) => displayName(u)).filter(Boolean).join(", ");
+  const dialogue = formatRecentDialogue(history);
   const userPrompt = [
     `Текущая дата: ${today}.`,
     `Завтра: ${tomorrow}. Послезавтра: ${dayAfterTomorrow}.`,
     `Проект для создаваемых задач: ${project.name || "без названия"}.`,
     `Участники HoldingMan для сопоставления ответственных: ${membersText || "нет участников"}.`,
+    ...(dialogue ? [`Последние сообщения диалога (по ним разрешай «им», «ему», «этим двум» и т.п.):\n${dialogue}`] : []),
     "Текстовое поручение пользователя:",
     message,
   ].join("\n\n");
@@ -486,7 +510,7 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, project }) {
 
   const proposal = extracted.proposal;
   if (Array.isArray(proposal?.tasks) && proposal.tasks.length === 0) {
-    return { answer: "Создавать нечего: в сообщении не нашёл задачу с ответственным." };
+    return { answer: "Не понял однозначно, кому поставить задачу. Назовите имена участников (например: «поставь Эльдару Исаеву и Амирхану Абигасанову задачу …») — и я подготовлю карточку." };
   }
 
   const validated = validateProposal({
