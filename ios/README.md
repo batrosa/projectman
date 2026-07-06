@@ -61,20 +61,44 @@ Firebase-конфиг не хранится в git. Для локальной с
 команду разработчика (bundle id `com.holdingman.ios` можно поменять — тогда
 зарегистрируйте новый bundle id в Firebase Console и замените plist).
 
-## Чего НЕТ в v1 (осознанно)
+## Push-уведомления (v2 — код готов, нужен APNs-ключ)
 
-- **Push-уведомлений** — по roadmap это Этап 3: нужен Apple Developer Account,
-  APNs key, capability Push Notifications, FCM-токены в
-  `users/{uid}/devices/{deviceId}` (+ правила Firestore для этой коллекции)
-  и серверная отправка из мест создания `agentNotifications`
-  (`api/agent-monitor`, `api/agent-chat`). Внутри приложения уведомления уже
-  работают (лента + бейдж).
-- **Завершения задачи с отчётом и файлами** — требует загрузки файлов
-  (Cloudinary) и строгих правил (`completionProofs`, `completedAt ==
-  request.time`); в v1 исполнитель видит подсказку сделать это в web-версии.
-- **Назначения исполнителей при создании задачи** — в web-версии или через
-  ИИ-агента («поставь задачу … Ивану в проект …»).
-- **Админ-панели, рейтинга, календаря, файлов проекта** — кандидаты на v2.
+Реализовано (roadmap Этап 3):
+
+- приложение запрашивает разрешение и сохраняет FCM-токен в
+  `users/{uid}/devices/{deviceId}` (правила: строго владелец аккаунта);
+  при выходе токен отвязывается;
+- сервер (`lib/push-send.js`, Admin SDK) шлёт push на все устройства
+  получателя и удаляет протухшие токены; интегрировано в:
+  `api/agent-monitor` (просрочки, «остался 1 день», «не взята в работу»),
+  `api/agent-chat` (задачи, созданные агентом),
+  `api/notify-telegram` (новая задача, возврат на доработку — из web и iOS).
+
+Чтобы уведомления реально приходили на iPhone, один раз настройте APNs
+(нужен Apple Developer Account):
+
+1. [developer.apple.com](https://developer.apple.com/account/resources/authkeys/list)
+   → Keys → «+» → включить **Apple Push Notifications service (APNs)** →
+   Continue → Register → **скачать .p8-файл** (даётся один раз), запомнить
+   **Key ID** и **Team ID** (правый верхний угол портала).
+2. [Firebase Console](https://console.firebase.google.com/project/projectman-96d3c/settings/cloudmessaging)
+   → Project settings → Cloud Messaging → **Apple app configuration**
+   (com.holdingman.ios) → APNs Authentication Key → **Upload**: .p8-файл +
+   Key ID + Team ID.
+3. В Xcode: Signing & Capabilities → выбрать команду → capability
+   **Push Notifications** добавится из entitlements автоматически.
+4. Проверка: войти в приложение на реальном iPhone (симулятор push от FCM не
+   получает), разрешить уведомления, затем создать себе задачу через
+   ИИ-агента — придёт системный push.
+
+До загрузки ключа всё работает без push: сервер логирует ошибку отправки и
+не мешает остальному (fail-open).
+
+## Чего НЕТ в v2 (осознанно)
+
+- **Deep link из push в конкретную задачу** — данные (`taskId`, `projectId`)
+  в payload уже есть, обработчик тапа — кандидат на v3.
+- **Админ-панели, рейтинга, календаря, файлов проекта** — веб-версия.
 
 ## Структура
 

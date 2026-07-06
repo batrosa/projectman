@@ -9,6 +9,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { buildOpenRouterModels, openRouterModelBody, fetchJsonWithTimeout } from "../lib/openrouter-config.js";
 import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload } from "../lib/task-proposal.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
+import { sendPushToUser } from "../lib/push-send.js";
 // Same manage bar as the rules/award flow: owner/admin manage any project in
 // their org; a moderator only projects in their allowedProjects.
 import { callerCanManageProject } from "./award-xp.js";
@@ -972,6 +973,7 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
 
   const batch = db.batch();
   const telegramQueue = [];
+  const pushQueue = []; // мобильные push (roadmap Этап 3) — каждому исполнителю
   for (const t of payload.tasks) {
     const user = t.assigneeUid ? usersByUid.get(t.assigneeUid) : null;
     // Без исполнителя — «Не назначен», ровно как при ручном создании без
@@ -1020,6 +1022,7 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       readAt: null,
     });
     if (user.telegramChatId) telegramQueue.push({ chatId: user.telegramChatId, text });
+    pushQueue.push({ uid: t.assigneeUid, text, taskId: taskRef.id });
   }
 
   try {
@@ -1039,6 +1042,13 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       console.error("agent-chat create_tasks: telegram send failed", telegramQueue[index].chatId, result.reason || value);
     }
   });
+
+  // Мобильные push исполнителям (fail-open внутри sendPushToUser).
+  await Promise.allSettled(pushQueue.map((p) => sendPushToUser(p.uid, {
+    title: "Новая задача",
+    body: p.text,
+    data: { taskId: p.taskId, projectId: payload.projectId },
+  })));
 
   return response.status(200).json({ ok: true, created: payload.tasks.length });
 }

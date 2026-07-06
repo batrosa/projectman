@@ -143,3 +143,31 @@ describe("users doc — reads are scoped to the same organization", () => {
     await assertFails(stranger.collection("users").doc("victim").get());
   });
 });
+
+describe("users/{uid}/devices — push-токены строго владельца (roadmap Этап 3)", () => {
+  it("owner of the account can write and read his own device token", async () => {
+    const me = testEnv.authenticatedContext("dev-owner").firestore();
+    await assertSucceeds(me.collection("users").doc("dev-owner").collection("devices").doc("iphone-1").set({
+      fcmToken: "token-abc",
+      platform: "ios",
+    }));
+    await assertSucceeds(me.collection("users").doc("dev-owner").collection("devices").doc("iphone-1").get());
+    await assertSucceeds(me.collection("users").doc("dev-owner").collection("devices").doc("iphone-1").delete());
+  });
+
+  it("another user (even same org) can neither read nor write someone else's device tokens", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("dev-victim").set({ organizationId: "orgA", orgRole: "employee" });
+      await ctx.firestore().collection("users").doc("dev-mate").set({ organizationId: "orgA", orgRole: "owner" });
+      await ctx.firestore().collection("users").doc("dev-victim").collection("devices").doc("iphone-1").set({ fcmToken: "secret-token", platform: "ios" });
+    });
+
+    const mate = testEnv.authenticatedContext("dev-mate").firestore();
+    await assertFails(mate.collection("users").doc("dev-victim").collection("devices").doc("iphone-1").get());
+    await assertFails(mate.collection("users").doc("dev-victim").collection("devices").doc("iphone-1").set({ fcmToken: "hijack" }));
+    await assertFails(mate.collection("users").doc("dev-victim").collection("devices").doc("iphone-1").delete());
+
+    const stranger = testEnv.authenticatedContext("dev-stranger").firestore();
+    await assertFails(stranger.collection("users").doc("dev-victim").collection("devices").doc("iphone-1").get());
+  });
+});

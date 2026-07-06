@@ -5,6 +5,7 @@ struct MainTabView: View {
     @StateObject private var projectsStore = ProjectsStore()
     @StateObject private var myTasksStore = MyTasksStore()
     @StateObject private var notificationsStore = NotificationsStore()
+    @StateObject private var orgUsersStore = OrgUsersStore()
 
     var body: some View {
         TabView {
@@ -27,6 +28,7 @@ struct MainTabView: View {
         .environmentObject(projectsStore)
         .environmentObject(myTasksStore)
         .environmentObject(notificationsStore)
+        .environmentObject(orgUsersStore)
         .onAppear { resubscribe() }
         .onChange(of: appState.user?.organizationId) { resubscribe() }
     }
@@ -36,5 +38,6 @@ struct MainTabView: View {
         projectsStore.subscribe(organizationId: orgId, user: user)
         myTasksStore.subscribe(uid: user.uid, organizationId: orgId)
         notificationsStore.subscribe(uid: user.uid, organizationId: orgId)
+        orgUsersStore.subscribe(organizationId: orgId)
     }
 }

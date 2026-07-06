@@ -175,4 +175,20 @@ struct ApiClient {
     static func deleteAgentNotification(id: String) async throws {
         _ = try await post("api/agent-chat", body: ["action": "delete_notification", "id": id])
     }
+
+    // XP начисляет сервер при принятии задачи в «Готово» (транзакционно,
+    // идемпотентно) — тот же вызов, что в web updateTaskSubStatus('done').
+    static func awardXp(taskId: String) async throws {
+        _ = try await post("api/award-xp", body: ["taskId": taskId])
+    }
+
+    // Telegram-уведомление участнику — тот же endpoint и payload, что web
+    // sendTelegramNotification(). Fire-and-forget у вызывающих.
+    static func notifyTelegram(chatId: String, text: String) async throws {
+        _ = try await post("api/notify-telegram", body: [
+            "chatId": chatId,
+            "text": text,
+            "parseMode": "HTML",
+        ])
+    }
 }

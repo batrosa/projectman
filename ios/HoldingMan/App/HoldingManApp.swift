@@ -3,6 +3,7 @@ import FirebaseCore
 
 @main
 struct HoldingManApp: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var appState = AppState()
 
     init() {

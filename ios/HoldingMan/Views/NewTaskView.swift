@@ -1,20 +1,26 @@
 import SwiftUI
 
-// Создание задачи менеджером. Форма полей повторяет createTask() web-клиента;
-// задача создаётся «Не назначен» — назначение исполнителей и файлы остаются в
-// web-версии (или через ИИ-агента, который умеет назначать по именам).
+// Создание задачи менеджером. Форма полей повторяет createTask() web-клиента,
+// включая нескольких исполнителей; назначенным уходит Telegram-уведомление
+// (тот же api/notify-telegram, что в web).
 struct NewTaskView: View {
     let project: Project
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var tasksStore: TasksStore
+    @EnvironmentObject private var orgUsersStore: OrgUsersStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var title = ""
     @State private var descriptionText = ""
     @State private var hasDeadline = false
     @State private var deadline = Date()
+    @State private var selectedAssignees: [OrgUser] = []
     @State private var isBusy = false
     @State private var errorMessage: String?
+
+    private var assignableUsers: [OrgUser] {
+        orgUsersStore.assignable(projectId: project.id)
+    }
 
     var body: some View {
         NavigationStack {
@@ -29,6 +35,41 @@ struct NewTaskView: View {
                         .listRowBackground(Theme.surface)
                 }
 
+                Section("Ответственные") {
+                    if assignableUsers.isEmpty {
+                        Text("Нет участников с доступом к проекту")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.textSecondary)
+                            .listRowBackground(Theme.surface)
+                    }
+                    ForEach(assignableUsers) { user in
+                        let isSelected = selectedAssignees.contains { $0.id == user.id }
+                        Button {
+                            if isSelected {
+                                selectedAssignees.removeAll { $0.id == user.id }
+                            } else {
+                                selectedAssignees.append(user)
+                            }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(user.displayName)
+                                        .foregroundStyle(Theme.textPrimary)
+                                    if user.telegramChatId != nil {
+                                        Label("Telegram подключён", systemImage: "paperplane")
+                                            .font(.caption2)
+                                            .foregroundStyle(Theme.textSecondary)
+                                    }
+                                }
+                                Spacer()
+                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(isSelected ? Theme.primary : Theme.textSecondary)
+                            }
+                        }
+                        .listRowBackground(Theme.surface)
+                    }
+                }
+
                 Section("Срок") {
                     Toggle("Указать срок", isOn: $hasDeadline.animation())
                         .listRowBackground(Theme.surface)
@@ -36,13 +77,6 @@ struct NewTaskView: View {
                         DatePicker("Дедлайн", selection: $deadline, displayedComponents: .date)
                             .listRowBackground(Theme.surface)
                     }
-                }
-
-                Section {
-                    Text("Исполнителей и файлы можно назначить в веб-версии или попросить ИИ-агента: «поставь задачу … Ивану в проект \(project.name)».")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.textSecondary)
-                        .listRowBackground(Color.clear)
                 }
 
                 if let errorMessage {
@@ -76,17 +110,37 @@ struct NewTaskView: View {
         guard let user = appState.user, let orgId = user.organizationId else { return }
         isBusy = true
         errorMessage = nil
+        let deadlineString = hasDeadline ? DateFormatter.isoDay.string(from: deadline) : nil
+        let taskTitle = title.trimmingCharacters(in: .whitespaces)
+        let assignees = selectedAssignees
+
         Task {
             defer { isBusy = false }
             do {
                 try await tasksStore.create(
                     projectId: project.id,
                     organizationId: orgId,
-                    title: title.trimmingCharacters(in: .whitespaces),
+                    title: taskTitle,
                     descriptionText: descriptionText.trimmingCharacters(in: .whitespaces),
-                    deadline: hasDeadline ? DateFormatter.isoDay.string(from: deadline) : nil,
-                    creator: user
+                    deadline: deadlineString,
+                    creator: user,
+                    assignees: assignees
                 )
+                // Telegram каждому назначенному — как web
+                // sendNewTaskNotificationToAssignee(); fire-and-forget.
+                for assignee in assignees {
+                    guard let chatId = assignee.telegramChatId else { continue }
+                    let text = """
+                    📋 <b>Новая задача!</b>
+
+                    <b>Задача:</b> \(taskTitle)
+                    <b>Проект:</b> \(project.name)
+                    <b>Срок:</b> \(deadlineString ?? "Не указан")
+
+                    Откройте HoldingMan для подробностей.
+                    """
+                    Task { try? await ApiClient.notifyTelegram(chatId: chatId, text: text) }
+                }
                 dismiss()
             } catch {
                 errorMessage = "Не удалось создать задачу: \(error.localizedDescription)"

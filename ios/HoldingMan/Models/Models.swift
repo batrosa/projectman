@@ -123,6 +123,8 @@ struct TaskItem: Identifiable, Equatable {
     var createdBy: String
     var completionComment: String?
     var revisionReason: String?
+    var attachments: [FileRef]
+    var completionProofs: [FileRef]
 
     // Ровно boardViewForTask из web-клиента
     var boardStatus: BoardStatus {
@@ -158,7 +160,44 @@ struct TaskItem: Identifiable, Equatable {
             createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
             createdBy: data["createdBy"] as? String ?? "",
             completionComment: data["completionComment"] as? String,
-            revisionReason: data["revisionReason"] as? String
+            revisionReason: data["revisionReason"] as? String,
+            attachments: (data["attachments"] as? [[String: Any]] ?? []).compactMap(FileRef.from),
+            completionProofs: (data["completionProofs"] as? [[String: Any]] ?? []).compactMap(FileRef.from)
+        )
+    }
+}
+
+// Участник организации — для выбора исполнителей (та же семантика доступа,
+// что userHasProjectAccessForAssignment на сервере).
+struct OrgUser: Identifiable, Equatable {
+    var id: String // uid
+    var email: String
+    var displayName: String
+    var orgRole: String
+    var allowedProjects: [String]
+    var telegramChatId: String?
+
+    func canBeAssigned(projectId: String) -> Bool {
+        if orgRole == "owner" || orgRole == "admin" { return true }
+        if allowedProjects.isEmpty { return true }
+        return allowedProjects.contains(projectId)
+    }
+
+    static func from(uid: String, data: [String: Any]) -> OrgUser {
+        let first = data["firstName"] as? String ?? ""
+        let last = data["lastName"] as? String ?? ""
+        let full = "\(first) \(last)".trimmingCharacters(in: .whitespaces)
+        let email = data["email"] as? String ?? ""
+        let display = data["displayName"] as? String ?? ""
+        let chatIdValue = data["telegramChatId"]
+        let chatId = (chatIdValue as? String) ?? (chatIdValue as? Int).map(String.init) ?? (chatIdValue as? Int64).map(String.init)
+        return OrgUser(
+            id: uid,
+            email: email,
+            displayName: display.isEmpty ? (full.isEmpty ? (email.isEmpty ? "Участник" : email) : full) : display,
+            orgRole: data["orgRole"] as? String ?? "employee",
+            allowedProjects: data["allowedProjects"] as? [String] ?? [],
+            telegramChatId: (chatId?.isEmpty == false) ? chatId : nil
         )
     }
 }

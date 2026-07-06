@@ -22,6 +22,7 @@ import { adminDb } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { classifyTask, buildEventText, mskDateString } from "../lib/agent-monitor-core.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
+import { sendPushToUser } from "../lib/push-send.js";
 
 // Paginated sweep: pages of 500 up to 20 pages (10k active tasks) — far above
 // the real org size, and unlike a single limit() read nothing past the cap is
@@ -164,13 +165,14 @@ export default async function handler(request, response) {
 
       const claim = await db.runTransaction(async (tx) => {
         const freshSnap = await tx.get(taskDoc.ref);
-        if (!freshSnap.exists) return { events: [], telegramQueue: [] };
+        if (!freshSnap.exists) return { events: [], telegramQueue: [], pushQueue: [] };
         const freshTask = freshSnap.data() || {};
         const freshEvents = classifyTask(freshTask, now);
-        if (freshEvents.length === 0) return { events: [], telegramQueue: [] };
+        if (freshEvents.length === 0) return { events: [], telegramQueue: [], pushQueue: [] };
 
         const flagUpdates = {};
         const telegramQueue = [];
+        const pushQueue = []; // мобильные push (roadmap Этап 3) — всем получателям
         for (const event of freshEvents) {
           const text = buildEventText(event.type, {
             title: freshTask.title || task.title || "Без названия",
@@ -192,6 +194,13 @@ export default async function handler(request, response) {
               readAt: null,
             });
             if (recipient.telegramChatId) telegramQueue.push({ chatId: recipient.telegramChatId, text });
+            pushQueue.push({
+              uid: recipient.uid,
+              text,
+              type: event.type,
+              taskId: taskDoc.id,
+              projectId: freshTask.projectId || task.projectId || null,
+            });
           }
 
           if (event.type === "overdue") flagUpdates.notifiedOverdueOn = mskDateString(now);
@@ -200,7 +209,7 @@ export default async function handler(request, response) {
         }
 
         tx.update(taskDoc.ref, flagUpdates);
-        return { events: freshEvents, telegramQueue };
+        return { events: freshEvents, telegramQueue, pushQueue };
       });
       if (claim.events.length === 0) continue;
       eventsCount += claim.events.length;
@@ -216,6 +225,18 @@ export default async function handler(request, response) {
           console.error("agent-monitor: telegram send failed", claim.telegramQueue[index].chatId, result.reason || value);
         }
       });
+
+      // Мобильные push тем же получателям (fail-open внутри sendPushToUser)
+      const pushTitles = {
+        overdue: "Задача просрочена",
+        deadline_tomorrow: "Остался 1 день до дедлайна",
+        not_taken_1h: "Задача не взята в работу",
+      };
+      await Promise.allSettled((claim.pushQueue || []).map((p) => sendPushToUser(p.uid, {
+        title: pushTitles[p.type] || "HoldingMan",
+        body: p.text,
+        data: { taskId: p.taskId, projectId: p.projectId },
+      })));
     } catch (error) {
       // One broken task must not kill the whole sweep.
       console.error("agent-monitor: task sweep failed", taskDoc.id, error);

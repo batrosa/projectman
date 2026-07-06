@@ -61,8 +61,11 @@ final class AppState: ObservableObject {
                     let doc = UserDoc.from(uid: uid, data: data)
                     self.user = doc
                     if let orgId = doc.organizationId, !orgId.isEmpty {
+                        let becameReady = self.phase != .ready
                         self.phase = .ready
                         self.loadOrganizationName(orgId: orgId)
+                        // Push: разрешение + регистрация токена после входа
+                        if becameReady { PushService.shared.enable() }
                     } else {
                         self.phase = .needsOrganization
                     }
@@ -80,6 +83,11 @@ final class AppState: ObservableObject {
     }
 
     func signOut() {
-        try? Auth.auth().signOut()
+        Task {
+            // Отвязать push-токен устройства ДО выхода (после signOut правила
+            // Firestore уже не пустят запись в users/{uid}/devices)
+            await PushService.shared.unregister()
+            try? Auth.auth().signOut()
+        }
     }
 }

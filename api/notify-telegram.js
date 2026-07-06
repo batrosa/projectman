@@ -3,6 +3,7 @@
 // calls this endpoint, never api.telegram.org directly.
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
+import { sendPushToUser } from "../lib/push-send.js";
 
 async function parseJsonBody(request) {
     if (request.body && typeof request.body === 'object') return request.body;
@@ -87,6 +88,18 @@ export default async function handler(request, response) {
     }
 
     const parseMode = body.parseMode ? String(body.parseMode) : undefined;
+
+    // Мобильный push тому же получателю (roadmap Этап 3). Fail-open: сбой
+    // push не влияет ни на Telegram-доставку, ни на ответ endpoint'а.
+    // Тело — тот же текст без HTML-разметки Telegram.
+    try {
+        await sendPushToUser(recipientSnap.docs[0].id, {
+            title: 'HoldingMan',
+            body: text.replace(/<[^>]+>/g, ''),
+        });
+    } catch (error) {
+        console.error('notify-telegram: push send failed', error);
+    }
 
     // Shared sender (lib/telegram-send). Its rich result lets this endpoint
     // keep the exact response semantics it always had: transport failure →

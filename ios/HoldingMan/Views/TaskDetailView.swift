@@ -10,6 +10,10 @@ struct TaskDetailView: View {
     @State private var errorMessage: String?
     @State private var isBusy = false
     @State private var confirmDelete = false
+    @State private var showCompletionSheet = false
+    @State private var showRevisionPrompt = false
+    @State private var revisionReason = ""
+    @State private var confirmAccept = false
 
     // Живая версия задачи из стора (обновляется листенером)
     private var current: TaskItem { tasksStore.tasks.first(where: { $0.id == task.id }) ?? task }
@@ -73,11 +77,27 @@ struct TaskDetailView: View {
                 }
             }
 
+            if !current.attachments.isEmpty {
+                Section("Вложения") {
+                    ForEach(current.attachments) { file in
+                        fileLink(file)
+                    }
+                }
+            }
+
             if let comment = current.completionComment, !comment.isEmpty {
                 Section("Отчёт исполнителя") {
                     Text(comment)
                         .foregroundStyle(Theme.textPrimary)
                         .listRowBackground(Theme.surface)
+                }
+            }
+
+            if !current.completionProofs.isEmpty {
+                Section("Файлы подтверждения") {
+                    ForEach(current.completionProofs) { file in
+                        fileLink(file)
+                    }
                 }
             }
 
@@ -103,10 +123,41 @@ struct TaskDetailView: View {
                 }
 
                 if isAssignee && current.boardStatus == .inProgress {
-                    Text("Завершение задачи с отчётом и файлами подтверждения — в веб-версии HoldingMan.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.textSecondary)
-                        .listRowBackground(Theme.surface)
+                    Button {
+                        showCompletionSheet = true
+                    } label: {
+                        Label("Завершить задачу", systemImage: "checkmark.seal.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.statusDone)
+                    .disabled(isBusy)
+                    .listRowBackground(Color.clear)
+                }
+
+                if canManage && current.boardStatus == .review {
+                    Button {
+                        confirmAccept = true
+                    } label: {
+                        Label("Принять в «Готово»", systemImage: "checkmark.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.statusDone)
+                    .disabled(isBusy)
+                    .listRowBackground(Color.clear)
+
+                    Button {
+                        revisionReason = ""
+                        showRevisionPrompt = true
+                    } label: {
+                        Label("Вернуть на доработку", systemImage: "arrow.uturn.backward")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.warning)
+                    .disabled(isBusy)
+                    .listRowBackground(Color.clear)
                 }
 
                 if canManage {
@@ -138,6 +189,50 @@ struct TaskDetailView: View {
         ) {
             Button("Удалить", role: .destructive) { deleteTask() }
             Button("Отмена", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Принять задачу в «Готово»? Исполнителям начислится XP.",
+            isPresented: $confirmAccept,
+            titleVisibility: .visible
+        ) {
+            Button("Принять") { acceptDone() }
+            Button("Отмена", role: .cancel) {}
+        }
+        .alert("Причина возврата", isPresented: $showRevisionPrompt) {
+            TextField("Что нужно доработать", text: $revisionReason)
+            Button("Вернуть", role: .destructive) { returnForRevision() }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Задача вернётся исполнителю в статус «В работе».")
+        }
+        .sheet(isPresented: $showCompletionSheet) {
+            CompletionSheet(task: current) { comment, proofs in
+                guard let user = appState.user else { throw ApiError.notAuthenticated }
+                try await tasksStore.completeWithProofs(
+                    task: current, comment: comment, proofs: proofs, byName: user.displayName
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fileLink(_ file: FileRef) -> some View {
+        if let url = URL(string: file.url) {
+            Link(destination: url) {
+                HStack {
+                    Image(systemName: file.type == "image" ? "photo" : "doc.fill")
+                        .foregroundStyle(Theme.primary)
+                    Text(file.name)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .listRowBackground(Theme.surface)
         }
     }
 
@@ -177,6 +272,35 @@ struct TaskDetailView: View {
                 dismiss()
             } catch {
                 errorMessage = "Не удалось удалить задачу: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func acceptDone() {
+        guard let user = appState.user else { return }
+        isBusy = true
+        errorMessage = nil
+        Task {
+            defer { isBusy = false }
+            do {
+                try await tasksStore.acceptDone(task: current, byName: user.displayName)
+            } catch {
+                errorMessage = "Не удалось принять задачу: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func returnForRevision() {
+        let reason = revisionReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reason.isEmpty, let user = appState.user else { return }
+        isBusy = true
+        errorMessage = nil
+        Task {
+            defer { isBusy = false }
+            do {
+                try await tasksStore.returnForRevision(task: current, reason: reason, byName: user.displayName)
+            } catch {
+                errorMessage = "Не удалось вернуть задачу: \(error.localizedDescription)"
             }
         }
     }

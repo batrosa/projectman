@@ -163,6 +163,14 @@ service cloud.firestore {
 
       // Удалять: Только Админ
       allow delete: if isAdmin();
+
+      // Push-токены устройств (roadmap Этап 3): iOS/Android пишут сюда свой
+      // FCM-токен, сервер (lib/push-send.js, Admin SDK) читает их для
+      // отправки. Доступ строго владельцу аккаунта — токен чужого устройства
+      // нельзя ни прочитать (перехват уведомлений), ни перезаписать.
+      match /devices/{deviceId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Реестр членств в организациях. Пишется только сервером (api/org,
