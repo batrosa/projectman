@@ -1863,7 +1863,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.5'; // Gantt: year-by-months / month-by-days, fit-to-window
+    const CURRENT_VERSION = '6.6'; // Gantt mobile polish + view-switcher flicker fix
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2641,9 +2641,22 @@ function openEditTaskModal(task) {
 }
 
 // Rendering
+// The users listener re-renders on EVERY snapshot (presence heartbeats fire
+// them constantly), which used to rebuild this list each time — the view
+// switcher under the active project replayed its enter-animation and visibly
+// flickered. Skip the rebuild when nothing the list shows has changed.
+let lastProjectListSignature = null;
 function renderProjects() {
-    elements.projectList.innerHTML = '';
     const filteredProjects = getFilteredProjects();
+    const signature = JSON.stringify([
+        state.activeProjectId,
+        state.projectView,
+        filteredProjects.map(p => [p.id, p.name, p.deadline || null]),
+    ]);
+    if (signature === lastProjectListSignature) return;
+    lastProjectListSignature = signature;
+
+    elements.projectList.innerHTML = '';
 
     filteredProjects.forEach(project => {
         const li = document.createElement('li');
@@ -4489,6 +4502,7 @@ function renderGantt() {
     };
 
     const prevTop = scrollEl.scrollTop;
+    const prevLeft = scrollEl.scrollLeft;
 
     const table = document.createElement('div');
     table.className = 'gantt-table' + (monthMode ? '' : ' year-mode');
@@ -4649,13 +4663,18 @@ function renderGantt() {
         }
     }
 
-    // Keep vertical scroll across live re-renders of the same view
+    // Keep scroll across live re-renders of the same view; on first open,
+    // bring "today" into view when the timeline overflows (narrow screens)
     const key = `${state.activeProjectId}:${year}:${monthMode ? state.ganttMonth : 'y'}`;
     if (ganttLastScrollKey === key) {
         scrollEl.scrollTop = prevTop;
+        scrollEl.scrollLeft = prevLeft;
     } else {
         ganttLastScrollKey = key;
         scrollEl.scrollTop = 0;
+        scrollEl.scrollLeft = (todayInRange && totalW > availW)
+            ? Math.max(0, posX(todayMidnight, 0.5) - availW / 3)
+            : 0;
     }
 }
 

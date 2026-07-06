@@ -7459,7 +7459,10 @@ body.light-mode .gantt-container {
 
 .gantt-scroll {
     flex: 1;
+    min-height: 0;
     overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     border: 1px solid var(--border);
     border-radius: 14px;
     background: var(--bg-color);
@@ -7724,11 +7727,70 @@ body.light-mode .gantt-container {
 
 @media (max-width: 768px) {
     .gantt-container {
-        --gantt-label-w: 140px;
-        padding: 0 1rem 1rem;
+        --gantt-label-w: 120px;
+        padding: 0 0.75rem 0.9rem;
+        gap: 0.6rem;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    .gantt-toolbar {
+        padding: 0.45rem 0.5rem;
+        gap: 0.5rem;
+    }
+
+    .gantt-year-btn {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        font-size: 0.8rem;
+    }
+
+    .gantt-year-select {
+        padding: 0.35rem 0.55rem;
+        font-size: 0.85rem;
+        border-radius: 8px;
+        max-width: 46vw;
     }
 
     .gantt-legend {
-        gap: 0.6rem;
+        gap: 0.5rem 0.7rem;
+    }
+
+    .gantt-legend-item {
+        font-size: 0.72rem;
+    }
+
+    .gantt-legend-note {
+        font-size: 0.68rem;
+        width: 100%;
+    }
+
+    .gantt-head-left,
+    .gantt-row-label {
+        padding: 0.4rem 0.6rem;
+    }
+
+    .gantt-row-title {
+        font-size: 0.76rem;
+    }
+
+    .gantt-row-meta {
+        font-size: 0.62rem;
+    }
+
+    .gantt-month {
+        font-size: 0.7rem;
+    }
+
+    .gantt-bar {
+        font-size: 0.6rem;
+        padding: 0 5px;
+    }
+
+    /* Sidebar Канбан/Гант switcher: comfortable touch targets */
+    .view-switch-btn {
+        padding: 0.55rem 0.6rem;
+        font-size: 0.8rem;
     }
 }
