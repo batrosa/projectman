@@ -1638,6 +1638,7 @@ let state = {
     boardView: 'assigned', // 'assigned' | 'in-progress' | 'done' (single-column board)
     projectView: 'kanban', // 'kanban' | 'gantt' — main-area view for the active project
     ganttYear: null, // Selected Gantt year; null = current year on first render
+    ganttMonth: null, // null = whole year (month columns), 0-11 = that month (day columns)
     role: 'guest', // Legacy role, now use orgRole
     orgRole: 'employee', // owner / admin / moderator / employee
     initialLoadDone: false, // To prevent selecting first project on every update
@@ -1652,9 +1653,8 @@ const elements = {
     boardContainer: document.getElementById('board-container'),
     ganttContainer: document.getElementById('gantt-container'),
     ganttScroll: document.getElementById('gantt-scroll'),
-    ganttEmpty: document.getElementById('gantt-empty'),
-    ganttEmptyText: document.getElementById('gantt-empty-text'),
     ganttYearSelect: document.getElementById('gantt-year-select'),
+    ganttMonthSelect: document.getElementById('gantt-month-select'),
     ganttPrevYear: document.getElementById('gantt-prev-year'),
     ganttNextYear: document.getElementById('gantt-next-year'),
     ganttNoDeadlineNote: document.getElementById('gantt-no-deadline-note'),
@@ -1863,7 +1863,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.4'; // Gantt roadmap view
+    const CURRENT_VERSION = '6.5'; // Gantt: year-by-months / month-by-days, fit-to-window
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -4318,7 +4318,6 @@ function setProjectView(view) {
 }
 
 // ===== Gantt chart =====
-const GANTT_DAY_PX = 24;      // px per day column
 const GANTT_DAY_MS = 24 * 60 * 60 * 1000;
 let ganttUiWired = false;
 let ganttLastScrollKey = null; // "projectId:year" of the last render — keeps
@@ -4334,11 +4333,6 @@ function parseDateOnlyMs(value) {
         if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime();
     }
     return getFirestoreDateMs(value);
-}
-
-function ganttDayIndex(ms, yearStartMs) {
-    // Math.round absorbs DST shifts (a local "day" can be 23/25 hours)
-    return Math.round((ms - yearStartMs) / GANTT_DAY_MS);
 }
 
 function wireGanttControls() {
@@ -4369,6 +4363,21 @@ function wireGanttControls() {
             renderGantt();
         });
     }
+    if (elements.ganttMonthSelect) {
+        elements.ganttMonthSelect.addEventListener('change', () => {
+            playClickSound();
+            const v = elements.ganttMonthSelect.value;
+            state.ganttMonth = v === '' ? null : parseInt(v, 10);
+            renderGantt();
+        });
+    }
+    // Column widths derive from the window width — re-render on resize
+    let ganttResizeTimer = null;
+    window.addEventListener('resize', () => {
+        if (!elements.ganttContainer?.classList.contains('active')) return;
+        clearTimeout(ganttResizeTimer);
+        ganttResizeTimer = setTimeout(renderGantt, 150);
+    });
     if (elements.ganttScroll) {
         // One delegated handler: click on a row label or its bar opens the task
         elements.ganttScroll.addEventListener('click', (e) => {
@@ -4425,56 +4434,78 @@ function renderGantt() {
             elements.ganttYearSelect.appendChild(opt);
         });
     }
+    // Month selector ("" = whole year, "0".."11" = a month of the selected year)
+    const monthMode = Number.isInteger(state.ganttMonth);
+    if (elements.ganttMonthSelect) {
+        elements.ganttMonthSelect.value = monthMode ? String(state.ganttMonth) : '';
+    }
     if (elements.ganttNoDeadlineNote) {
         elements.ganttNoDeadlineNote.textContent = noDeadlineCount
             ? `Без срока: ${noDeadlineCount} — не на диаграмме`
             : '';
     }
 
-    // --- timeline geometry for the selected year ---
-    const yearStart = new Date(year, 0, 1).getTime();
-    const yearEnd = new Date(year + 1, 0, 1).getTime(); // exclusive
-    const totalDays = ganttDayIndex(yearEnd, yearStart);
-    const now = new Date();
-    const todayIdx = ganttDayIndex(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), yearStart);
-    const todayInYear = todayIdx >= 0 && todayIdx < totalDays;
+    // --- visible range: the whole year (month columns) or one month (day columns) ---
+    const rangeStart = monthMode
+        ? new Date(year, state.ganttMonth, 1).getTime()
+        : new Date(year, 0, 1).getTime();
+    const rangeEnd = monthMode
+        ? new Date(year, state.ganttMonth + 1, 1).getTime()
+        : new Date(year + 1, 0, 1).getTime(); // exclusive
 
     const visible = items
-        .filter(it => it.endMs >= yearStart && it.startMs < yearEnd)
+        .filter(it => it.endMs >= rangeStart && it.startMs < rangeEnd)
         .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
 
-    const hasBars = visible.length > 0;
-    scrollEl.style.display = hasBars ? '' : 'none';
-    if (elements.ganttEmpty) elements.ganttEmpty.style.display = hasBars ? 'none' : 'flex';
-    if (!hasBars) {
-        if (elements.ganttEmptyText) {
-            elements.ganttEmptyText.textContent = items.length
-                ? `В ${year} году нет задач со сроками — выберите другой год`
-                : 'В проекте нет задач со сроками';
-        }
-        scrollEl.textContent = '';
-        ganttLastScrollKey = null;
-        return;
-    }
+    // --- fit-to-window geometry: the timeline fills the available width ---
+    const labelW = parseInt(getComputedStyle(elements.ganttContainer).getPropertyValue('--gantt-label-w'), 10) || 220;
+    const availW = Math.max(scrollEl.clientWidth - labelW - 1, 0);
+    const daysInRange = Math.round((rangeEnd - rangeStart) / GANTT_DAY_MS);
+    // Min column widths keep tiny screens readable (horizontal scroll kicks in)
+    const colW = monthMode
+        ? Math.max(availW / daysInRange, 18)
+        : Math.max(availW / 12, 45);
+    const totalW = monthMode ? colW * daysInRange : colW * 12;
 
-    const prevLeft = scrollEl.scrollLeft;
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayInRange = todayMidnight >= rangeStart && todayMidnight < rangeEnd;
+
+    // px offset of a moment inside the visible range.
+    // Month mode: linear over the month's days. Year mode: 12 EQUAL month
+    // columns, position = month index + day fraction within that month
+    // (calendar-true column edges; days map fractionally inside each month).
+    const daysInMonthOf = (y, m) => new Date(y, m + 1, 0).getDate();
+    const posX = (ms, dayEdge) => { // dayEdge: 0 = start of the day, 1 = end of the day
+        if (ms <= rangeStart) return 0;
+        if (ms >= rangeEnd) return totalW;
+        const d = new Date(ms);
+        if (monthMode) {
+            const dayIdx = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - rangeStart) / GANTT_DAY_MS);
+            return (dayIdx + dayEdge) * colW;
+        }
+        const frac = (d.getDate() - 1 + dayEdge) / daysInMonthOf(d.getFullYear(), d.getMonth());
+        return (d.getMonth() + frac) * colW;
+    };
+
     const prevTop = scrollEl.scrollTop;
 
-    // Weekend band phase: day index of the first Saturday relative to Jan 1
-    // (-1 when Jan 1 is a Sunday — the band starts on the previous Saturday)
-    const jan1Dow = new Date(year, 0, 1).getDay(); // 0=Sun..6=Sat
-    let weekendOffsetDays = (6 - jan1Dow + 7) % 7;
-    if (weekendOffsetDays === 6) weekendOffsetDays = -1;
-
     const table = document.createElement('div');
-    table.className = 'gantt-table';
-    table.style.setProperty('--gantt-day', GANTT_DAY_PX + 'px');
-    table.style.setProperty('--gantt-weekend-offset', (weekendOffsetDays * GANTT_DAY_PX) + 'px');
+    table.className = 'gantt-table' + (monthMode ? '' : ' year-mode');
+    table.style.setProperty('--gantt-day', colW + 'px');
+    if (monthMode) {
+        // Weekend band phase: first Saturday relative to the month's 1st day
+        // (-1 when the 1st is a Sunday — the band starts a day "before")
+        const firstDow = new Date(year, state.ganttMonth, 1).getDay(); // 0=Sun..6=Sat
+        let weekendOffsetDays = (6 - firstDow + 7) % 7;
+        if (weekendOffsetDays === 6) weekendOffsetDays = -1;
+        table.style.setProperty('--gantt-weekend-offset', (weekendOffsetDays * colW) + 'px');
+    }
 
     const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
         'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
-    // --- header: month row + day-numbers row ---
+    // --- header: month columns (year mode) or day columns (month mode) ---
     const head = document.createElement('div');
     head.className = 'gantt-head';
     const headLeft = document.createElement('div');
@@ -4484,48 +4515,48 @@ function renderGantt() {
 
     const headRight = document.createElement('div');
     headRight.className = 'gantt-head-right';
-    const monthsRow = document.createElement('div');
-    monthsRow.className = 'gantt-months-row';
-    const daysRow = document.createElement('div');
-    daysRow.className = 'gantt-days-row';
-
-    const monthStartIdx = [];
-    for (let m = 0; m < 12; m++) {
-        const mStartIdx = ganttDayIndex(new Date(year, m, 1).getTime(), yearStart);
-        const mDays = ganttDayIndex(new Date(year, m + 1, 1).getTime(), yearStart) - mStartIdx;
-        monthStartIdx.push(mStartIdx);
-
-        const mCell = document.createElement('div');
-        mCell.className = 'gantt-month';
-        mCell.style.width = (mDays * GANTT_DAY_PX) + 'px';
-        const mLabel = document.createElement('span'); // sticky, see .gantt-month>span
-        mLabel.textContent = monthNames[m];
-        mCell.appendChild(mLabel);
-        monthsRow.appendChild(mCell);
-
-        for (let d = 1; d <= mDays; d++) {
-            const dow = new Date(year, m, d).getDay();
+    headRight.style.width = totalW + 'px';
+    const unitsRow = document.createElement('div');
+    unitsRow.className = monthMode ? 'gantt-days-row' : 'gantt-months-row';
+    if (monthMode) {
+        for (let d = 1; d <= daysInRange; d++) {
+            const dow = new Date(year, state.ganttMonth, d).getDay();
+            const isToday = todayInRange && now.getDate() === d;
             const dCell = document.createElement('span');
             dCell.className = 'gantt-day'
                 + (dow === 0 || dow === 6 ? ' weekend' : '')
-                + (todayInYear && mStartIdx + d - 1 === todayIdx ? ' today' : '');
-            dCell.style.width = GANTT_DAY_PX + 'px';
+                + (isToday ? ' today' : '');
+            dCell.style.width = colW + 'px';
             dCell.textContent = String(d);
-            daysRow.appendChild(dCell);
+            unitsRow.appendChild(dCell);
+        }
+    } else {
+        for (let m = 0; m < 12; m++) {
+            const mCell = document.createElement('div');
+            mCell.className = 'gantt-month'
+                + (year === now.getFullYear() && m === now.getMonth() ? ' today' : '');
+            mCell.style.width = colW + 'px';
+            mCell.textContent = colW < 70 ? monthNames[m].slice(0, 3) : monthNames[m];
+            unitsRow.appendChild(mCell);
         }
     }
-    headRight.appendChild(monthsRow);
-    headRight.appendChild(daysRow);
+    headRight.appendChild(unitsRow);
     head.appendChild(headRight);
     table.appendChild(head);
 
     // --- body: a row per task, bar colored by the task's status ---
     const body = document.createElement('div');
     body.className = 'gantt-body';
-    const totalW = totalDays * GANTT_DAY_PX;
     const fmtDay = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
     const fmtFull = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const statusLabels = { assigned: 'Назначена', 'in-progress': 'В процессе', review: 'На проверке', done: 'Готово' };
+
+    const makeTrack = () => {
+        const track = document.createElement('div');
+        track.className = 'gantt-row-track';
+        track.style.width = totalW + 'px';
+        return track;
+    };
 
     visible.forEach(({ task, startMs, endMs }) => {
         const row = document.createElement('div');
@@ -4545,14 +4576,10 @@ function renderGantt() {
         label.appendChild(metaEl);
         row.appendChild(label);
 
-        const track = document.createElement('div');
-        track.className = 'gantt-row-track';
-        track.style.width = totalW + 'px';
+        const track = makeTrack();
 
-        const rawStart = ganttDayIndex(startMs, yearStart);
-        const rawEnd = ganttDayIndex(endMs, yearStart) + 1; // deadline day inclusive
-        const startIdx = Math.max(rawStart, 0);
-        const endIdx = Math.min(Math.max(rawEnd, startIdx + 1), totalDays);
+        const left = posX(startMs, 0);
+        const right = Math.max(posX(endMs, 1), left + 6); // deadline day inclusive, ≥6px
 
         // Same status->color mapping as the kanban tabs (boardViewForTask)
         const status = boardViewForTask(task);
@@ -4561,13 +4588,13 @@ function renderGantt() {
         const bar = document.createElement('div');
         bar.className = `gantt-bar status-${status}`
             + (isOverdue ? ' overdue' : '')
-            + (rawStart < 0 ? ' clip-left' : '')
-            + (rawEnd > totalDays ? ' clip-right' : '');
-        bar.style.left = (startIdx * GANTT_DAY_PX) + 'px';
-        bar.style.width = ((endIdx - startIdx) * GANTT_DAY_PX) + 'px';
+            + (startMs < rangeStart ? ' clip-left' : '')
+            + (endMs + GANTT_DAY_MS > rangeEnd ? ' clip-right' : '');
+        bar.style.left = left + 'px';
+        bar.style.width = (right - left) + 'px';
         bar.title = `${task.title || 'Без названия'}\n${statusLabels[status] || status}`
             + `${isOverdue ? ' • просрочена' : ''}\n${fmtFull(startMs)} – ${fmtFull(endMs)}`;
-        if ((endIdx - startIdx) * GANTT_DAY_PX >= 88) {
+        if (right - left >= 88) {
             bar.textContent = `${fmtDay(startMs)} – ${fmtDay(endMs)}`;
         }
         track.appendChild(bar);
@@ -4575,18 +4602,25 @@ function renderGantt() {
         body.appendChild(row);
     });
 
-    // Month separators + "today" line span the whole body; their left offset
-    // starts after the sticky label column (--gantt-label-w, see style.css)
-    monthStartIdx.slice(1).forEach(idx => {
-        const line = document.createElement('div');
-        line.className = 'gantt-month-line';
-        line.style.left = `calc(var(--gantt-label-w) + ${idx * GANTT_DAY_PX}px)`;
-        body.appendChild(line);
-    });
-    if (todayInYear) {
+    // No tasks in this range: say so in the first row (the grid still renders)
+    if (!visible.length) {
+        const row = document.createElement('div');
+        row.className = 'gantt-row gantt-row-filler';
+        const label = document.createElement('div');
+        label.className = 'gantt-row-label gantt-row-note';
+        label.textContent = items.length
+            ? 'Нет задач со сроками в этом периоде'
+            : 'В проекте нет задач со сроками';
+        row.appendChild(label);
+        row.appendChild(makeTrack());
+        body.appendChild(row);
+    }
+
+    // "Today" line spans the whole body (offset after the sticky label column)
+    if (todayInRange) {
         const line = document.createElement('div');
         line.className = 'gantt-today-line';
-        line.style.left = `calc(var(--gantt-label-w) + ${(todayIdx + 0.5) * GANTT_DAY_PX}px)`;
+        line.style.left = `calc(var(--gantt-label-w) + ${posX(todayMidnight, 0.5)}px)`;
         line.title = 'Сегодня';
         body.appendChild(line);
     }
@@ -4595,18 +4629,33 @@ function renderGantt() {
     scrollEl.textContent = '';
     scrollEl.appendChild(table);
 
-    // Keep scroll across live re-renders; on first open of this project/year
-    // bring "today" (or the first bar) into view
-    const key = `${state.activeProjectId}:${year}`;
+    // --- filler rows: the grid covers the whole canvas, dashes instead of tasks ---
+    const usedH = table.offsetHeight;
+    const freeH = scrollEl.clientHeight - usedH;
+    if (freeH > 4) {
+        const sampleRow = body.querySelector('.gantt-row');
+        const rowH = Math.max(sampleRow ? sampleRow.offsetHeight : 46, 24);
+        const fillerCount = Math.ceil(freeH / rowH);
+        for (let i = 0; i < fillerCount; i++) {
+            const row = document.createElement('div');
+            row.className = 'gantt-row gantt-row-filler';
+            row.style.height = rowH + 'px';
+            const label = document.createElement('div');
+            label.className = 'gantt-row-label';
+            label.textContent = '—';
+            row.appendChild(label);
+            row.appendChild(makeTrack());
+            body.appendChild(row);
+        }
+    }
+
+    // Keep vertical scroll across live re-renders of the same view
+    const key = `${state.activeProjectId}:${year}:${monthMode ? state.ganttMonth : 'y'}`;
     if (ganttLastScrollKey === key) {
-        scrollEl.scrollLeft = prevLeft;
         scrollEl.scrollTop = prevTop;
     } else {
         ganttLastScrollKey = key;
-        const focusIdx = todayInYear
-            ? todayIdx
-            : Math.max(ganttDayIndex(visible[0].startMs, yearStart), 0);
-        scrollEl.scrollLeft = Math.max(0, focusIdx * GANTT_DAY_PX - Math.max(scrollEl.clientWidth - 220, 200) / 3);
+        scrollEl.scrollTop = 0;
     }
 }
 

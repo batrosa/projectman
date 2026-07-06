@@ -1034,6 +1034,21 @@
                         <button type="button" id="gantt-next-year" class="gantt-year-btn" title="Следующий год">
                             <i class="fa-solid fa-chevron-right"></i>
                         </button>
+                        <select id="gantt-month-select" class="gantt-year-select" title="Период">
+                            <option value="">Весь год</option>
+                            <option value="0">Январь</option>
+                            <option value="1">Февраль</option>
+                            <option value="2">Март</option>
+                            <option value="3">Апрель</option>
+                            <option value="4">Май</option>
+                            <option value="5">Июнь</option>
+                            <option value="6">Июль</option>
+                            <option value="7">Август</option>
+                            <option value="8">Сентябрь</option>
+                            <option value="9">Октябрь</option>
+                            <option value="10">Ноябрь</option>
+                            <option value="11">Декабрь</option>
+                        </select>
                     </div>
                     <div class="gantt-legend">
                         <span class="gantt-legend-item"><span class="gantt-legend-dot assigned"></span>Назначенные</span>
@@ -1044,10 +1059,6 @@
                     </div>
                 </div>
                 <div class="gantt-scroll" id="gantt-scroll"></div>
-                <div class="gantt-empty" id="gantt-empty" style="display: none;">
-                    <i class="fa-solid fa-chart-gantt"></i>
-                    <p id="gantt-empty-text">Нет задач со сроками</p>
-                </div>
             </div>
 
             <div id="empty-state" class="empty-state">

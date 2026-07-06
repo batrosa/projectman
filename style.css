@@ -7513,21 +7513,19 @@ body.light-mode .gantt-container {
 
 .gantt-month {
     flex: 0 0 auto;
-    display: flex;
     border-left: 1px solid var(--border);
-    padding: 0.35rem 0.5rem 0.15rem;
+    padding: 0.45rem 0.2rem;
     font-size: 0.75rem;
     font-weight: 700;
+    text-align: center;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Month label stays visible while its month scrolls by: sticks right after
-   the task-name column */
-.gantt-month>span {
-    position: sticky;
-    left: calc(var(--gantt-label-w) + 8px);
+.gantt-month.today {
+    color: var(--primary);
 }
 
 .gantt-month:first-child {
@@ -7539,7 +7537,7 @@ body.light-mode .gantt-container {
     text-align: center;
     font-size: 0.62rem;
     color: var(--text-secondary);
-    padding: 2px 0 5px;
+    padding: 8px 0;
 }
 
 .gantt-day.weekend {
@@ -7614,6 +7612,36 @@ body.light-mode .gantt-container {
             transparent 1px,
             transparent var(--gantt-day));
     background-position: var(--gantt-weekend-offset, 0) 0, 0 0;
+}
+
+/* Year mode: month columns — grid lines only, no weekend band */
+.gantt-table.year-mode .gantt-row-track {
+    background-image:
+        repeating-linear-gradient(90deg,
+            var(--border) 0,
+            var(--border) 1px,
+            transparent 1px,
+            transparent var(--gantt-day));
+    background-position: 0 0;
+}
+
+/* Filler rows: pad the grid to the bottom of the canvas, a dash per row */
+.gantt-row-filler .gantt-row-label {
+    cursor: default;
+    color: var(--text-secondary);
+    opacity: 0.45;
+    display: flex;
+    align-items: center;
+}
+
+.gantt-row-filler:hover .gantt-row-label {
+    background: var(--gantt-surface);
+}
+
+.gantt-row-label.gantt-row-note {
+    opacity: 0.8;
+    font-size: 0.78rem;
+    white-space: normal;
 }
 
 .gantt-bar {
@@ -7692,23 +7720,6 @@ body.light-mode .gantt-container {
     box-shadow: 0 0 8px rgba(99, 102, 241, 0.8);
     pointer-events: none;
     z-index: 3;
-}
-
-.gantt-empty {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.8rem;
-    color: var(--text-secondary);
-    border: 1px dashed var(--border);
-    border-radius: 14px;
-}
-
-.gantt-empty i {
-    font-size: 2.2rem;
-    opacity: 0.5;
 }
 
 @media (max-width: 768px) {

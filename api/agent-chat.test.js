@@ -814,7 +814,10 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(systemPrompt).toContain("members");
     expect(systemPrompt).toContain("Эльдар Исаев");
     expect(systemPrompt).toContain("Статусы задач: «Задача поставлена»/assigned");
-    expect(systemPrompt).toContain("нет drag-and-drop");
+    expect(systemPrompt).toContain("drag-and-drop нет");
+    expect(systemPrompt).toContain("Гант (дорожная карта)");
+    expect(systemPrompt).toContain("переключатель «Канбан / Гант»");
+    expect(systemPrompt).toContain("Задачи БЕЗ дедлайна на Ганте не отображаются");
     expect(systemPrompt).toContain("Календарь показывает задачи по дедлайну");
     expect(systemPrompt).toContain("В HoldingMan НЕТ");
     expect(systemPrompt).toContain("конструктора отчётов/отчёта");
