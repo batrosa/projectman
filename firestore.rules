@@ -74,6 +74,11 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == orgId;
     }
 
+    function projectMissing(projectId) {
+      return projectId == null
+        || !exists(/databases/$(database)/documents/projects/$(projectId));
+    }
+
     function hasProjectOrgRole(projectId, roles) {
       let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       return request.auth != null
@@ -94,11 +99,28 @@ service cloud.firestore {
 
     function canReaderWorkOnTask() {
       return request.auth != null
-        && (projectBelongsToOrg(resource.data.projectId, myOrgId()) || isOrgMember(resource.data.organizationId))
+        && taskBelongsToMyOrgByProjectOrOrphanOrg()
         && canViewProject(resource.data.projectId)
         && (!('assigneeIds' in resource.data)
             || resource.data.assigneeIds.size() == 0
             || resource.data.assigneeIds.hasAny([request.auth.uid]));
+    }
+
+    function taskBelongsToMyOrgByProjectOrOrphanOrg() {
+      return projectBelongsToOrg(resource.data.projectId, myOrgId())
+        || (projectMissing(resource.data.projectId) && isOrgMember(resource.data.organizationId));
+    }
+
+    function requestTaskOrgMatchesCurrentOrg() {
+      return !('organizationId' in request.resource.data)
+        || request.resource.data.organizationId == myOrgId();
+    }
+
+    function requestTaskOrgPreservedOrCurrent() {
+      return (('organizationId' in resource.data)
+          && request.resource.data.organizationId == resource.data.organizationId)
+        || (!('organizationId' in resource.data)
+          && requestTaskOrgMatchesCurrentOrg());
     }
 
     // (isOrgUserStatsUpdate removed — XP/stats are server-only now; see api/award-xp.)
@@ -227,22 +249,22 @@ service cloud.firestore {
       // moderators/employees/readers only tasks of a project they can view
       // (allowedProjects) — so the access panel restricts moderators too.
       allow read: if isAdmin()
-        || hasOrgRole(resource.data.organizationId, ['owner', 'admin'])
         || hasProjectOrgRole(resource.data.projectId, ['owner', 'admin'])
-        || (projectBelongsToOrg(resource.data.projectId, myOrgId()) && canViewProject(resource.data.projectId))
-        || (isOrgMember(resource.data.organizationId) && canViewProject(resource.data.projectId));
+        || (projectMissing(resource.data.projectId) && hasOrgRole(resource.data.organizationId, ['owner', 'admin']))
+        || (taskBelongsToMyOrgByProjectOrOrphanOrg() && canViewProject(resource.data.projectId));
 
       // Запись:
       // - Управлять задачей (create/delete/полный update) может тот, кто может
       //   управлять её проектом: owner/admin (всегда) или moderator, которому
       //   проект доступен (canManageProject).
       // - Reader/employee может лишь двигать статус своей задачи (carve-out ниже).
-      allow create: if isAdmin() || canManageProject(request.resource.data.projectId);
+      allow create: if isAdmin()
+        || (canManageProject(request.resource.data.projectId) && requestTaskOrgMatchesCurrentOrg());
       allow delete: if isAdmin() || canManageProject(resource.data.projectId);
       allow update: if isAdmin()
         || (canManageProject(resource.data.projectId)
             && request.resource.data.projectId == resource.data.projectId
-            && (!('organizationId' in resource.data) || request.resource.data.organizationId == resource.data.organizationId))
+            && requestTaskOrgPreservedOrCurrent())
         || (request.auth != null
             && canReaderWorkOnTask()
             && request.resource.data.projectId == resource.data.projectId

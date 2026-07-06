@@ -860,9 +860,10 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("delete_notification action deletes only caller-owned agent notification without calling the LLM", async () => {
     state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1" },
       agentNotifications: {
-        "n-mine": { uid: "user-1", text: "mine" },
-        "n-other": { uid: "user-2", text: "other" },
+        "n-mine": { uid: "user-1", organizationId: "org-1", text: "mine" },
+        "n-other": { uid: "user-2", organizationId: "org-1", text: "other" },
       },
     });
     const res = mockResponse();
@@ -877,13 +878,27 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("delete_notification action rejects another user's notification", async () => {
     state.db = makeFakeDb({
-      agentNotifications: { "n-other": { uid: "user-2", text: "other" } },
+      userDoc: { organizationId: "org-1" },
+      agentNotifications: { "n-other": { uid: "user-2", organizationId: "org-1", text: "other" } },
     });
     const res = mockResponse();
     await handler(makeRequest({ action: "delete_notification", id: "n-other" }), res);
 
     expect(res.statusCode).toBe(403);
     expect(state.db.notifications.has("n-other")).toBe(true);
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("delete_notification action rejects caller-owned notification from a previous organization", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-new" },
+      agentNotifications: { "n-old": { uid: "user-1", organizationId: "org-old", text: "old org" } },
+    });
+    const res = mockResponse();
+    await handler(makeRequest({ action: "delete_notification", id: "n-old" }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(state.db.notifications.has("n-old")).toBe(true);
     expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
   });
 

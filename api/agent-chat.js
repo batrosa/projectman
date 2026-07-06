@@ -1125,7 +1125,20 @@ async function handleDeleteNotification({ db, response, decoded, body }) {
   }
 
   if (!snap.exists) return response.status(200).json({ ok: true, deleted: false });
-  if (snap.data()?.uid !== decoded.uid) return response.status(403).json({ error: "Forbidden" });
+  const notification = snap.data() || {};
+  if (notification.uid !== decoded.uid) return response.status(403).json({ error: "Forbidden" });
+
+  let callerOrgId = null;
+  try {
+    const callerSnap = await db.collection("users").doc(decoded.uid).get();
+    callerOrgId = callerSnap.exists ? callerSnap.data()?.organizationId || null : null;
+  } catch (error) {
+    console.error("agent-chat delete_notification: failed to load caller org", error);
+    return response.status(500).json({ error: "Failed to verify notification organization" });
+  }
+  if (!callerOrgId || notification.organizationId !== callerOrgId) {
+    return response.status(403).json({ error: "Forbidden" });
+  }
 
   try {
     await ref.delete();

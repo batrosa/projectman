@@ -121,6 +121,46 @@ describe("project and task organization permissions", () => {
         status: "todo",
       })
     );
+    await assertFails(
+      moderator.collection("tasks").add({
+        projectId: "p1",
+        organizationId: "org-2",
+        title: "Wrong task org",
+        status: "todo",
+      })
+    );
+  });
+
+  it("does not let a stale task organizationId leak access across project organizations", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await seedOrgUser(ctx, "owner1", { organizationId: "org-1", orgRole: "owner" });
+      await seedOrgUser(ctx, "reader1", { organizationId: "org-1", orgRole: "employee" });
+      await seedOrgUser(ctx, "owner2", { organizationId: "org-2", orgRole: "owner" });
+      await ctx.firestore().collection("projects").doc("p2").set({ name: "Other Org Project", organizationId: "org-2" });
+      await ctx.firestore().collection("tasks").doc("t-stale").set({
+        projectId: "p2",
+        organizationId: "org-1",
+        title: "Stale org field",
+        status: "in-progress",
+        subStatus: "assigned",
+        assigneeCompleted: false,
+        assigneeIds: ["reader1"],
+      });
+    });
+
+    const owner1 = testEnv.authenticatedContext("owner1").firestore();
+    const reader1 = testEnv.authenticatedContext("reader1").firestore();
+    const owner2 = testEnv.authenticatedContext("owner2").firestore();
+
+    await assertFails(owner1.collection("tasks").doc("t-stale").get());
+    await assertFails(reader1.collection("tasks").doc("t-stale").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T00:00:00.000Z",
+      takenToWorkBy: "Reader",
+    }));
+    await assertSucceeds(owner2.collection("tasks").doc("t-stale").get());
   });
 
   it("allows a moderator to edit and delete tasks in their org project even when the task misses organizationId", async () => {
@@ -137,6 +177,7 @@ describe("project and task organization permissions", () => {
 
     const moderator = testEnv.authenticatedContext("moderator1").firestore();
     await assertSucceeds(moderator.collection("tasks").doc("t1").update({ title: "Edited" }));
+    await assertFails(moderator.collection("tasks").doc("t1").update({ organizationId: "org-2" }));
     await assertSucceeds(moderator.collection("tasks").doc("t1").delete());
   });
 

@@ -220,6 +220,56 @@ describe("POST /api/agent-monitor", () => {
     expect(telegramCalls.map((c) => c.chatId)).toEqual(["111"]);
   });
 
+  it("skips a task when neither the task nor its project has a verifiable organization", async () => {
+    const fake = makeFakeDb({
+      tasks: {
+        "t-orphan": {
+          status: "in-progress", subStatus: "in_work", title: "Смета",
+          deadline: "2026-07-01", projectId: "missing-project",
+          assigneeIds: ["u-local"],
+        },
+      },
+      projects: {},
+      users: {
+        "u-local": { organizationId: "org-1", telegramChatId: "111", firstName: "Локальный" },
+      },
+    });
+    holder.db = fake.db;
+
+    const res = mockResponse();
+    await handler(makeRequest(), res);
+    expect(res.statusCode).toBe(200);
+    expect(fake.state.notes).toHaveLength(0);
+    expect(telegramCalls).toHaveLength(0);
+    expect(fake.state.taskUpdates).toEqual({});
+  });
+
+  it("uses the project organization, not a stale task organizationId, for delivery", async () => {
+    const fake = makeFakeDb({
+      tasks: {
+        "t-stale-org": {
+          status: "in-progress", subStatus: "in_work", title: "Смета",
+          deadline: "2026-07-01", projectId: "p2", organizationId: "org-OLD",
+          assigneeIds: ["u-project"], createdByUid: "u-old",
+        },
+      },
+      projects: { p2: { name: "П", organizationId: "org-2" } },
+      users: {
+        "u-project": { organizationId: "org-2", telegramChatId: "222", firstName: "Свой" },
+        "u-old": { organizationId: "org-OLD", telegramChatId: "111", firstName: "Старый" },
+      },
+    });
+    holder.db = fake.db;
+
+    const res = mockResponse();
+    await handler(makeRequest(), res);
+    expect(res.statusCode).toBe(200);
+    expect(fake.state.notes).toHaveLength(1);
+    expect(fake.state.notes[0].uid).toBe("u-project");
+    expect(fake.state.notes[0].organizationId).toBe("org-2");
+    expect(telegramCalls.map((c) => c.chatId)).toEqual(["222"]);
+  });
+
   it("401 without/with wrong secret, and 401 when CRON_SECRET env is missing (fail closed)", async () => {
     holder.db = makeFakeDb({}).db;
     let res = mockResponse();

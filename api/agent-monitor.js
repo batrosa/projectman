@@ -114,9 +114,20 @@ export default async function handler(request, response) {
 
       const project = await getProject(task.projectId);
       const projectName = project?.name || null;
-      // Tenant guard for recipients below: a broken/hand-written task must not
-      // leak a notification into another organization.
-      const taskOrgId = task.organizationId || project?.organizationId || null;
+      // Tenant guard for recipients below: the project is the canonical tenant
+      // boundary. The task's own organizationId can be missing or stale on old
+      // docs, so it is used only for orphan tasks whose project no longer
+      // exists.
+      const projectOrgId = project?.organizationId || null;
+      const taskFieldOrgId = task.organizationId || null;
+      const taskOrgId = projectOrgId || taskFieldOrgId || null;
+      if (projectOrgId && taskFieldOrgId && projectOrgId !== taskFieldOrgId) {
+        console.warn("agent-monitor: task organizationId differs from project organizationId; using project org", { taskId: taskDoc.id });
+      }
+      if (!taskOrgId) {
+        console.warn("agent-monitor: task without verifiable org skipped", taskDoc.id);
+        continue;
+      }
 
       // Recipients: assignees by uid (legacy assigneeEmail fallback) + creator.
       let uids = Array.isArray(task.assigneeIds) ? task.assigneeIds.filter(Boolean) : [];
@@ -169,24 +180,17 @@ export default async function handler(request, response) {
           });
 
           for (const recipient of recipients) {
-            // Правила ленты требуют organizationId == орг читателя: заметка с
-            // org=null (legacy-задача без организации) была бы «мёртвой» —
-            // никто её не увидит. Не пишем такую; Telegram-дубль всё равно уходит.
-            if (taskOrgId) {
-              const noteRef = db.collection("agentNotifications").doc();
-              tx.set(noteRef, {
-                uid: recipient.uid,
-                organizationId: taskOrgId,
-                taskId: taskDoc.id,
-                projectId: freshTask.projectId || task.projectId || null,
-                type: event.type,
-                text,
-                createdAt: FieldValue.serverTimestamp(),
-                readAt: null,
-              });
-            } else {
-              console.warn("agent-monitor: task without org — feed entry skipped, telegram only", taskDoc.id);
-            }
+            const noteRef = db.collection("agentNotifications").doc();
+            tx.set(noteRef, {
+              uid: recipient.uid,
+              organizationId: taskOrgId,
+              taskId: taskDoc.id,
+              projectId: freshTask.projectId || task.projectId || null,
+              type: event.type,
+              text,
+              createdAt: FieldValue.serverTimestamp(),
+              readAt: null,
+            });
             if (recipient.telegramChatId) telegramQueue.push({ chatId: recipient.telegramChatId, text });
           }
 
