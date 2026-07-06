@@ -1034,21 +1034,12 @@
                         <button type="button" id="gantt-next-year" class="gantt-year-btn" title="Следующий год">
                             <i class="fa-solid fa-chevron-right"></i>
                         </button>
-                        <select id="gantt-month-select" class="gantt-year-select" title="Период">
-                            <option value="">Весь год</option>
-                            <option value="0">Январь</option>
-                            <option value="1">Февраль</option>
-                            <option value="2">Март</option>
-                            <option value="3">Апрель</option>
-                            <option value="4">Май</option>
-                            <option value="5">Июнь</option>
-                            <option value="6">Июль</option>
-                            <option value="7">Август</option>
-                            <option value="8">Сентябрь</option>
-                            <option value="9">Октябрь</option>
-                            <option value="10">Ноябрь</option>
-                            <option value="11">Декабрь</option>
-                        </select>
+                        <!-- Month drill-down: click a month name in the chart header
+                             to open it; this button (visible only then) goes back -->
+                        <button type="button" id="gantt-back-year" class="gantt-back-btn" style="display: none;">
+                            <i class="fa-solid fa-arrow-left"></i> <span>Весь год</span>
+                        </button>
+                        <span id="gantt-period-label" class="gantt-period-label" style="display: none;"></span>
                     </div>
                     <div class="gantt-legend">
                         <span class="gantt-legend-item"><span class="gantt-legend-dot assigned"></span>Назначенные</span>

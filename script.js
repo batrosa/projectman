@@ -862,6 +862,7 @@ function resetWorkspaceState() {
     state.initialLoadDone = false;
     projectFiles = [];
     if (elements.projectList) elements.projectList.innerHTML = '';
+    lastProjectListSignature = null; // DOM cleared — renderProjects must rebuild
     renderBoard();
     renderUsersList();
     renderProjectAccessTab();
@@ -1654,7 +1655,8 @@ const elements = {
     ganttContainer: document.getElementById('gantt-container'),
     ganttScroll: document.getElementById('gantt-scroll'),
     ganttYearSelect: document.getElementById('gantt-year-select'),
-    ganttMonthSelect: document.getElementById('gantt-month-select'),
+    ganttBackYear: document.getElementById('gantt-back-year'),
+    ganttPeriodLabel: document.getElementById('gantt-period-label'),
     ganttPrevYear: document.getElementById('gantt-prev-year'),
     ganttNextYear: document.getElementById('gantt-next-year'),
     ganttNoDeadlineNote: document.getElementById('gantt-no-deadline-note'),
@@ -1863,7 +1865,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.6'; // Gantt mobile polish + view-switcher flicker fix
+    const CURRENT_VERSION = '6.7'; // Gantt month drill-down + empty project list fix
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2146,6 +2148,7 @@ function generateId() {
 function selectProject(id) {
     state.activeProjectId = id;
     state.boardView = 'assigned'; // Always open "Assigned" first
+    state.ganttMonth = null; // Gantt always opens on the whole year
     renderProjects(); // To update active class
     subscribeToProjectTasks(id); // Fetch tasks for this project only
     subscribeToProjectFiles(id); // Fetch project-level files (distinct from task attachments)
@@ -2653,7 +2656,12 @@ function renderProjects() {
         state.projectView,
         filteredProjects.map(p => [p.id, p.name, p.deadline || null]),
     ]);
-    if (signature === lastProjectListSignature) return;
+    // Skip only when the list is actually rendered: resetWorkspaceState()
+    // clears the DOM directly, and skipping after that left the sidebar
+    // EMPTY on re-entering an org whose data hadn't changed (prod bug).
+    if (signature === lastProjectListSignature
+        && elements.projectList.children.length === filteredProjects.length
+        && filteredProjects.length > 0) return;
     lastProjectListSignature = signature;
 
     elements.projectList.innerHTML = '';
@@ -4326,15 +4334,41 @@ function setProjectView(view) {
     const next = view === 'gantt' ? 'gantt' : 'kanban';
     if (state.projectView === next) return;
     state.projectView = next;
+    if (next === 'gantt') state.ganttMonth = null; // always start from the year
     renderProjects(); // refresh switcher active state under the project
     renderBoard();    // toggles containers; renders the gantt if needed
 }
 
 // ===== Gantt chart =====
 const GANTT_DAY_MS = 24 * 60 * 60 * 1000;
+const GANTT_MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 let ganttUiWired = false;
 let ganttLastScrollKey = null; // "projectId:year" of the last render — keeps
 // scroll position across live task-snapshot re-renders
+let ganttEnterAnim = null; // enter-animation class for the NEXT renderGantt (zoom transitions)
+
+// Year <-> month drill-down with a zoom transition: the current table zooms
+// toward the clicked month (or shrinks back) and fades, then the re-rendered
+// view animates in from the opposite scale. nextMonth null = back to the year.
+function ganttSwitchPeriod(nextMonth, originX) {
+    const zoomingIn = nextMonth !== null;
+    ganttEnterAnim = zoomingIn ? 'gantt-enter-in' : 'gantt-enter-out';
+    const apply = () => {
+        state.ganttMonth = nextMonth;
+        renderGantt();
+    };
+    const table = elements.ganttScroll ? elements.ganttScroll.querySelector('.gantt-table') : null;
+    if (!table) {
+        apply();
+        return;
+    }
+    const scrollEl = elements.ganttScroll;
+    const defaultOrigin = scrollEl.scrollLeft + scrollEl.clientWidth / 2;
+    table.style.transformOrigin = `${originX != null ? originX : defaultOrigin}px center`;
+    table.classList.add(zoomingIn ? 'gantt-leave-in' : 'gantt-leave-out');
+    setTimeout(apply, 170); // matches the .17s leave transition in style.css
+}
 
 // task.deadline is a YYYY-MM-DD string from <input type=date>; parse it in the
 // LOCAL timezone (new Date('YYYY-MM-DD') gives UTC midnight and can shift the
@@ -4376,12 +4410,10 @@ function wireGanttControls() {
             renderGantt();
         });
     }
-    if (elements.ganttMonthSelect) {
-        elements.ganttMonthSelect.addEventListener('change', () => {
+    if (elements.ganttBackYear) {
+        elements.ganttBackYear.addEventListener('click', () => {
             playClickSound();
-            const v = elements.ganttMonthSelect.value;
-            state.ganttMonth = v === '' ? null : parseInt(v, 10);
-            renderGantt();
+            ganttSwitchPeriod(null);
         });
     }
     // Column widths derive from the window width — re-render on resize
@@ -4392,8 +4424,20 @@ function wireGanttControls() {
         ganttResizeTimer = setTimeout(renderGantt, 150);
     });
     if (elements.ganttScroll) {
-        // One delegated handler: click on a row label or its bar opens the task
+        // One delegated handler: a month header cell drills into that month,
+        // a row label or its bar opens the task
         elements.ganttScroll.addEventListener('click', (e) => {
+            const monthCell = e.target.closest('.gantt-month[data-month]');
+            if (monthCell) {
+                playClickSound();
+                // offsetLeft is relative to .gantt-table (position: relative),
+                // so the zoom originates from the clicked month column
+                ganttSwitchPeriod(
+                    parseInt(monthCell.dataset.month, 10),
+                    monthCell.offsetLeft + monthCell.offsetWidth / 2
+                );
+                return;
+            }
             const row = e.target.closest('[data-gantt-task]');
             if (!row) return;
             const task = state.tasks.find(t => t.id === row.dataset.ganttTask);
@@ -4447,10 +4491,15 @@ function renderGantt() {
             elements.ganttYearSelect.appendChild(opt);
         });
     }
-    // Month selector ("" = whole year, "0".."11" = a month of the selected year)
+    // Drill-down state: whole year by default; a month opens by clicking its
+    // name in the chart header, the «Весь год» button goes back
     const monthMode = Number.isInteger(state.ganttMonth);
-    if (elements.ganttMonthSelect) {
-        elements.ganttMonthSelect.value = monthMode ? String(state.ganttMonth) : '';
+    if (elements.ganttBackYear) {
+        elements.ganttBackYear.style.display = monthMode ? 'inline-flex' : 'none';
+    }
+    if (elements.ganttPeriodLabel) {
+        elements.ganttPeriodLabel.style.display = monthMode ? 'inline' : 'none';
+        if (monthMode) elements.ganttPeriodLabel.textContent = GANTT_MONTH_NAMES[state.ganttMonth];
     }
     if (elements.ganttNoDeadlineNote) {
         elements.ganttNoDeadlineNote.textContent = noDeadlineCount
@@ -4516,9 +4565,6 @@ function renderGantt() {
         table.style.setProperty('--gantt-weekend-offset', (weekendOffsetDays * colW) + 'px');
     }
 
-    const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-
     // --- header: month columns (year mode) or day columns (month mode) ---
     const head = document.createElement('div');
     head.className = 'gantt-head';
@@ -4549,8 +4595,10 @@ function renderGantt() {
             const mCell = document.createElement('div');
             mCell.className = 'gantt-month'
                 + (year === now.getFullYear() && m === now.getMonth() ? ' today' : '');
+            mCell.dataset.month = String(m); // clickable: drills into this month
+            mCell.title = `Открыть ${GANTT_MONTH_NAMES[m].toLowerCase()} по дням`;
             mCell.style.width = colW + 'px';
-            mCell.textContent = colW < 70 ? monthNames[m].slice(0, 3) : monthNames[m];
+            mCell.textContent = colW < 70 ? GANTT_MONTH_NAMES[m].slice(0, 3) : GANTT_MONTH_NAMES[m];
             unitsRow.appendChild(mCell);
         }
     }
@@ -4642,6 +4690,15 @@ function renderGantt() {
 
     scrollEl.textContent = '';
     scrollEl.appendChild(table);
+
+    // Zoom-transition entrance (set by ganttSwitchPeriod)
+    if (ganttEnterAnim) {
+        table.classList.add(ganttEnterAnim);
+        table.addEventListener('animationend', () => {
+            table.classList.remove('gantt-enter-in', 'gantt-enter-out');
+        }, { once: true });
+        ganttEnterAnim = null;
+    }
 
     // --- filler rows: the grid covers the whole canvas, dashes instead of tasks ---
     const usedH = table.offsetHeight;

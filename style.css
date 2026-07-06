@@ -7412,6 +7412,34 @@ body.light-mode .gantt-container {
     cursor: pointer;
 }
 
+/* Back-to-year button, visible only inside a month drill-down */
+.gantt-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    white-space: nowrap;
+    height: 34px;
+    padding: 0 0.9rem;
+    border-radius: 10px;
+    border: 1px solid rgba(99, 102, 241, 0.45);
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.gantt-back-btn:hover {
+    background: rgba(99, 102, 241, 0.32);
+}
+
+.gantt-period-label {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
 .gantt-legend {
     display: flex;
     align-items: center;
@@ -7475,6 +7503,56 @@ body.light-mode .gantt-container {
     width: max-content;
 }
 
+/* Year <-> month drill-down zoom. "leave" classes transition the outgoing
+   table (origin = clicked month, set inline by JS); "enter" classes animate
+   the freshly rendered view from the opposite scale. */
+.gantt-table.gantt-leave-in,
+.gantt-table.gantt-leave-out {
+    transition: transform 0.17s ease, opacity 0.17s ease;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.gantt-table.gantt-leave-in {
+    transform: scale(1.12);
+}
+
+.gantt-table.gantt-leave-out {
+    transform: scale(0.92);
+}
+
+.gantt-table.gantt-enter-in {
+    animation: ganttEnterIn 0.22s ease;
+}
+
+.gantt-table.gantt-enter-out {
+    animation: ganttEnterOut 0.22s ease;
+}
+
+@keyframes ganttEnterIn {
+    from {
+        transform: scale(0.92);
+        opacity: 0;
+    }
+
+    to {
+        transform: none;
+        opacity: 1;
+    }
+}
+
+@keyframes ganttEnterOut {
+    from {
+        transform: scale(1.1);
+        opacity: 0;
+    }
+
+    to {
+        transform: none;
+        opacity: 1;
+    }
+}
+
 /* Header: sticky on top while scrolling vertically; its left cell is also
    sticky horizontally. z-index order: corner (7) > header (6) > row labels (5)
    > today line (3) > bars (2) > month lines (1). */
@@ -7528,6 +7606,17 @@ body.light-mode .gantt-container {
 }
 
 .gantt-month.today {
+    color: var(--primary);
+}
+
+/* Year mode: month headers are the drill-down entry points */
+.gantt-month[data-month] {
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.gantt-month[data-month]:hover {
+    background: rgba(99, 102, 241, 0.16);
     color: var(--primary);
 }
 
@@ -7751,6 +7840,17 @@ body.light-mode .gantt-container {
         font-size: 0.85rem;
         border-radius: 8px;
         max-width: 46vw;
+    }
+
+    .gantt-back-btn {
+        height: 30px;
+        padding: 0 0.7rem;
+        font-size: 0.78rem;
+        border-radius: 8px;
+    }
+
+    .gantt-period-label {
+        font-size: 0.85rem;
     }
 
     .gantt-legend {
