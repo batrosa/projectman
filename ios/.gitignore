@@ -1,0 +1,8 @@
+# Генерируется XcodeGen из project.yml — не храним
+HoldingMan.xcodeproj/
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/

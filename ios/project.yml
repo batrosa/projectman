@@ -1,0 +1,38 @@
+name: HoldingMan
+options:
+  bundleIdPrefix: com.holdingman
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    minVersion: 11.0.0
+    maxVersion: 99.0.0
+
+targets:
+  HoldingMan:
+    type: application
+    platform: iOS
+    sources:
+      - path: HoldingMan
+    dependencies:
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseFirestore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.holdingman.ios
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        INFOPLIST_KEY_CFBundleDisplayName: HoldingMan
+        # Telegram-бот открывается внешней ссылкой (tg:// или https://t.me)
+        INFOPLIST_KEY_LSApplicationQueriesSchemes: tg
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
