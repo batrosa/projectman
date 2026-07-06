@@ -401,7 +401,7 @@ describe("project and task organization permissions", () => {
     }));
   });
 
-  it("legacy-shaped data (organizationId:null orgRole:null user, task without assigneeIds/organizationId) still allows the assignee to take the task into work", async () => {
+  it("blocks legacy-shaped no-org users from moving no-org tasks (prevents cross-org carve-out)", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("users").doc("legacyReader1").set({
         role: "reader",
@@ -422,7 +422,7 @@ describe("project and task organization permissions", () => {
     });
 
     const legacyReader = testEnv.authenticatedContext("legacyReader1").firestore();
-    await assertSucceeds(legacyReader.collection("tasks").doc("legacy-t1").update({
+    await assertFails(legacyReader.collection("tasks").doc("legacy-t1").update({
       status: "in-progress",
       subStatus: "in_work",
       assigneeCompleted: false,
@@ -458,6 +458,31 @@ describe("project and task organization permissions", () => {
     // Member of a different org cannot read either by direct id.
     await assertFails(outsider.collection("projects").doc("p-a").get());
     await assertFails(outsider.collection("tasks").doc("t-a").get());
+  });
+
+  it("blocks an assigned user from updating a task whose project belongs to another organization", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await seedOrgUser(ctx, "outsider-assignee", { organizationId: "org-2", orgRole: "employee" });
+      await ctx.firestore().collection("projects").doc("p-foreign").set({ name: "Foreign", organizationId: "org-1" });
+      await ctx.firestore().collection("tasks").doc("t-foreign-assigned").set({
+        projectId: "p-foreign",
+        organizationId: "org-1",
+        title: "Foreign assigned task",
+        status: "in-progress",
+        subStatus: "assigned",
+        assigneeCompleted: false,
+        assigneeIds: ["outsider-assignee"],
+      });
+    });
+
+    const outsider = testEnv.authenticatedContext("outsider-assignee").firestore();
+    await assertFails(outsider.collection("tasks").doc("t-foreign-assigned").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-02T00:00:00.000Z",
+      takenToWorkBy: "Outsider",
+    }));
   });
 
   it("lets a restricted member load the org's projects (fix: no more zero-projects) but still not read a forbidden project's tasks", async () => {

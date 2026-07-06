@@ -13,7 +13,7 @@ function mockResponse() {
 
 // In-memory fake Firestore implementing only what api/agent-monitor.js uses:
 // tasks where(status==in-progress).limit().get(); projects/users doc get;
-// agentNotifications doc() refs; db.batch() set/update/commit.
+// agentNotifications doc() refs; runTransaction set/update.
 function makeFakeDb({ tasks = {}, projects = {}, users = {} }) {
   const notes = [];            // committed agentNotifications payloads
   const taskUpdates = {};      // taskId -> merged flag updates
@@ -106,6 +106,31 @@ function makeFakeDb({ tasks = {}, projects = {}, users = {} }) {
           }
         },
       };
+    },
+    async runTransaction(fn) {
+      const ops = [];
+      const tx = {
+        async get(ref) {
+          if (ref.__kind === "task") {
+            return {
+              exists: ref.id in tasks,
+              data: () => tasks[ref.id],
+            };
+          }
+          throw new Error("unexpected transaction get");
+        },
+        set(ref, data) { ops.push({ op: "set", ref, data }); },
+        update(ref, data) { ops.push({ op: "update", ref, data }); },
+      };
+      const result = await fn(tx);
+      for (const o of ops) {
+        if (o.ref.__kind === "note" && o.op === "set") notes.push(o.data);
+        if (o.ref.__kind === "task" && o.op === "update") {
+          taskUpdates[o.ref.id] = { ...(taskUpdates[o.ref.id] || {}), ...o.data };
+          tasks[o.ref.id] = { ...(tasks[o.ref.id] || {}), ...o.data };
+        }
+      }
+      return result;
     },
   };
   return { db, state };

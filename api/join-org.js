@@ -44,6 +44,24 @@ function publicUserFields(userData = {}) {
   };
 }
 
+function canSeeInviteCode(orgRole) {
+  return orgRole === "owner" || orgRole === "admin";
+}
+
+function organizationPayload(orgId, orgData = {}, orgRole, membersCount) {
+  const organization = {
+    id: orgId,
+    name: orgData.name || "",
+    membersCount,
+    ownerId: orgData.ownerId || null,
+    settings: orgData.settings || null,
+  };
+  if (canSeeInviteCode(orgRole)) {
+    organization.inviteCode = orgData.inviteCode || null;
+  }
+  return organization;
+}
+
 export default async function handler(request, response) {
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
@@ -111,14 +129,7 @@ export default async function handler(request, response) {
         ok: true,
         orgRole,
         allowedProjects: allowedProjects || [],
-        organization: {
-          id: orgDoc.id,
-          name: orgData.name || "",
-          inviteCode: orgData.inviteCode || null,
-          membersCount: orgData.membersCount || 0,
-          ownerId: orgData.ownerId || null,
-          settings: orgData.settings || null,
-        },
+        organization: organizationPayload(orgDoc.id, orgData, orgRole, orgData.membersCount || 0),
       });
     }
 
@@ -157,13 +168,6 @@ export default async function handler(request, response) {
     ok: true,
     orgRole: "employee",
     allowedProjects: [],
-    organization: {
-      id: orgDoc.id,
-      name: orgData.name || "",
-      inviteCode: orgData.inviteCode || null,
-      membersCount: (orgData.membersCount || 0) + 1,
-      ownerId: orgData.ownerId || null,
-      settings: orgData.settings || null,
-    },
+    organization: organizationPayload(orgDoc.id, orgData, "employee", (orgData.membersCount || 0) + 1),
   });
 }

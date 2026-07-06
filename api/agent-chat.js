@@ -168,6 +168,9 @@ export default async function handler(request, response) {
       return true;
     });
     if (!allowed) {
+      if (isCreateAction) {
+        return response.status(429).json({ error: "Слишком много запросов подряд. Подождите минуту и попробуйте снова." });
+      }
       return response.status(200).json({ ok: true, answer: "Слишком много запросов подряд. Подождите минуту и попробуйте снова." });
     }
   } catch (error) {
@@ -184,9 +187,15 @@ export default async function handler(request, response) {
     accessibleProjectIds = accessibleProjectIdsFor(callerData);
   } catch (error) {
     console.error("agent-chat: failed to load user doc", error);
+    if (isCreateAction) {
+      return response.status(500).json({ error: "Не удалось загрузить данные организации" });
+    }
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
   }
   if (!organizationId) {
+    if (isCreateAction) {
+      return response.status(403).json({ error: "Вы пока не состоите ни в одной организации" });
+    }
     return response.status(200).json({ ok: true, answer: "Вы пока не состоите ни в одной организации — агенту нечего показать." });
   }
 
@@ -349,9 +358,7 @@ function getTextTaskCreationRequest(message, history) {
     return { message, fromHistory: false };
   }
 
-  if (!isLikelyTextTaskContinuation(message)) {
-    return affirmationFromAssistantList(message, history);
-  }
+  const affirmation = affirmationFromAssistantList(message, history);
   const turns = Array.isArray(history) ? history : [];
   let baseIndex = -1;
   for (let i = turns.length - 1; i >= 0; i -= 1) {
@@ -361,7 +368,9 @@ function getTextTaskCreationRequest(message, history) {
       break;
     }
   }
-  if (baseIndex < 0) return affirmationFromAssistantList(message, history);
+  if (baseIndex < 0) return affirmation;
+  const afterBase = turns.slice(baseIndex + 1);
+  if (!isLikelyTextTaskContinuation(message, afterBase)) return affirmation;
 
   const base = String(turns[baseIndex].content || "").trim();
   const clarifications = turns
@@ -402,14 +411,21 @@ function affirmationFromAssistantList(message, history) {
   };
 }
 
-function isLikelyTextTaskContinuation(message) {
+export function isLikelyTextTaskContinuation(message, historyAfterBase = []) {
   const text = normalizeLookup(message);
   if (!text || text.length > 220) return false;
-  if (/^(спасибо|ок|понял|ясно|нет|да)$/u.test(text)) return false;
-  if (/(проект|ответственн|исполнител|назнач|давай|пусть|он есть|она есть|абрау|елисеев|каспий|лазурн|срок|дедлайн|сегодня|завтра|исаев|исаева|тэко|тэке|эльдар|амирхан)/u.test(text)) {
+  if (/^(спасибо|благодарю|ок|понял|поняла|ясно|хорошо|принято|супер|отлично)(\s+\S+){0,3}$/u.test(text)) return false;
+  if (/^(какие|какой|какая|какое|когда|что|где|кто|сколько|покажи|покажите|расскажи|есть ли)\b/u.test(text)) return false;
+  if (/[?？]\s*$/.test(String(message || ""))) return false;
+  if (/(проект|ответственн|исполнител|назнач|давай|пусть|он есть|она есть|срок|дедлайн|сегодня|завтра|послезавтра|без срок|без ответственн|первые\s+\d+)/u.test(text)) {
     return true;
   }
-  return text.split(" ").length <= 4;
+  const lastAssistant = [...(Array.isArray(historyAfterBase) ? historyAfterBase : [])]
+    .reverse()
+    .find((turn) => turn?.role === "assistant");
+  const lastAssistantText = normalizeLookup(lastAssistant?.content);
+  const askedForClarification = /(в какой проект|какой проект|кому поставить|назовите имена|не понял.*кому|не понял.*проект|уточните|точное название)/u.test(lastAssistantText);
+  return askedForClarification && text.split(" ").length <= 4;
 }
 
 function resolveTextTaskProject({ projects, body, message, callerData }) {
@@ -494,7 +510,8 @@ async function buildTextTaskProposal({ openRouterKey, message, clientToday, user
   const today = isIsoDate(clientToday) ? clientToday : todayIsoDate();
   const tomorrow = addDaysIso(today, 1);
   const dayAfterTomorrow = addDaysIso(today, 2);
-  const membersText = users.map((u) => displayName(u)).filter(Boolean).join(", ");
+  const assignableUsers = users.filter((u) => userHasProjectAccessForAssignment(u, project.id));
+  const membersText = assignableUsers.map((u) => displayName(u)).filter(Boolean).join(", ");
   const dialogue = formatRecentDialogue(history);
   const userPrompt = [
     `Текущая дата: ${today}.`,
@@ -513,7 +530,7 @@ async function buildTextTaskProposal({ openRouterKey, message, clientToday, user
 
   const built = buildTextTaskProposalFromRaw({
     rawAnswer: llm.answer,
-    users,
+    users: assignableUsers,
     project,
   });
   return { ...built, model: llm.model };
@@ -706,6 +723,9 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       if (!data || data.organizationId !== organizationId) {
         return response.status(400).json({ error: "Один из исполнителей не найден в вашей организации" });
       }
+      if (!userHasProjectAccessForAssignment(data, payload.projectId)) {
+        return response.status(400).json({ error: "Один из исполнителей не имеет доступа к этому проекту" });
+      }
       usersByUid.set(uid, data);
     } catch (error) {
       console.error("agent-chat create_tasks: user load failed", uid, error);
@@ -746,6 +766,7 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       status: "in-progress",
       subStatus: "assigned",
       assigneeCompleted: false,
+      assignedAt: FieldValue.serverTimestamp(),
       attachments: [],
       createdAt: FieldValue.serverTimestamp(),
       createdBy: createdByName,
@@ -848,6 +869,14 @@ export function accessibleProjectIdsFor(userData) {
     return allowed.filter((id) => id !== NO_ACCESS_SENTINEL);
   }
   return null; // empty/absent = all projects (the default for new members)
+}
+
+function userHasProjectAccessForAssignment(userData, projectId) {
+  if (!userData || !projectId) return false;
+  if (["owner", "admin"].includes(userData.orgRole)) return true;
+  const allowed = userData.allowedProjects;
+  if (!Array.isArray(allowed) || allowed.length === 0) return true;
+  return allowed.includes(projectId);
 }
 
 // Bounded context reads — caps so a pathologically large org can't drive

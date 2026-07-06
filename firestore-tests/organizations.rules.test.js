@@ -204,13 +204,25 @@ describe("organizations privilege escalation", () => {
   });
 
   describe("organizations read (invite-code enumeration closed)", () => {
-    it("lets a member GET their own organization", async () => {
+    it("blocks plain members from direct GET of their organization doc (inviteCode stays server-filtered)", async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         await ctx.firestore().collection("users").doc("m1").set({ organizationId: "orgA", orgRole: "employee" });
         await ctx.firestore().collection("organizations").doc("orgA").set({ ownerId: "o", name: "Org A", inviteCode: "CODEA" });
       });
       const m1 = testEnv.authenticatedContext("m1").firestore();
-      await assertSucceeds(m1.collection("organizations").doc("orgA").get());
+      await assertFails(m1.collection("organizations").doc("orgA").get());
+    });
+
+    it("lets owner/admin GET their organization doc for organization management", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("users").doc("own").set({ organizationId: "orgA-admin", orgRole: "owner" });
+        await ctx.firestore().collection("users").doc("adm").set({ organizationId: "orgA-admin", orgRole: "admin" });
+        await ctx.firestore().collection("organizations").doc("orgA-admin").set({ ownerId: "own", name: "Org A", inviteCode: "CODEA" });
+      });
+      const own = testEnv.authenticatedContext("own").firestore();
+      const adm = testEnv.authenticatedContext("adm").firestore();
+      await assertSucceeds(own.collection("organizations").doc("orgA-admin").get());
+      await assertSucceeds(adm.collection("organizations").doc("orgA-admin").get());
     });
 
     it("blocks GET of an organization the caller is NOT a member of", async () => {

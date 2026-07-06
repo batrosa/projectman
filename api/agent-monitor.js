@@ -136,69 +136,80 @@ export default async function handler(request, response) {
       if (uids.length === 0) continue;
       const assigneeNames = await getTaskAssigneeNames(task, taskOrgId);
 
-      const batch = db.batch();
-      const flagUpdates = {};
-      const telegramQueue = [];
-
-      for (const event of events) {
-        const text = buildEventText(event.type, {
-          title: task.title || "Без названия",
-          projectName,
-          deadline: task.deadline,
-          assigneeNames,
-        });
-
-        for (const uid of uids) {
-          const user = await getUser(uid);
-          if (!user) continue; // deleted account — nothing to deliver to
-          // Cross-tenant guard: when the task's org is known, the recipient
-          // must belong to it (stale assigneeIds / manually-edited docs).
-          if (taskOrgId && user.organizationId !== taskOrgId) {
-            console.warn("agent-monitor: recipient outside task org skipped", { uid, taskId: taskDoc.id });
-            continue;
-          }
-          // Правила ленты требуют organizationId == орг читателя: заметка с
-          // org=null (legacy-задача без организации) была бы «мёртвой» — никто
-          // её не увидит. Не пишем такую; Telegram-дубль всё равно уходит.
-          if (taskOrgId) {
-            const noteRef = db.collection("agentNotifications").doc();
-            batch.set(noteRef, {
-              uid,
-              organizationId: taskOrgId,
-              taskId: taskDoc.id,
-              projectId: task.projectId || null,
-              type: event.type,
-              text,
-              createdAt: FieldValue.serverTimestamp(),
-              readAt: null,
-            });
-          } else {
-            console.warn("agent-monitor: task without org — feed entry skipped, telegram only", taskDoc.id);
-          }
-          if (user.telegramChatId) telegramQueue.push({ chatId: user.telegramChatId, text });
+      const recipients = [];
+      for (const uid of uids) {
+        const user = await getUser(uid);
+        if (!user) continue; // deleted account — nothing to deliver to
+        // Cross-tenant guard: when the task's org is known, the recipient
+        // must belong to it (stale assigneeIds / manually-edited docs).
+        if (taskOrgId && user.organizationId !== taskOrgId) {
+          console.warn("agent-monitor: recipient outside task org skipped", { uid, taskId: taskDoc.id });
+          continue;
         }
-
-        if (event.type === "overdue") flagUpdates.notifiedOverdueOn = mskDateString(now);
-        if (event.type === "deadline_tomorrow") flagUpdates.notifiedDeadlineSoonAt = FieldValue.serverTimestamp();
-        if (event.type === "not_taken_1h") flagUpdates.notifiedNotTakenAt = FieldValue.serverTimestamp();
-        eventsCount += 1;
+        recipients.push({ uid, telegramChatId: user.telegramChatId || null });
       }
 
-      batch.update(taskDoc.ref, flagUpdates);
-      // Commit the feed entries + anti-spam flags FIRST: a Telegram failure
-      // must not lose the flags (re-spam), and a retried run must not
-      // duplicate the feed.
-      await batch.commit();
+      if (recipients.length === 0) continue;
+
+      const claim = await db.runTransaction(async (tx) => {
+        const freshSnap = await tx.get(taskDoc.ref);
+        if (!freshSnap.exists) return { events: [], telegramQueue: [] };
+        const freshTask = freshSnap.data() || {};
+        const freshEvents = classifyTask(freshTask, now);
+        if (freshEvents.length === 0) return { events: [], telegramQueue: [] };
+
+        const flagUpdates = {};
+        const telegramQueue = [];
+        for (const event of freshEvents) {
+          const text = buildEventText(event.type, {
+            title: freshTask.title || task.title || "Без названия",
+            projectName,
+            deadline: freshTask.deadline || task.deadline,
+            assigneeNames,
+          });
+
+          for (const recipient of recipients) {
+            // Правила ленты требуют organizationId == орг читателя: заметка с
+            // org=null (legacy-задача без организации) была бы «мёртвой» —
+            // никто её не увидит. Не пишем такую; Telegram-дубль всё равно уходит.
+            if (taskOrgId) {
+              const noteRef = db.collection("agentNotifications").doc();
+              tx.set(noteRef, {
+                uid: recipient.uid,
+                organizationId: taskOrgId,
+                taskId: taskDoc.id,
+                projectId: freshTask.projectId || task.projectId || null,
+                type: event.type,
+                text,
+                createdAt: FieldValue.serverTimestamp(),
+                readAt: null,
+              });
+            } else {
+              console.warn("agent-monitor: task without org — feed entry skipped, telegram only", taskDoc.id);
+            }
+            if (recipient.telegramChatId) telegramQueue.push({ chatId: recipient.telegramChatId, text });
+          }
+
+          if (event.type === "overdue") flagUpdates.notifiedOverdueOn = mskDateString(now);
+          if (event.type === "deadline_tomorrow") flagUpdates.notifiedDeadlineSoonAt = FieldValue.serverTimestamp();
+          if (event.type === "not_taken_1h") flagUpdates.notifiedNotTakenAt = FieldValue.serverTimestamp();
+        }
+
+        tx.update(taskDoc.ref, flagUpdates);
+        return { events: freshEvents, telegramQueue };
+      });
+      if (claim.events.length === 0) continue;
+      eventsCount += claim.events.length;
 
       // Parallel + logged: a hung/refused Telegram send must neither stall the
       // sweep (sendTelegramMessage now has its own timeout) nor fail silently.
       const sendResults = await Promise.allSettled(
-        telegramQueue.map((message) => sendTelegramMessage(message.chatId, message.text))
+        claim.telegramQueue.map((message) => sendTelegramMessage(message.chatId, message.text))
       );
       sendResults.forEach((result, index) => {
         const value = result.status === "fulfilled" ? result.value : null;
         if (result.status === "rejected" || (value && value.ok === false)) {
-          console.error("agent-monitor: telegram send failed", telegramQueue[index].chatId, result.reason || value);
+          console.error("agent-monitor: telegram send failed", claim.telegramQueue[index].chatId, result.reason || value);
         }
       });
     } catch (error) {

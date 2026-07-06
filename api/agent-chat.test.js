@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit, formatRecentDialogue, isCreateAffirmation, lastAssistantListContent } from "./agent-chat.js";
+import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit, formatRecentDialogue, isCreateAffirmation, lastAssistantListContent, isLikelyTextTaskContinuation } from "./agent-chat.js";
 
 describe("isCreateAffirmation + lastAssistantListContent (создание из списка агента)", () => {
   it("короткие команды создания распознаются, болтовня — нет", () => {
@@ -23,6 +23,25 @@ describe("isCreateAffirmation + lastAssistantListContent (создание из 
     expect(lastAssistantListContent(table)).toContain("Смета");
     expect(lastAssistantListContent([{ role: "assistant", content: "без списка" }])).toBe(null);
     expect(lastAssistantListContent(null)).toBe(null);
+  });
+});
+
+describe("isLikelyTextTaskContinuation", () => {
+  it("does not treat thanks or normal info questions as task-creation continuations", () => {
+    expect(isLikelyTextTaskContinuation("спасибо большое")).toBe(false);
+    expect(isLikelyTextTaskContinuation("какие сроки по Абрау?")).toBe(false);
+  });
+
+  it("keeps explicit project/assignee/deadline clarifications as continuations", () => {
+    expect(isLikelyTextTaskContinuation("в проект Абрау")).toBe(true);
+    expect(isLikelyTextTaskContinuation("без ответственных")).toBe(true);
+    expect(isLikelyTextTaskContinuation("срок завтра")).toBe(true);
+  });
+
+  it("allows a short answer only after the agent asked for clarification", () => {
+    const afterBase = [{ role: "assistant", content: "Не понял, кому поставить задачу. Назовите имена участников." }];
+    expect(isLikelyTextTaskContinuation("Тэко Исаев", afterBase)).toBe(true);
+    expect(isLikelyTextTaskContinuation("Тэко Исаев", [])).toBe(false);
   });
 });
 
@@ -855,6 +874,57 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(payload.messages[1].content).toContain("Текущая дата: 2026-07-03.");
   });
 
+  it("marks an assignee without access to the target project as not creatable", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "admin" },
+      orgUsers: [
+        {
+          id: "u-locked",
+          organizationId: "org-1",
+          firstName: "Закрытый",
+          lastName: "Исполнитель",
+          displayName: "Закрытый Исполнитель",
+          orgRole: "employee",
+          allowedProjects: ["p-other"],
+        },
+      ],
+      projects: [{ id: "p-abrau", name: "Абрау-Дюрсо", organizationId: "org-1" }],
+      tasks: [],
+      filesByProject: {},
+    });
+    fetchJsonWithTimeout.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              action: "propose_tasks",
+              file: "текстовый запрос",
+              tasks: [{ title: "Проверка связи", deadline: "2026-07-03", assigneeName: "Закрытый Исполнитель" }],
+              hasMore: false,
+            }),
+          },
+        }],
+      },
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      message: "поставь задачу закрытому исполнителю в проекте абрау проверка связи, срок сегодня",
+      clientToday: "2026-07-03",
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.taskProposal.tasks[0]).toMatchObject({
+      ok: false,
+      reason: "ответственный не найден среди участников HoldingMan",
+    });
+    const [, options] = fetchJsonWithTimeout.mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.messages[1].content).toContain("Участники HoldingMan для сопоставления ответственных: нет участников");
+  });
+
   it("continues a text task creation flow after the user only clarifies the project", async () => {
     state.db = makeFakeDb({
       userDoc: { organizationId: "org-1", orgRole: "owner", firstName: "Тэко", lastName: "Исаев" },
@@ -908,6 +978,48 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     const payload = JSON.parse(options.body);
     expect(payload.messages[1].content).toContain("Исходное поручение");
     expect(payload.messages[1].content).toContain("- абрау");
+  });
+
+  it("does not turn a normal follow-up question after a create request into another task proposal", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
+      projects: [{ id: "p-abrau", name: "Абрау-Дюрсо", organizationId: "org-1" }],
+      tasks: [{ id: "t1", projectId: "p-abrau", title: "Смета", deadline: "2026-07-10", status: "in-progress" }],
+      filesByProject: {},
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      message: "какие сроки по Абрау?",
+      history: [
+        { role: "user", content: "создай задачу по смете в проекте Абрау" },
+        { role: "assistant", content: "Предложены задачи из текстового запроса: к созданию 1 из 1." },
+      ],
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.answer).toBe("AI answer");
+    const [, options] = fetchJsonWithTimeout.mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.messages[0].role).toBe("system");
+    expect(payload.messages.at(-1)).toEqual({ role: "user", content: "какие сроки по Абрау?" });
+  });
+
+  it("create_tasks failures use HTTP errors, not ok:true chat answers", async () => {
+    state.db = makeFakeDb({
+      userDoc: { orgRole: "admin" },
+      projects: [{ id: "p1", name: "P", organizationId: "org-1" }],
+    });
+    const res = mockResponse();
+    await handler(makeRequest({
+      action: "create_tasks",
+      projectId: "p1",
+      tasks: [{ title: "Task", deadline: null, assigneeUid: null }],
+    }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.ok).not.toBe(true);
+    expect(res.body.error).toContain("организации");
   });
 
   it("does not call the model when an employee asks the agent to create a task", async () => {

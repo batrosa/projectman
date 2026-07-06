@@ -94,23 +94,11 @@ service cloud.firestore {
 
     function canReaderWorkOnTask() {
       return request.auth != null
+        && (projectBelongsToOrg(resource.data.projectId, myOrgId()) || isOrgMember(resource.data.organizationId))
         && canViewProject(resource.data.projectId)
         && (!('assigneeIds' in resource.data)
             || resource.data.assigneeIds.size() == 0
             || resource.data.assigneeIds.hasAny([request.auth.uid]));
-    }
-
-    function isOrgUserManagerUpdate() {
-      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
-      let managerData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-      return request.auth != null
-        && changedKeys.hasOnly(['orgRole', 'allowedProjects', 'organizationId'])
-        && managerData.organizationId != null
-        && resource.data.organizationId == managerData.organizationId
-        && managerData.orgRole in ['owner', 'admin']
-        && (request.resource.data.organizationId == resource.data.organizationId || request.resource.data.organizationId == null)
-        && request.resource.data.orgRole in ['admin', 'moderator', 'employee', 'reader', null]
-        && (managerData.orgRole == 'owner' || (resource.data.orgRole != 'owner' && request.resource.data.orgRole != 'owner'));
     }
 
     // (isOrgUserStatsUpdate removed — XP/stats are server-only now; see api/award-xp.)
@@ -143,15 +131,12 @@ service cloud.firestore {
         && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader');
       
       // Обновлять: сам пользователь (но БЕЗ защищённых полей —
-      // notUpdatingRestrictedFields) ИЛИ менеджер орг (orgRole/allowedProjects,
-      // isOrgUserManagerUpdate) ИЛИ Админ. Все «оргоперации» клиента убраны и
-      // теперь только серверные: JOIN/LEAVE/REMOVE (api/join-org, api/org),
-      // create-org (api/org), начисление XP/stats (api/award-xp). Клиент не
-      // может ни присвоить себе orgRole/organizationId, ни накрутить XP, ни
-      // сменить telegramChatId.
+      // notUpdatingRestrictedFields) ИЛИ глобальный админ. Все оргоперации и
+      // управление ролями/allowedProjects идут только через server-side API
+      // (api/org, api/join-org) с Admin SDK. Прямой клиентский manager-update
+      // убран: он расходился с серверными ограничениями для admin/admin.
       allow update: if (request.auth != null && request.auth.uid == userId
                          && notUpdatingRestrictedFields())
-                    || isOrgUserManagerUpdate()
                     || isAdmin();
 
       // Удалять: Только Админ
@@ -181,7 +166,7 @@ service cloud.firestore {
       // (раньше любой авторизованный мог получить список всех организаций и их
       // inviteCode). Превью по коду, создание и смена кода теперь только
       // серверные (api/org, api/join-org) через Admin SDK.
-      allow get: if isOrgMember(orgId) || isAdmin();
+      allow get: if isOrgOwnerOrAdmin(orgId) || isAdmin();
       allow list: if false;
       // Создание организации — ТОЛЬКО сервер (api/org 'create', Admin SDK): он
       // генерирует уникальный inviteCode, выставляет membersCount/plan/settings

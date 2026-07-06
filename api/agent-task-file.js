@@ -166,12 +166,13 @@ export default async function handler(request, response) {
 
   const users = await loadOrgUsers(db, organizationId);
   if (!users.ok) return response.status(200).json({ ok: true, answer: users.answer });
+  const assignableUsers = users.users.filter((u) => userHasProjectAccessForAssignment(u, project.id));
 
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   if (!openRouterKey) {
     const fallback = await buildFallbackTaskProposal({
       fileText,
-      users: users.users,
+      users: assignableUsers,
       file: payload.file,
       project,
       userMessage: payload.message,
@@ -181,7 +182,7 @@ export default async function handler(request, response) {
     return response.status(200).json({ ok: true, answer: "ИИ-агент временно недоступен (не настроен OpenRouter)." });
   }
 
-  const membersText = users.users.map((u) => displayName(u)).filter(Boolean).join(", ");
+  const membersText = assignableUsers.map((u) => displayName(u)).filter(Boolean).join(", ");
   const userPrompt = [
     `Проект для создаваемых задач: ${project.name || "без названия"}.`,
     `Файл: ${payload.file.filename}.`,
@@ -195,7 +196,7 @@ export default async function handler(request, response) {
   if (!llm.ok) {
     const fallback = await buildFallbackTaskProposal({
       fileText,
-      users: users.users,
+      users: assignableUsers,
       file: payload.file,
       project,
       userMessage: payload.message,
@@ -208,7 +209,7 @@ export default async function handler(request, response) {
   const proposal = await buildTaskProposal({
     db,
     rawAnswer: llm.answer,
-    users: users.users,
+    users: assignableUsers,
     file: payload.file,
     project,
     extractedTruncated: extracted.truncated === true,
@@ -471,6 +472,14 @@ function filterAccessibleProjects(projects, callerData) {
   if (!Array.isArray(allowed) || allowed.length === 0) return projects;
   const set = new Set(allowed.filter((id) => id !== NO_ACCESS_SENTINEL));
   return projects.filter((p) => set.has(p.id));
+}
+
+function userHasProjectAccessForAssignment(userData, projectId) {
+  if (!userData || !projectId) return false;
+  if (["owner", "admin"].includes(userData.orgRole)) return true;
+  const allowed = userData.allowedProjects;
+  if (!Array.isArray(allowed) || allowed.length === 0) return true;
+  return allowed.includes(projectId);
 }
 
 function displayName(user) {

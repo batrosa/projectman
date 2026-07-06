@@ -92,7 +92,7 @@ describe("users doc — XP/stats are server-only", () => {
     }));
   });
 
-  it("still lets an owner change another member's orgRole/allowedProjects (manager update intact)", async () => {
+  it("blocks direct client orgRole/allowedProjects manager writes; api/org is the only path", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("users").doc("owner2").set({
         role: "reader", organizationId: "org-2", orgRole: "owner",
@@ -103,7 +103,7 @@ describe("users doc — XP/stats are server-only", () => {
     });
 
     const owner2 = testEnv.authenticatedContext("owner2").firestore();
-    await assertSucceeds(owner2.collection("users").doc("emp2").update({
+    await assertFails(owner2.collection("users").doc("emp2").update({
       orgRole: "moderator",
       allowedProjects: ["p1"],
     }));

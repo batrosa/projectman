@@ -1021,6 +1021,35 @@
                 </div>
             </div>
 
+            <!-- Gantt view: alternative to the kanban board, toggled from the
+                 sidebar view switcher under the active project. Only one of
+                 #board-container / #gantt-container is .active at a time. -->
+            <div class="gantt-container" id="gantt-container">
+                <div class="gantt-toolbar">
+                    <div class="gantt-year-nav">
+                        <button type="button" id="gantt-prev-year" class="gantt-year-btn" title="Предыдущий год">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <select id="gantt-year-select" class="gantt-year-select" title="Год"></select>
+                        <button type="button" id="gantt-next-year" class="gantt-year-btn" title="Следующий год">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="gantt-legend">
+                        <span class="gantt-legend-item"><span class="gantt-legend-dot assigned"></span>Назначенные</span>
+                        <span class="gantt-legend-item"><span class="gantt-legend-dot in-progress"></span>В процессе</span>
+                        <span class="gantt-legend-item"><span class="gantt-legend-dot review"></span>На проверке</span>
+                        <span class="gantt-legend-item"><span class="gantt-legend-dot done"></span>Готово</span>
+                        <span class="gantt-legend-note" id="gantt-no-deadline-note"></span>
+                    </div>
+                </div>
+                <div class="gantt-scroll" id="gantt-scroll"></div>
+                <div class="gantt-empty" id="gantt-empty" style="display: none;">
+                    <i class="fa-solid fa-chart-gantt"></i>
+                    <p id="gantt-empty-text">Нет задач со сроками</p>
+                </div>
+            </div>
+
             <div id="empty-state" class="empty-state">
                 <i class="fa-solid fa-clipboard-list"></i>
                 <p>Выберите проект слева, чтобы увидеть задачи</p>

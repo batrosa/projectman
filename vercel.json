@@ -9,6 +9,9 @@
     },
     "api/agent-task-file.js": {
       "maxDuration": 60
+    },
+    "api/agent-monitor.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

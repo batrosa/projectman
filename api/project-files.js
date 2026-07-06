@@ -57,12 +57,14 @@ export function extensionOf(filename) {
   return clean.slice(idx + 1);
 }
 
-// Whether the caller may act on a project's files. Mirrors the Firestore
-// canViewProject rule + owner/admin bypass: owner/admin → any project in their
-// org; everyone else → only projects in their allowedProjects (empty/absent =
-// all). Org membership for the project is checked separately by the caller.
-function callerCanAccessProject(orgRole, allowedProjects, projectId) {
+// Whether the caller may write a project's knowledge-base files. Mirrors task
+// management rights: owner/admin may manage any project in their org; a
+// moderator may manage only projects in allowedProjects (empty/absent = all).
+// Employees/readers may read project files via Firestore rules, but cannot
+// upload/delete knowledge-base entries.
+export function callerCanManageProjectFiles(orgRole, allowedProjects, projectId) {
   if (orgRole === "owner" || orgRole === "admin") return true;
+  if (orgRole !== "moderator") return false;
   if (!Array.isArray(allowedProjects) || allowedProjects.length === 0) return true;
   return allowedProjects.includes(projectId);
 }
@@ -138,7 +140,7 @@ export default async function handler(request, response) {
     if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
       return response.status(403).json({ error: "Forbidden" });
     }
-    if (!callerCanAccessProject(callerOrgRole, callerAllowedProjects, projectId)) {
+    if (!callerCanManageProjectFiles(callerOrgRole, callerAllowedProjects, projectId)) {
       return response.status(403).json({ error: "Forbidden — no access to this project" });
     }
 
@@ -175,7 +177,7 @@ export default async function handler(request, response) {
   if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
     return response.status(403).json({ error: "Forbidden" });
   }
-  if (!callerCanAccessProject(callerOrgRole, callerAllowedProjects, projectId)) {
+  if (!callerCanManageProjectFiles(callerOrgRole, callerAllowedProjects, projectId)) {
     return response.status(403).json({ error: "Forbidden — no access to this project" });
   }
 

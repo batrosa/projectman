@@ -78,6 +78,24 @@ function publicUserFields(userData = {}) {
   };
 }
 
+function canSeeInviteCode(orgRole) {
+  return orgRole === "owner" || orgRole === "admin";
+}
+
+function organizationPayload(orgId, orgData = {}, orgRole, membersCount = orgData.membersCount || 0) {
+  const organization = {
+    id: orgId,
+    name: orgData.name || "",
+    ownerId: orgData.ownerId || null,
+    membersCount,
+    settings: orgData.settings || null,
+  };
+  if (canSeeInviteCode(orgRole)) {
+    organization.inviteCode = orgData.inviteCode || null;
+  }
+  return organization;
+}
+
 function activeUserPatch(orgId, orgRole, allowedProjects) {
   const patch = { organizationId: orgId, orgRole };
   if (Array.isArray(allowedProjects)) patch.allowedProjects = allowedProjects;
@@ -258,6 +276,37 @@ export default async function handler(request, response) {
     }
   }
 
+  if (action === "current") {
+    const requestedOrgId = String(body.organizationId || "").trim();
+    try {
+      const userData = await loadCaller(db, decoded.uid);
+      if (!userData) return response.status(403).json({ error: "Профиль не найден" });
+      const orgId = userData.organizationId || null;
+      if (!orgId) return response.status(404).json({ error: "Организация не выбрана" });
+      if (requestedOrgId && requestedOrgId !== orgId) {
+        return response.status(403).json({ error: "Нет доступа к этой организации" });
+      }
+      await ensureActiveMembership(db, decoded.uid, userData);
+      const [orgSnap, backfill] = await Promise.all([
+        db.collection("organizations").doc(orgId).get(),
+        backfillLegacyMembershipsForOrg(db, orgId),
+      ]);
+      if (!orgSnap.exists) return response.status(404).json({ error: "Организация не найдена" });
+      const orgData = orgSnap.data() || {};
+      const orgRole = userData.orgRole || "employee";
+      const membersCount = Math.max(orgData.membersCount || 0, backfill.memberships || 0, backfill.legacyUsers || 0);
+      return response.status(200).json({
+        ok: true,
+        orgRole,
+        allowedProjects: Array.isArray(userData.allowedProjects) ? userData.allowedProjects : [],
+        organization: organizationPayload(orgId, orgData, orgRole, membersCount),
+      });
+    } catch (error) {
+      console.error("org current failed", error);
+      return response.status(500).json({ error: "Не удалось загрузить организацию" });
+    }
+  }
+
   // ── Switch the caller's ACTIVE organization. Existing Firestore rules and
   // client screens still use users/{uid}.organizationId/orgRole as the active
   // org scope, while organizationMemberships is the durable multi-org registry.
@@ -302,14 +351,7 @@ export default async function handler(request, response) {
         ok: true,
         orgRole,
         allowedProjects: allowedProjects || [],
-        organization: {
-          id: orgId,
-          name: orgData.name || "",
-          inviteCode: orgData.inviteCode || null,
-          ownerId: orgData.ownerId || null,
-          membersCount,
-          settings: orgData.settings || null,
-        },
+        organization: organizationPayload(orgId, orgData, orgRole, membersCount),
       });
     } catch (error) {
       console.error("org switch failed", error);

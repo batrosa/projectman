@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateUpload, extensionOf, isAllowedFileUrl, ALLOWED_EXTENSIONS, MAX_FILE_BYTES } from "./project-files.js";
+import { validateUpload, extensionOf, isAllowedFileUrl, ALLOWED_EXTENSIONS, MAX_FILE_BYTES, callerCanManageProjectFiles } from "./project-files.js";
 
 describe("extensionOf", () => {
   it("is case-insensitive", () => {
@@ -126,5 +126,23 @@ describe("isAllowedFileUrl", () => {
 
   it("rejects an http (non-https) URL even on the right host", () => {
     expect(isAllowedFileUrl("http://res.cloudinary.com/dwoa1lqz1/raw/upload/x.pdf")).toBe(false);
+  });
+});
+
+describe("callerCanManageProjectFiles", () => {
+  it("allows owner/admin for any org project", () => {
+    expect(callerCanManageProjectFiles("owner", ["other"], "p1")).toBe(true);
+    expect(callerCanManageProjectFiles("admin", ["other"], "p1")).toBe(true);
+  });
+
+  it("allows moderators only inside their project access list", () => {
+    expect(callerCanManageProjectFiles("moderator", [], "p1")).toBe(true);
+    expect(callerCanManageProjectFiles("moderator", ["p1"], "p1")).toBe(true);
+    expect(callerCanManageProjectFiles("moderator", ["p2"], "p1")).toBe(false);
+  });
+
+  it("blocks employee/reader even when they can read the project", () => {
+    expect(callerCanManageProjectFiles("employee", [], "p1")).toBe(false);
+    expect(callerCanManageProjectFiles("reader", ["p1"], "p1")).toBe(false);
   });
 });

@@ -699,9 +699,8 @@ async function regenerateInviteCode() {
 
 // Get organization by ID
 async function getOrganization(orgId) {
-    const doc = await db.collection('organizations').doc(orgId).get();
-    if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() };
+    const result = await callOrgApi('current', { organizationId: orgId });
+    return result.organization || null;
 }
 
 // Find organization by invite code (for the join preview card). Server-side
@@ -1637,6 +1636,8 @@ let state = {
 
     activeProjectId: null,
     boardView: 'assigned', // 'assigned' | 'in-progress' | 'done' (single-column board)
+    projectView: 'kanban', // 'kanban' | 'gantt' — main-area view for the active project
+    ganttYear: null, // Selected Gantt year; null = current year on first render
     role: 'guest', // Legacy role, now use orgRole
     orgRole: 'employee', // owner / admin / moderator / employee
     initialLoadDone: false, // To prevent selecting first project on every update
@@ -1649,6 +1650,14 @@ let state = {
 const elements = {
     projectList: document.getElementById('project-list'),
     boardContainer: document.getElementById('board-container'),
+    ganttContainer: document.getElementById('gantt-container'),
+    ganttScroll: document.getElementById('gantt-scroll'),
+    ganttEmpty: document.getElementById('gantt-empty'),
+    ganttEmptyText: document.getElementById('gantt-empty-text'),
+    ganttYearSelect: document.getElementById('gantt-year-select'),
+    ganttPrevYear: document.getElementById('gantt-prev-year'),
+    ganttNextYear: document.getElementById('gantt-next-year'),
+    ganttNoDeadlineNote: document.getElementById('gantt-no-deadline-note'),
     emptyState: document.getElementById('empty-state'),
     projectTitle: document.getElementById('project-title'),
     projectDesc: document.getElementById('project-desc'),
@@ -1854,7 +1863,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.3'; // Multi-org roster legacy fallback
+    const CURRENT_VERSION = '6.4'; // Gantt roadmap view
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -1949,6 +1958,14 @@ function subscribeToOwnUserDoc() {
         // Removed from / moved out of the organization we're currently in.
         if (state.organization && data.organizationId !== state.organization.id) {
             if (orgSwitchInProgress) return;
+            // Right after an org switch this listener is re-subscribed and its
+            // FIRST snapshot comes from the IndexedDB cache, where the doc
+            // still holds the PREVIOUS organizationId (orgSwitchInProgress is
+            // already false by then — it's cleared on a 0-ms timer). That
+            // stale cached snapshot must not be treated as a revoked access:
+            // it caused an endless "доступ изменился" alert+reload loop on
+            // every org switch. A real kick arrives as a server snapshot.
+            if (doc.metadata.fromCache) return;
             if (ownUserDocListenerUnsubscribe) {
                 ownUserDocListenerUnsubscribe();
                 ownUserDocListenerUnsubscribe = null;
@@ -2211,6 +2228,9 @@ function extractionStatusLabel(status) {
 function renderProjectFilesList() {
     const list = elements.projectFilesList;
     if (!list) return;
+    if (elements.addProjectFileBtn) {
+        elements.addProjectFileBtn.style.display = canManageTasks() ? 'inline-flex' : 'none';
+    }
 
     list.innerHTML = '';
 
@@ -2264,22 +2284,23 @@ function renderProjectFilesList() {
         item.appendChild(iconWrap);
         item.appendChild(info);
 
-        // Delete button — lets the user remove a file uploaded by mistake so the
-        // AI agent no longer reads its (wrong) content. stopPropagation keeps the
-        // row's open-in-new-tab onclick from firing when the button is clicked.
-        const deleteBtn = document.createElement('button');
-        deleteBtn.type = 'button';
-        deleteBtn.className = 'file-delete-btn';
-        deleteBtn.title = 'Удалить файл';
-        deleteBtn.setAttribute('aria-label', `Удалить файл ${file.filename || ''}`);
-        const trashIcon = document.createElement('i');
-        trashIcon.className = 'fa-solid fa-trash';
-        deleteBtn.appendChild(trashIcon);
-        deleteBtn.onclick = (e) => {
-            e.stopPropagation();
-            deleteProjectFile(file.id, file.filename || 'Файл');
-        };
-        item.appendChild(deleteBtn);
+        if (canManageTasks()) {
+            // Delete button — lets a project manager remove a file uploaded by
+            // mistake so the AI agent no longer reads its content.
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'file-delete-btn';
+            deleteBtn.title = 'Удалить файл';
+            deleteBtn.setAttribute('aria-label', `Удалить файл ${file.filename || ''}`);
+            const trashIcon = document.createElement('i');
+            trashIcon.className = 'fa-solid fa-trash';
+            deleteBtn.appendChild(trashIcon);
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                deleteProjectFile(file.id, file.filename || 'Файл');
+            };
+            item.appendChild(deleteBtn);
+        }
 
         list.appendChild(item);
     });
@@ -2292,6 +2313,10 @@ async function deleteProjectFile(fileId, filename) {
     if (!fileId) return;
     const projectId = state.activeProjectId;
     if (!projectId) return;
+    if (!canManageTasks()) {
+        alert('Недостаточно прав для удаления файлов проекта');
+        return;
+    }
 
     if (!confirm(`Удалить файл «${filename}»? Агент перестанет использовать его содержимое.`)) {
         return;
@@ -2378,6 +2403,10 @@ async function handleProjectFileSelect(event) {
     const file = event.target.files[0];
     event.target.value = ''; // Reset input so selecting the same file again re-triggers change
     if (!file) return;
+    if (!canManageTasks()) {
+        alert('Загружать файлы проекта может владелец, админ или модератор.');
+        return;
+    }
 
     const projectId = state.activeProjectId;
     if (!projectId) {
@@ -2574,6 +2603,14 @@ function updateTask(id, data) {
         });
 }
 
+function sortedIdList(ids) {
+    return (Array.isArray(ids) ? ids : []).filter(Boolean).slice().sort();
+}
+
+function sameIdList(a, b) {
+    return JSON.stringify(sortedIdList(a)) === JSON.stringify(sortedIdList(b));
+}
+
 function openEditTaskModal(task) {
     elements.taskForm.reset();
 
@@ -2644,7 +2681,36 @@ function renderProjects() {
                 ${deadlineHtml}
             </div>
         `;
-        li.onclick = () => {
+        // Kanban/Gantt view switcher appears only under the ACTIVE project.
+        // Built with DOM methods (static labels, no user data).
+        if (project.id === state.activeProjectId) {
+            const switchWrap = document.createElement('div');
+            switchWrap.className = 'project-view-switch';
+            [
+                { view: 'kanban', icon: 'fa-table-columns', label: 'Канбан' },
+                { view: 'gantt', icon: 'fa-chart-gantt', label: 'Гант' }
+            ].forEach(({ view, icon, label }) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'view-switch-btn' + (state.projectView === view ? ' active' : '');
+                btn.dataset.pview = view;
+                const iconEl = document.createElement('i');
+                iconEl.className = `fa-solid ${icon}`;
+                btn.appendChild(iconEl);
+                btn.appendChild(document.createTextNode(' ' + label));
+                switchWrap.appendChild(btn);
+            });
+            li.querySelector('.project-item-content')?.appendChild(switchWrap);
+        }
+
+        li.onclick = (e) => {
+            const viewBtn = e.target.closest('.view-switch-btn');
+            if (viewBtn) {
+                playClickSound();
+                setProjectView(viewBtn.dataset.pview);
+                closeSidebarOnMobile();
+                return;
+            }
             playClickSound();
             selectProject(project.id);
             closeSidebarOnMobile();
@@ -2658,6 +2724,7 @@ function renderBoard() {
 
     if (!activeProject) {
         elements.boardContainer.classList.remove('active');
+        if (elements.ganttContainer) elements.ganttContainer.classList.remove('active');
         elements.emptyState.style.display = 'flex';
         elements.projectTitle.textContent = 'Выберите проект';
         elements.projectDesc.textContent = 'или создайте новый';
@@ -2668,7 +2735,11 @@ function renderBoard() {
         return;
     }
 
-    elements.boardContainer.classList.add('active');
+    // Only one of the two views is visible; the kanban lists below are still
+    // (re)built even in Gantt mode so counts and columns stay fresh on switch.
+    const isGanttView = state.projectView === 'gantt';
+    elements.boardContainer.classList.toggle('active', !isGanttView);
+    if (elements.ganttContainer) elements.ganttContainer.classList.toggle('active', isGanttView);
     elements.emptyState.style.display = 'none';
     elements.projectTitle.textContent = activeProject.name;
 
@@ -2785,6 +2856,9 @@ function renderBoard() {
 
     // Keep the correct visible column (single-column view)
     setBoardView(state.boardView || 'assigned');
+
+    // Gantt renders from the same tasks snapshot, so it live-updates too
+    if (isGanttView) renderGantt();
 }
 
 // --- NEW TASK CARD WITH STATUS BADGES ---
@@ -4234,6 +4308,308 @@ function setBoardView(view) {
 
 // Board selector now opens modal on mobile
 
+// ===== Project view: kanban <-> gantt =====
+function setProjectView(view) {
+    const next = view === 'gantt' ? 'gantt' : 'kanban';
+    if (state.projectView === next) return;
+    state.projectView = next;
+    renderProjects(); // refresh switcher active state under the project
+    renderBoard();    // toggles containers; renders the gantt if needed
+}
+
+// ===== Gantt chart =====
+const GANTT_DAY_PX = 24;      // px per day column
+const GANTT_DAY_MS = 24 * 60 * 60 * 1000;
+let ganttUiWired = false;
+let ganttLastScrollKey = null; // "projectId:year" of the last render — keeps
+// scroll position across live task-snapshot re-renders
+
+// task.deadline is a YYYY-MM-DD string from <input type=date>; parse it in the
+// LOCAL timezone (new Date('YYYY-MM-DD') gives UTC midnight and can shift the
+// bar a day for western timezones). Other shapes go through getFirestoreDateMs.
+function parseDateOnlyMs(value) {
+    if (!value) return 0;
+    if (typeof value === 'string') {
+        const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime();
+    }
+    return getFirestoreDateMs(value);
+}
+
+function ganttDayIndex(ms, yearStartMs) {
+    // Math.round absorbs DST shifts (a local "day" can be 23/25 hours)
+    return Math.round((ms - yearStartMs) / GANTT_DAY_MS);
+}
+
+function wireGanttControls() {
+    if (ganttUiWired) return;
+    ganttUiWired = true;
+
+    if (elements.ganttYearSelect) {
+        elements.ganttYearSelect.addEventListener('change', () => {
+            playClickSound();
+            const y = parseInt(elements.ganttYearSelect.value, 10);
+            if (!Number.isNaN(y)) {
+                state.ganttYear = y;
+                renderGantt();
+            }
+        });
+    }
+    if (elements.ganttPrevYear) {
+        elements.ganttPrevYear.addEventListener('click', () => {
+            playClickSound();
+            state.ganttYear = (state.ganttYear || new Date().getFullYear()) - 1;
+            renderGantt();
+        });
+    }
+    if (elements.ganttNextYear) {
+        elements.ganttNextYear.addEventListener('click', () => {
+            playClickSound();
+            state.ganttYear = (state.ganttYear || new Date().getFullYear()) + 1;
+            renderGantt();
+        });
+    }
+    if (elements.ganttScroll) {
+        // One delegated handler: click on a row label or its bar opens the task
+        elements.ganttScroll.addEventListener('click', (e) => {
+            const row = e.target.closest('[data-gantt-task]');
+            if (!row) return;
+            const task = state.tasks.find(t => t.id === row.dataset.ganttTask);
+            if (task) {
+                playClickSound();
+                openTaskDetailsModal(task);
+            }
+        });
+    }
+}
+
+function renderGantt() {
+    if (!elements.ganttContainer || !elements.ganttScroll) return;
+    wireGanttControls();
+
+    const scrollEl = elements.ganttScroll;
+
+    // --- collect chart items: bar = createdAt .. deadline ---
+    const projectTasks = state.tasks.filter(t => t.projectId === state.activeProjectId);
+    const items = [];
+    let noDeadlineCount = 0;
+    projectTasks.forEach(task => {
+        const endMs = parseDateOnlyMs(task.deadline);
+        if (!endMs) {
+            noDeadlineCount++; // tasks without a deadline are not charted
+            return;
+        }
+        let startMs = getFirestoreDateMs(task.createdAt) || getFirestoreDateMs(task.assignedAt) || endMs;
+        const s = new Date(startMs);
+        startMs = new Date(s.getFullYear(), s.getMonth(), s.getDate()).getTime(); // local midnight
+        if (startMs > endMs) startMs = endMs; // created after its own deadline
+        items.push({ task, startMs, endMs });
+    });
+
+    // --- year selector: years covered by tasks + current + selected ---
+    const currentYear = new Date().getFullYear();
+    if (!state.ganttYear) state.ganttYear = currentYear;
+    const year = state.ganttYear;
+    const yearsSet = new Set([currentYear, year]);
+    items.forEach(it => {
+        yearsSet.add(new Date(it.startMs).getFullYear());
+        yearsSet.add(new Date(it.endMs).getFullYear());
+    });
+    if (elements.ganttYearSelect) {
+        elements.ganttYearSelect.textContent = '';
+        [...yearsSet].sort((a, b) => a - b).forEach(y => {
+            const opt = document.createElement('option');
+            opt.value = String(y);
+            opt.textContent = String(y);
+            if (y === year) opt.selected = true;
+            elements.ganttYearSelect.appendChild(opt);
+        });
+    }
+    if (elements.ganttNoDeadlineNote) {
+        elements.ganttNoDeadlineNote.textContent = noDeadlineCount
+            ? `Без срока: ${noDeadlineCount} — не на диаграмме`
+            : '';
+    }
+
+    // --- timeline geometry for the selected year ---
+    const yearStart = new Date(year, 0, 1).getTime();
+    const yearEnd = new Date(year + 1, 0, 1).getTime(); // exclusive
+    const totalDays = ganttDayIndex(yearEnd, yearStart);
+    const now = new Date();
+    const todayIdx = ganttDayIndex(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), yearStart);
+    const todayInYear = todayIdx >= 0 && todayIdx < totalDays;
+
+    const visible = items
+        .filter(it => it.endMs >= yearStart && it.startMs < yearEnd)
+        .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+
+    const hasBars = visible.length > 0;
+    scrollEl.style.display = hasBars ? '' : 'none';
+    if (elements.ganttEmpty) elements.ganttEmpty.style.display = hasBars ? 'none' : 'flex';
+    if (!hasBars) {
+        if (elements.ganttEmptyText) {
+            elements.ganttEmptyText.textContent = items.length
+                ? `В ${year} году нет задач со сроками — выберите другой год`
+                : 'В проекте нет задач со сроками';
+        }
+        scrollEl.textContent = '';
+        ganttLastScrollKey = null;
+        return;
+    }
+
+    const prevLeft = scrollEl.scrollLeft;
+    const prevTop = scrollEl.scrollTop;
+
+    // Weekend band phase: day index of the first Saturday relative to Jan 1
+    // (-1 when Jan 1 is a Sunday — the band starts on the previous Saturday)
+    const jan1Dow = new Date(year, 0, 1).getDay(); // 0=Sun..6=Sat
+    let weekendOffsetDays = (6 - jan1Dow + 7) % 7;
+    if (weekendOffsetDays === 6) weekendOffsetDays = -1;
+
+    const table = document.createElement('div');
+    table.className = 'gantt-table';
+    table.style.setProperty('--gantt-day', GANTT_DAY_PX + 'px');
+    table.style.setProperty('--gantt-weekend-offset', (weekendOffsetDays * GANTT_DAY_PX) + 'px');
+
+    const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+    // --- header: month row + day-numbers row ---
+    const head = document.createElement('div');
+    head.className = 'gantt-head';
+    const headLeft = document.createElement('div');
+    headLeft.className = 'gantt-head-left';
+    headLeft.textContent = `Задачи (${visible.length})`;
+    head.appendChild(headLeft);
+
+    const headRight = document.createElement('div');
+    headRight.className = 'gantt-head-right';
+    const monthsRow = document.createElement('div');
+    monthsRow.className = 'gantt-months-row';
+    const daysRow = document.createElement('div');
+    daysRow.className = 'gantt-days-row';
+
+    const monthStartIdx = [];
+    for (let m = 0; m < 12; m++) {
+        const mStartIdx = ganttDayIndex(new Date(year, m, 1).getTime(), yearStart);
+        const mDays = ganttDayIndex(new Date(year, m + 1, 1).getTime(), yearStart) - mStartIdx;
+        monthStartIdx.push(mStartIdx);
+
+        const mCell = document.createElement('div');
+        mCell.className = 'gantt-month';
+        mCell.style.width = (mDays * GANTT_DAY_PX) + 'px';
+        const mLabel = document.createElement('span'); // sticky, see .gantt-month>span
+        mLabel.textContent = monthNames[m];
+        mCell.appendChild(mLabel);
+        monthsRow.appendChild(mCell);
+
+        for (let d = 1; d <= mDays; d++) {
+            const dow = new Date(year, m, d).getDay();
+            const dCell = document.createElement('span');
+            dCell.className = 'gantt-day'
+                + (dow === 0 || dow === 6 ? ' weekend' : '')
+                + (todayInYear && mStartIdx + d - 1 === todayIdx ? ' today' : '');
+            dCell.style.width = GANTT_DAY_PX + 'px';
+            dCell.textContent = String(d);
+            daysRow.appendChild(dCell);
+        }
+    }
+    headRight.appendChild(monthsRow);
+    headRight.appendChild(daysRow);
+    head.appendChild(headRight);
+    table.appendChild(head);
+
+    // --- body: a row per task, bar colored by the task's status ---
+    const body = document.createElement('div');
+    body.className = 'gantt-body';
+    const totalW = totalDays * GANTT_DAY_PX;
+    const fmtDay = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    const fmtFull = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const statusLabels = { assigned: 'Назначена', 'in-progress': 'В процессе', review: 'На проверке', done: 'Готово' };
+
+    visible.forEach(({ task, startMs, endMs }) => {
+        const row = document.createElement('div');
+        row.className = 'gantt-row';
+        row.dataset.ganttTask = task.id;
+
+        const label = document.createElement('div');
+        label.className = 'gantt-row-label';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'gantt-row-title';
+        titleEl.textContent = task.title || 'Без названия';
+        const metaEl = document.createElement('div');
+        metaEl.className = 'gantt-row-meta';
+        metaEl.textContent = `${fmtDay(startMs)} – ${fmtDay(endMs)}`
+            + (task.assignee && task.assignee !== 'Не назначен' ? ` • ${task.assignee}` : '');
+        label.appendChild(titleEl);
+        label.appendChild(metaEl);
+        row.appendChild(label);
+
+        const track = document.createElement('div');
+        track.className = 'gantt-row-track';
+        track.style.width = totalW + 'px';
+
+        const rawStart = ganttDayIndex(startMs, yearStart);
+        const rawEnd = ganttDayIndex(endMs, yearStart) + 1; // deadline day inclusive
+        const startIdx = Math.max(rawStart, 0);
+        const endIdx = Math.min(Math.max(rawEnd, startIdx + 1), totalDays);
+
+        // Same status->color mapping as the kanban tabs (boardViewForTask)
+        const status = boardViewForTask(task);
+        const isOverdue = task.status !== 'done' && endMs + GANTT_DAY_MS <= Date.now();
+
+        const bar = document.createElement('div');
+        bar.className = `gantt-bar status-${status}`
+            + (isOverdue ? ' overdue' : '')
+            + (rawStart < 0 ? ' clip-left' : '')
+            + (rawEnd > totalDays ? ' clip-right' : '');
+        bar.style.left = (startIdx * GANTT_DAY_PX) + 'px';
+        bar.style.width = ((endIdx - startIdx) * GANTT_DAY_PX) + 'px';
+        bar.title = `${task.title || 'Без названия'}\n${statusLabels[status] || status}`
+            + `${isOverdue ? ' • просрочена' : ''}\n${fmtFull(startMs)} – ${fmtFull(endMs)}`;
+        if ((endIdx - startIdx) * GANTT_DAY_PX >= 88) {
+            bar.textContent = `${fmtDay(startMs)} – ${fmtDay(endMs)}`;
+        }
+        track.appendChild(bar);
+        row.appendChild(track);
+        body.appendChild(row);
+    });
+
+    // Month separators + "today" line span the whole body; their left offset
+    // starts after the sticky label column (--gantt-label-w, see style.css)
+    monthStartIdx.slice(1).forEach(idx => {
+        const line = document.createElement('div');
+        line.className = 'gantt-month-line';
+        line.style.left = `calc(var(--gantt-label-w) + ${idx * GANTT_DAY_PX}px)`;
+        body.appendChild(line);
+    });
+    if (todayInYear) {
+        const line = document.createElement('div');
+        line.className = 'gantt-today-line';
+        line.style.left = `calc(var(--gantt-label-w) + ${(todayIdx + 0.5) * GANTT_DAY_PX}px)`;
+        line.title = 'Сегодня';
+        body.appendChild(line);
+    }
+    table.appendChild(body);
+
+    scrollEl.textContent = '';
+    scrollEl.appendChild(table);
+
+    // Keep scroll across live re-renders; on first open of this project/year
+    // bring "today" (or the first bar) into view
+    const key = `${state.activeProjectId}:${year}`;
+    if (ganttLastScrollKey === key) {
+        scrollEl.scrollLeft = prevLeft;
+        scrollEl.scrollTop = prevTop;
+    } else {
+        ganttLastScrollKey = key;
+        const focusIdx = todayInYear
+            ? todayIdx
+            : Math.max(ganttDayIndex(visible[0].startMs, yearStart), 0);
+        scrollEl.scrollLeft = Math.max(0, focusIdx * GANTT_DAY_PX - Math.max(scrollEl.clientWidth - 220, 200) / 3);
+    }
+}
+
 function updateThemeUI(isLight) {
     // Update theme icon in settings
     const themeIcon = document.querySelector('.settings-option-icon.theme i');
@@ -4581,6 +4957,7 @@ function setupEventListeners() {
                 status,
                 subStatus: 'assigned', // Default status for new system
                 assigneeCompleted: false,
+                assignedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 attachments: attachments, // Add attachments array
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 createdBy: createdBy,
@@ -4634,15 +5011,26 @@ function setupEventListeners() {
                 const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
 
                 // Update existing task
-                await updateTask(taskId, {
+                const previousTask = state.tasks.find(t => t.id === taskId) || null;
+                const nextAssigneeIds = selectedAssignees.map(a => a.id).filter(Boolean);
+                const taskUpdates = {
                     title,
                     description,
                     assignee,
                     assigneeEmail,
-                    assigneeIds: selectedAssignees.map(a => a.id).filter(Boolean),
+                    assigneeIds: nextAssigneeIds,
                     deadline,
                     attachments // Include attachments when updating
-                });
+                };
+                if (previousTask && String(previousTask.deadline || '') !== String(deadline || '')) {
+                    taskUpdates.notifiedDeadlineSoonAt = firebase.firestore.FieldValue.delete();
+                    taskUpdates.notifiedOverdueOn = firebase.firestore.FieldValue.delete();
+                }
+                if (previousTask && !sameIdList(previousTask.assigneeIds, nextAssigneeIds)) {
+                    taskUpdates.notifiedNotTakenAt = firebase.firestore.FieldValue.delete();
+                    taskUpdates.assignedAt = firebase.firestore.FieldValue.serverTimestamp();
+                }
+                await updateTask(taskId, taskUpdates);
             } else {
                 // Create new task
                 await createTask(title, assignee, deadline, status, assigneeEmail, description);
@@ -4895,8 +5283,11 @@ async function resumeTelegramBotLoginIfPending() {
     }
 }
 
-function setLoginErrorMessage(message) {
-    if (elements.loginError) elements.loginError.textContent = message || '';
+// type: 'error' (default, red) | 'success' (green — e.g. confirmed login)
+function setLoginErrorMessage(message, type = 'error') {
+    if (!elements.loginError) return;
+    elements.loginError.textContent = message || '';
+    elements.loginError.classList.toggle('success', type === 'success');
 }
 
 function setTelegramBotLoginBusy(isBusy) {
@@ -4924,11 +5315,9 @@ window.onTelegramAuth = async function onTelegramAuth(telegramUser) {
         if (data.telegramMessage && data.telegramMessage.ok === false) {
             const detail = data.telegramMessage.description || data.telegramMessage.error || 'неизвестная ошибка Telegram';
             console.warn('Telegram login message was not delivered:', data.telegramMessage);
-            if (elements.loginError) {
-                elements.loginError.textContent = `Вход выполнен, но сообщение в Telegram не отправлено: ${detail}`;
-            }
-        } else if (elements.loginError) {
-            elements.loginError.textContent = '';
+            setLoginErrorMessage(`Вход выполнен, но сообщение в Telegram не отправлено: ${detail}`);
+        } else {
+            setLoginErrorMessage('');
         }
         // Force LOCAL (IndexedDB) persistence at sign-in time so the session
         // survives a full browser close — a belt-and-suspenders on top of the
@@ -4949,17 +5338,13 @@ window.onTelegramAuth = async function onTelegramAuth(telegramUser) {
 window.startTelegramLogin = function startTelegramLogin() {
     const tg = window.Telegram && window.Telegram.Login;
     if (!tg || typeof tg.auth !== 'function') {
-        if (elements.loginError) {
-            elements.loginError.textContent = 'Telegram ещё загружается, попробуйте через секунду.';
-        }
+        setLoginErrorMessage('Telegram ещё загружается, попробуйте через секунду.');
         return;
     }
-    if (elements.loginError) elements.loginError.textContent = '';
+    setLoginErrorMessage('');
     tg.auth({ bot_id: '8318306872', request_access: 'write' }, (user) => {
         if (!user) {
-            if (elements.loginError) {
-                elements.loginError.textContent = 'Вход через Telegram отменён.';
-            }
+            setLoginErrorMessage('Вход через Telegram отменён.');
             return;
         }
         window.onTelegramAuth(user);
@@ -5030,7 +5415,7 @@ async function pollTelegramBotLogin(code, expiresAt, attemptId) {
         }
         if (res.ok && data.ok && data.status === 'confirmed' && data.token) {
             clearPendingTelegramBotLogin();
-            setLoginErrorMessage('Вход подтверждён. Загружаем рабочее пространство...');
+            setLoginErrorMessage('Вход подтверждён. Загружаем рабочее пространство...', 'success');
             await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
             await firebase.auth().signInWithCustomToken(data.token);
             return;
@@ -6742,6 +7127,9 @@ function navigateToTask(projectId, taskId, boardView) {
 
     // Select the project (this resets the board view to "assigned")...
     selectProject(projectId);
+    // The Gantt view has no per-status columns to land on — always switch
+    // back to kanban so the highlighted card is actually visible.
+    setProjectView('kanban');
     // ...so switch to the task's actual status section AFTER selecting. On
     // mobile only the active column is shown, so this is what makes the task
     // visible instead of an empty "Назначенные" list.
@@ -8700,7 +9088,7 @@ async function confirmAgentTaskProposal(proposal, okTasks, btn) {
             })
         });
         const data = await res.json().catch(() => ({}));
-        if (res.ok && data && data.ok) {
+        if (res.ok && data && data.ok && Number.isInteger(data.created)) {
             if (btn) btn.remove();
             const doneText = `✅ Создано задач: ${data.created}. Проект «${proposal.projectName || ''}», раздел «Назначенные». Исполнители получили уведомления.`;
             appendAgentChatMessage('assistant', doneText);
