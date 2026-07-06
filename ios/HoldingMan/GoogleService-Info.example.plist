@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AIzaSyDG3syFi4B4ccy7-njd0EB8VN0U7-wUzv8</string>
+	<string>REPLACE_WITH_FIREBASE_IOS_API_KEY</string>
 	<key>GCM_SENDER_ID</key>
-	<string>52414300696</string>
+	<string>REPLACE_WITH_GCM_SENDER_ID</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
@@ -25,6 +26,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:52414300696:ios:c9aa58c5efdb5be48b796d</string>
+	<string>REPLACE_WITH_GOOGLE_APP_ID</string>
 </dict>
 </plist>

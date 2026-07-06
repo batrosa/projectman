@@ -46,11 +46,16 @@ xcodegen generate          # создаёт HoldingMan.xcodeproj из project.ym
 open HoldingMan.xcodeproj  # выбрать симулятор и Run
 ```
 
-Firebase-конфиг уже в репозитории: iOS-приложение `com.holdingman.ios`
-зарегистрировано в Firebase-проекте `projectman-96d3c`
-(`HoldingMan/GoogleService-Info.plist`). Значения в plist — публичные
-клиентские идентификаторы (как web-конфиг Firebase), не секреты; доступ к
-данным ограничивают Firestore rules и серверные проверки.
+Firebase-конфиг не хранится в git. Для локальной сборки скачайте iOS config
+из Firebase Console для bundle id `com.holdingman.ios` и положите файл сюда:
+`ios/HoldingMan/GoogleService-Info.plist`.
+
+В репозитории есть только пример без реальных значений:
+`ios/HoldingMan/GoogleService-Info.example.plist`. Реальный plist содержит
+публичные клиентские идентификаторы Firebase, но GitHub Secret Scanning
+распознаёт Google API Key как секрет. Поэтому файл игнорируется git; доступ к
+данным всё равно должен ограничиваться Firestore rules, серверными проверками
+и ограничениями API key в Google Cloud Console.
 
 Для запуска на устройстве: в Xcode → Signing & Capabilities выбрать свою
 команду разработчика (bundle id `com.holdingman.ios` можно поменять — тогда

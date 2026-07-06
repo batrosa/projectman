@@ -157,8 +157,8 @@ This is a manual action for you (the user), not code — but do it before or imm
 
 1. Replace:
    ```js
-   const TOKEN = '8318306872:AAFQh2-XtMSMTe6StxJNMdy29l0UzbxD600';
-   const FIREBASE_API_KEY = 'AIzaSyBqNCgLUmlxfIKlDCwmx0-9D-JJm63RpuU';
+   const TOKEN = 'REPLACE_WITH_TELEGRAM_BOT_TOKEN';
+   const FIREBASE_API_KEY = 'REPLACE_WITH_FIREBASE_WEB_API_KEY';
    ```
    with:
    ```js
