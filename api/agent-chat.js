@@ -52,6 +52,7 @@ const PROJECTMAN_CAPABILITY_GUIDE = [
   "XP и рейтинг: очки начисляются сервером только при финальном принятии задачи в «Готово», транзакционно и один раз. База 10 XP, +5 XP если выполнено в срок, -3 XP если задача возвращалась на доработку, минимум 1 XP. Уровни: 1 Новичок 0 XP, 2 Стажёр 50, 3 Специалист 150, 4 Профессионал 300, 5 Эксперт 500, 6 Мастер 800, 7 Легенда 1200. Личный кабинет показывает XP, уровень, активные задачи, завершено всего, процент в срок и без доработок. Рейтинг доступен с 3 уровня; сортировка по score = 50% «в срок» + 50% «без доработок», затем по числу завершённых задач.",
   "Файлы: к задаче можно прикреплять до 2 файлов до 10 МБ. В «Файлы проекта» owner/admin/moderator могут загружать md/xlsx/xlsm/pdf/docx до 10 МБ; текст этих файлов извлекается и используется агентом как база знаний для ответов, но не как прямой источник создания задач.",
   "Создание задач через ИИ-агента работает в два способа: из простого текстового поручения в чате или через кнопку прикрепления разового файла до 3 МБ. В обоих случаях owner/admin/moderator получает карточку предпросмотра и нажимает кнопку создания; исполнитель не может создавать задачи через агента. Агент никогда не должен писать «создал» без карточки и подтверждения.",
+  "Удаление задач через ИИ-агента доступно owner/admin/moderator с доступом к проекту и только через карточку предпросмотра с явным подтверждением. Поддерживаются строгие фильтры: все задачи проекта, назначенные, в работе, на проверке, готовые, просроченные или задачи с явно процитированным названием. Агент никогда не должен писать «удалил» без карточки и подтверждения.",
   "Календарь показывает задачи по дедлайну, цветные статусы, список задач выбранного дня и переход к задаче. В календаре нет фильтров по блоку/ответственному и нет синхронизации с Outlook или Google Calendar.",
   "«Мои задачи» показывает активные задачи, где текущий пользователь назначен ответственным; клик открывает нужный проект и колонку задачи.",
   "Уведомления: есть in-app «Уведомления агента» с прочтением/удалением уведомлений. Telegram-уведомления работают при подключенном Telegram: новые задачи, возврат на доработку, напоминания/просрочки от server-side monitor. Нет подписок, ежедневных дайджестов и пользовательских правил уведомлений.",
@@ -84,7 +85,8 @@ const SYSTEM_PROMPT_RULES = [
   "Если пользователь пытается создать задачу, не отвечай текстом «создал» или «создаю»: сервер должен вернуть карточку предпросмотра, а реальное создание будет только после кнопки подтверждения.",
   "У тебя НЕТ возможности что-либо «отправить в систему», «инициировать создание» или «сформировать карточку» самому. ЗАПРЕЩЕНО писать «запрос отправлен», «запрос обработан», «карточка сформирована», «подборка отправлена» — это ложь: если карточки предпросмотра нет в чате, значит НИЧЕГО не создано и не отправлено. В HoldingMan НЕТ раздела или кнопки «Массовое создание». Если пользователь просит создать показанный тобой список задач, а карточка не появилась — попроси его написать команду создания заново одной фразой (например: «создай задачи из списка выше, без сроков и ответственных»).",
   "Не говори «в предоставленном контексте» — говори «в данных проекта» или «в системе».",
-  "Информационные ответы в чате данные не меняют. Создание задач выполняется отдельным серверным действием только после карточки предпросмотра.",
+  "Если пользователь пытается удалить задачи, не отвечай текстом «удалил» или «удаляю»: серверный слой должен вернуть карточку предпросмотра, а реальное удаление будет только после кнопки подтверждения.",
+  "Информационные ответы в чате данные не меняют. Создание и удаление задач выполняются отдельными серверными действиями только после карточки предпросмотра.",
 ].join(" ");
 
 const TEXT_TASK_SYSTEM_PROMPT = [
@@ -134,10 +136,12 @@ export default async function handler(request, response) {
   // задач» button posts {action:'create_tasks', ...} instead of a chat message.
   const action = body && body.action;
   const isCreateAction = action === "create_tasks";
+  const isDeleteTasksAction = action === "delete_tasks";
+  const isMutationAction = isCreateAction || isDeleteTasksAction;
   const isDeleteNotificationAction = action === "delete_notification";
 
   const message = String(body.message || "").trim().slice(0, MAX_MESSAGE_CHARS);
-  if (!isCreateAction && !isDeleteNotificationAction && !message) return response.status(400).json({ error: "message is required" });
+  if (!isMutationAction && !isDeleteNotificationAction && !message) return response.status(400).json({ error: "message is required" });
   const history = normalizeHistory(body.history);
 
   // Scope is enforced by the system prompt (greet greetings, refuse only
@@ -169,7 +173,7 @@ export default async function handler(request, response) {
       return true;
     });
     if (!allowed) {
-      if (isCreateAction) {
+      if (isMutationAction) {
         return response.status(429).json({ error: "Слишком много запросов подряд. Подождите минуту и попробуйте снова." });
       }
       return response.status(200).json({ ok: true, answer: "Слишком много запросов подряд. Подождите минуту и попробуйте снова." });
@@ -188,13 +192,13 @@ export default async function handler(request, response) {
     accessibleProjectIds = accessibleProjectIdsFor(callerData);
   } catch (error) {
     console.error("agent-chat: failed to load user doc", error);
-    if (isCreateAction) {
+    if (isMutationAction) {
       return response.status(500).json({ error: "Не удалось загрузить данные организации" });
     }
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
   }
   if (!organizationId) {
-    if (isCreateAction) {
+    if (isMutationAction) {
       return response.status(403).json({ error: "Вы пока не состоите ни в одной организации" });
     }
     return response.status(200).json({ ok: true, answer: "Вы пока не состоите ни в одной организации — агенту нечего показать." });
@@ -205,6 +209,9 @@ export default async function handler(request, response) {
   // the client proves nothing).
   if (isCreateAction) {
     return handleCreateTasks({ db, response, decoded, body, callerData, organizationId });
+  }
+  if (isDeleteTasksAction) {
+    return handleDeleteTasks({ db, response, body, callerData, organizationId });
   }
   // Restricted member with access to NO projects: don't even call the model.
   if (Array.isArray(accessibleProjectIds) && accessibleProjectIds.length === 0) {
@@ -218,6 +225,11 @@ export default async function handler(request, response) {
     console.error("agent-chat: failed to load organization context", error);
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
   }
+
+  if (looksLikeTaskDeletionRequest(message)) {
+    return handleTaskDeletionProposal({ db, response, body, message, context, callerData });
+  }
+
   let contextText;
   try {
     contextText = compactContext(context);
@@ -409,6 +421,222 @@ function affirmationFromAssistantList(message, history) {
       "Список из предыдущего ответа агента:",
       String(listContent).slice(0, 3000),
     ].join("\n\n"),
+  };
+}
+
+// ===== DELETE TASKS (two-phase, fully deterministic — no LLM involved) =====
+// Phase 1: a delete command builds a preview card from REAL Firestore tasks
+// matched by an explicitly recognized filter; nothing is guessed or generated,
+// so nothing can be fabricated. Phase 2 (action 'delete_tasks') re-validates
+// every id server-side and batch-deletes. Mirrors the create-tasks protocol.
+
+const TASK_DELETE_MAX = 200; // per confirmation card / per request
+
+export function looksLikeTaskDeletionRequest(message) {
+  const text = normalizeLookup(message);
+  if (!text) return false;
+  const deleteVerb = /(удали|удалить|удалите|удаляй|убери|убрать|уберите|снеси|снести|очисти|очистить|очистите)/u;
+  const taskHint = /(задач|поручени)/u;
+  return deleteVerb.test(text) && taskHint.test(text);
+}
+
+// Recognized deletion filters. Returns null when the request is ambiguous —
+// the handler then ASKS instead of guessing (deletion must never guess).
+export function extractDeletionFilter(message) {
+  const raw = String(message || "");
+
+  // Quoted task titles: «...», "...", „...“. A quote right after the word
+  // «проект…» is the PROJECT name, not a task title — skip those.
+  const titles = [];
+  const quoteRe = /«([^«»]{1,300})»|"([^"]{1,300})"|„([^“”]{1,300})[“”]/gu;
+  for (const m of raw.matchAll(quoteRe)) {
+    const before = raw.slice(Math.max(0, m.index - 20), m.index);
+    if (/проект[а-яё]*\s*[:—-]?\s*$/iu.test(before)) continue;
+    const title = (m[1] || m[2] || m[3] || "").trim();
+    if (title) titles.push(title);
+  }
+  if (titles.length > 0) return { kind: "title", titles };
+
+  const text = normalizeLookup(raw);
+  if (/просрочен/u.test(text)) return { kind: "overdue" };
+  if (/назначенн/u.test(text)) return { kind: "status", status: "assigned" };
+  if (/(на проверке|на проверку)/u.test(text)) return { kind: "status", status: "review" };
+  if (/(в работе|в процессе)/u.test(text)) return { kind: "status", status: "in-progress" };
+  if (/(готовые|готовых|готово|выполненн|завершенн|архивн)/u.test(text)) return { kind: "status", status: "done" };
+  // \b does not work for Cyrillic — manual word boundaries. «всё» is already
+  // normalized to «все» by normalizeLookup.
+  if (/(^|[^а-яa-z0-9])все([^а-яa-z0-9]|$)/u.test(text)) return { kind: "all" };
+  return null;
+}
+
+export function deletionFilterLabel(filter) {
+  if (!filter) return "";
+  if (filter.kind === "all") return "все задачи";
+  if (filter.kind === "overdue") return "просроченные";
+  if (filter.kind === "title") return `с названием ${filter.titles.map((t) => `«${t}»`).join(", ")}`;
+  const labels = { assigned: "назначенные", "in-progress": "в работе", review: "на проверке", done: "готовые" };
+  return labels[filter.status] || "";
+}
+
+// Board-column semantics for a task — EXACTLY the client's boardViewForTask()
+// incl. the legacy no-subStatus migration, so «назначенные» here matches the
+// «Назначенные» column the user sees.
+export function agentTaskBoardStatus(task) {
+  if (task?.status === "done") return "done";
+  const sub = task?.subStatus || (task?.assigneeCompleted ? "completed" : "assigned");
+  if (sub === "completed") return "review";
+  if (sub === "in_work") return "in-progress";
+  return "assigned";
+}
+
+export function matchTasksForDeletion(tasks, filter, todayIso) {
+  const list = Array.isArray(tasks) ? tasks : [];
+  if (!filter) return [];
+  if (filter.kind === "all") return list;
+  if (filter.kind === "status") return list.filter((t) => agentTaskBoardStatus(t) === filter.status);
+  if (filter.kind === "overdue") {
+    return list.filter((t) => {
+      if (agentTaskBoardStatus(t) === "done") return false;
+      const day = String(t?.deadline || "").slice(0, 10);
+      return isIsoDate(day) && day < todayIso;
+    });
+  }
+  if (filter.kind === "title") {
+    const wanted = filter.titles.map((t) => normalizeLookup(t)).filter(Boolean);
+    return list.filter((t) => {
+      const title = normalizeLookup(t?.title);
+      if (!title) return false;
+      return wanted.some((w) => title === w || title.includes(w) || w.includes(title));
+    });
+  }
+  return [];
+}
+
+// Deletion targets the project NAMED IN THE MESSAGE first: the client always
+// sends the currently open project's id, and «удали … из проекта X» while
+// project Y is open must hit X, never Y. Falls back to the open project only
+// when the message names none.
+function resolveDeletionProject({ projects, body, message, callerData }) {
+  const list = Array.isArray(projects) ? projects : [];
+  let project = null;
+
+  const explicitProjectText = extractProjectTextAfterProjectWord(message);
+  let fromMessage = explicitProjectText
+    ? resolveProjectFromText(list, explicitProjectText)
+    : resolveProjectFromText(list, message);
+  if (explicitProjectText && fromMessage.error === "not_found") {
+    fromMessage = resolveProjectFromText(list, message);
+  }
+  if (fromMessage.project) {
+    project = fromMessage.project;
+  } else if (fromMessage.error === "ambiguous") {
+    return { answer: "Название проекта подходит к нескольким проектам. Напишите его полное название." };
+  } else {
+    const requestedId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+    project = requestedId ? (list.find((p) => p?.id === requestedId) || null) : null;
+  }
+  if (!project) {
+    return { answer: "Не понял, из какого проекта удалять задачи. Откройте проект или напишите его точное название в сообщении." };
+  }
+  if (!callerCanManageProject(callerData?.orgRole, callerData?.allowedProjects, project.id)) {
+    return { answer: "Нет доступа к удалению задач в этом проекте." };
+  }
+  return { project };
+}
+
+function extractProjectTextAfterProjectWord(message) {
+  const raw = String(message || "").trim();
+  const match = raw.match(/(?:^|[\s,.;:!?])(из|в|во|по)?\s*проект[а-яё]*\s+(.{2,180})$/iu);
+  if (!match) return "";
+  return match[2]
+    .replace(/["«»„“”]/g, " ")
+    .replace(/[.!?;,]+$/g, "")
+    .trim();
+}
+
+async function handleTaskDeletionProposal({ db, response, body, message, context, callerData }) {
+  if (!["owner", "admin", "moderator"].includes(callerData?.orgRole)) {
+    return response.status(200).json({ ok: true, answer: "Удалять задачи через агента может владелец, админ или модератор. У исполнителя нет прав на удаление задач." });
+  }
+
+  const filter = extractDeletionFilter(message);
+  if (!filter) {
+    return response.status(200).json({
+      ok: true,
+      answer: "Не понял, какие задачи удалять. Укажите строгий фильтр: все, назначенные, в работе, на проверке, готовые, просроченные или название задачи в кавычках.",
+    });
+  }
+
+  const projectResult = resolveDeletionProject({
+    projects: context.projects,
+    body,
+    message,
+    callerData,
+  });
+  if (projectResult.answer) return response.status(200).json({ ok: true, answer: projectResult.answer });
+
+  const loaded = await loadProjectTasksForDeletion(db, projectResult.project.id);
+  if (!loaded.ok) return response.status(200).json({ ok: true, answer: loaded.answer });
+
+  const today = isIsoDate(body.clientToday) ? body.clientToday : todayIsoDate();
+  const matched = matchTasksForDeletion(loaded.tasks, filter, today);
+  if (matched.length === 0) {
+    return response.status(200).json({
+      ok: true,
+      answer: `Не нашёл задач для удаления: ${deletionFilterLabel(filter)} в проекте «${projectResult.project.name || "без названия"}».`,
+    });
+  }
+  if (matched.length > TASK_DELETE_MAX) {
+    return response.status(200).json({
+      ok: true,
+      answer: `Найдено ${matched.length} задач. Для безопасного подтверждения лимит ${TASK_DELETE_MAX}; уточните фильтр и повторите команду.`,
+    });
+  }
+
+  return response.status(200).json({
+    ok: true,
+    deleteProposal: buildDeleteTasksProposal({
+      project: projectResult.project,
+      filter,
+      tasks: matched,
+    }),
+  });
+}
+
+async function loadProjectTasksForDeletion(db, projectId) {
+  try {
+    const snap = await db.collection("tasks")
+      .where("projectId", "==", projectId)
+      .limit(MAX_CONTEXT_TASKS)
+      .get();
+    if (snap.size >= MAX_CONTEXT_TASKS) {
+      return {
+        ok: false,
+        answer: "В проекте слишком много задач для безопасного массового удаления через агента. Уточните фильтр или удалите задачи вручную.",
+      };
+    }
+    return { ok: true, tasks: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+  } catch (error) {
+    console.error("agent-chat delete_tasks: failed to load project tasks", error);
+    return { ok: false, answer: "Не удалось загрузить задачи проекта, попробуйте ещё раз." };
+  }
+}
+
+function buildDeleteTasksProposal({ project, filter, tasks }) {
+  const projectName = project?.name || "без названия";
+  return {
+    source: "delete_tasks",
+    projectId: project.id,
+    projectName,
+    filterLabel: deletionFilterLabel(filter),
+    canDelete: true,
+    tasks: tasks.map((task) => ({
+      id: task.id,
+      title: String(task.title || "Без названия").slice(0, 300),
+      deadline: task.deadline || null,
+      assigneeDisplay: task.assignee || "Не назначен",
+      statusDisplay: humanTaskStatus(task),
+    })),
   };
 }
 
@@ -813,6 +1041,72 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
   });
 
   return response.status(200).json({ ok: true, created: payload.tasks.length });
+}
+
+function validateDeleteTasksPayload(body) {
+  if (!body || body.action !== "delete_tasks") return { ok: false, error: "Invalid action" };
+  const projectId = String(body.projectId || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(projectId)) {
+    return { ok: false, error: "Некорректный проект" };
+  }
+  if (!Array.isArray(body.taskIds)) return { ok: false, error: "Нет списка задач для удаления" };
+  const taskIds = [...new Set(body.taskIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (taskIds.length === 0) return { ok: false, error: "Нет задач для удаления" };
+  if (taskIds.length > TASK_DELETE_MAX) return { ok: false, error: `Слишком много задач за один раз. Лимит: ${TASK_DELETE_MAX}` };
+  if (taskIds.some((id) => !/^[A-Za-z0-9_-]{1,160}$/.test(id))) {
+    return { ok: false, error: "Некорректный идентификатор задачи" };
+  }
+  return { ok: true, projectId, taskIds };
+}
+
+async function handleDeleteTasks({ db, response, body, callerData, organizationId }) {
+  const payload = validateDeleteTasksPayload(body);
+  if (!payload.ok) return response.status(400).json({ error: payload.error });
+
+  let project;
+  try {
+    const snap = await db.collection("projects").doc(payload.projectId).get();
+    project = snap.exists ? snap.data() : null;
+  } catch (error) {
+    console.error("agent-chat delete_tasks: project load failed", error);
+    return response.status(500).json({ error: "Не удалось проверить проект" });
+  }
+  if (!project || project.organizationId !== organizationId) {
+    return response.status(403).json({ error: "Проект не найден в вашей организации" });
+  }
+  if (!callerCanManageProject(callerData?.orgRole, callerData?.allowedProjects, payload.projectId)) {
+    return response.status(403).json({ error: "Недостаточно прав для удаления задач в этом проекте" });
+  }
+
+  const refs = payload.taskIds.map((id) => db.collection("tasks").doc(id));
+  const loaded = [];
+  try {
+    for (const ref of refs) {
+      const snap = await ref.get();
+      if (!snap.exists) {
+        return response.status(409).json({ error: "Часть задач уже удалена или изменилась. Запросите карточку удаления заново." });
+      }
+      const task = snap.data();
+      if (task?.projectId !== payload.projectId || (task?.organizationId && task.organizationId !== organizationId)) {
+        return response.status(403).json({ error: "Одна из задач не относится к выбранному проекту" });
+      }
+      loaded.push({ ref, task });
+    }
+  } catch (error) {
+    console.error("agent-chat delete_tasks: task load failed", error);
+    return response.status(500).json({ error: "Не удалось проверить задачи" });
+  }
+
+  try {
+    const batch = db.batch();
+    loaded.forEach(({ ref }) => batch.delete(ref));
+    await batch.commit();
+  } catch (error) {
+    console.error("agent-chat delete_tasks: batch commit failed", error);
+    return response.status(500).json({ error: "Не удалось удалить задачи" });
+  }
+
+  return response.status(200).json({ ok: true, deleted: loaded.length });
 }
 
 async function handleDeleteNotification({ db, response, decoded, body }) {

@@ -1865,7 +1865,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.7'; // Gantt month drill-down + empty project list fix
+    const CURRENT_VERSION = '6.8'; // Agent task deletion (two-phase confirm card)
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -8699,6 +8699,8 @@ function closeDayTasksModal() {
 // Response shape actually returned by api/agent-chat.js (verified by reading
 // the file directly, not assumed from the plan text):
 //   - 200 { ok: true, answer, model }                          success
+//   - 200 { ok: true, taskProposal, model }                    create preview
+//   - 200 { ok: true, deleteProposal }                         delete preview
 //   - 200 { ok: true, answer: "<фраза на русском>" }            LLM/context
 //         (no `model` field on the "org not found"/"no org"/    fallback —
 //          "failed to load"/"OpenRouter not configured" paths)  still ok:true
@@ -9231,6 +9233,116 @@ async function confirmAgentTaskProposal(proposal, okTasks, btn) {
     }
 }
 
+// ===== DELETE PROPOSAL CARD (удаление задач, фаза предпросмотра) =====
+// Mirrors appendAgentTaskProposal: all task data is inserted via textContent,
+// and the actual destructive action happens only after an explicit button click.
+function appendAgentDeleteProposal(proposal) {
+    if (!elements.agentChatMessages || !proposal || !Array.isArray(proposal.tasks)) return;
+    const emptyState = elements.agentChatMessages.querySelector('.agent-chat-empty');
+    if (emptyState) emptyState.remove();
+
+    const card = document.createElement('div');
+    card.className = 'agent-chat-message agent-chat-message-assistant agent-task-proposal agent-delete-proposal';
+
+    const heading = document.createElement('div');
+    heading.className = 'agent-task-proposal-title';
+    heading.textContent = `Удаление задач: ${proposal.filterLabel || 'выбранные задачи'} (проект «${proposal.projectName || ''}»)`;
+    card.appendChild(heading);
+
+    const warning = document.createElement('div');
+    warning.className = 'agent-task-proposal-note agent-delete-proposal-warning';
+    warning.textContent = 'После подтверждения эти задачи будут удалены без восстановления.';
+    card.appendChild(warning);
+
+    const table = document.createElement('table');
+    table.className = 'agent-task-proposal-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['Задача', 'Срок', 'Ответственный', 'Статус'].forEach(label => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    proposal.tasks.forEach(t => {
+        const tr = document.createElement('tr');
+        [
+            t.title || '',
+            t.deadline || '—',
+            t.assigneeDisplay || 'Не назначен',
+            t.statusDisplay || ''
+        ].forEach(value => {
+            const td = document.createElement('td');
+            td.textContent = value;
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    const scroller = document.createElement('div');
+    scroller.className = 'agent-task-proposal-scroll';
+    scroller.appendChild(table);
+    card.appendChild(scroller);
+
+    const deletableTasks = proposal.tasks.filter(t => t.id);
+    if (proposal.canDelete && deletableTasks.length > 0) {
+        const btn = document.createElement('button');
+        btn.className = 'primary-btn agent-task-proposal-create agent-task-proposal-delete';
+        btn.textContent = `Удалить ${deletableTasks.length} задач(и)`;
+        btn.addEventListener('click', () => {
+            btn.disabled = true;
+            btn.textContent = 'Удаляю…';
+            confirmAgentDeleteProposal(proposal, deletableTasks, btn);
+        });
+        card.appendChild(btn);
+    } else {
+        const note = document.createElement('div');
+        note.className = 'agent-task-proposal-note';
+        note.textContent = 'Удалять задачи может владелец, админ или модератор с доступом к проекту.';
+        card.appendChild(note);
+    }
+
+    elements.agentChatMessages.appendChild(card);
+    elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
+}
+
+async function confirmAgentDeleteProposal(proposal, tasksToDelete, btn) {
+    try {
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('Не авторизован');
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch('/api/agent-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({
+                action: 'delete_tasks',
+                projectId: proposal.projectId,
+                taskIds: tasksToDelete.map(t => t.id)
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.ok && Number.isInteger(data.deleted)) {
+            if (btn) btn.remove();
+            const doneText = `✅ Удалено задач: ${data.deleted}. Проект «${proposal.projectName || ''}».`;
+            appendAgentChatMessage('assistant', doneText);
+            agentChatState.history.push({ role: 'assistant', content: doneText });
+            agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+        } else {
+            if (btn) { btn.disabled = false; btn.textContent = `Удалить ${tasksToDelete.length} задач(и)`; }
+            const detail = data && typeof data.error === 'string' ? data.error : 'Попробуйте сформировать карточку удаления заново.';
+            appendAgentChatMessage('error', `Не удалось удалить задачи: ${detail}`);
+        }
+    } catch (error) {
+        if (btn) { btn.disabled = false; btn.textContent = `Удалить ${tasksToDelete.length} задач(и)`; }
+        console.error('agent-chat delete_tasks failed:', error);
+        appendAgentChatMessage('error', 'Ошибка сети при удалении задач. Попробуйте ещё раз.');
+    }
+}
+
 function setAgentChatInputDisabled(disabled) {
     if (elements.agentChatInput) elements.agentChatInput.disabled = disabled;
     if (elements.agentChatSendBtn) elements.agentChatSendBtn.disabled = disabled;
@@ -9414,6 +9526,12 @@ async function handleAgentChatSubmit(event) {
                     ? 'из текстового запроса'
                     : `из документа «${data.taskProposal.file || ''}»`;
                 const summary = `Предложены задачи ${proposalSource}: к созданию ${okCount} из ${total}.`;
+                agentChatState.history.push({ role: 'assistant', content: summary });
+                agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+            } else if (data.deleteProposal && typeof data.deleteProposal === 'object') {
+                appendAgentDeleteProposal(data.deleteProposal);
+                const total = Array.isArray(data.deleteProposal.tasks) ? data.deleteProposal.tasks.length : 0;
+                const summary = `Предложено удаление задач: ${total}. Проект «${data.deleteProposal.projectName || ''}».`;
                 agentChatState.history.push({ role: 'assistant', content: summary });
                 agentChatState.history = truncateAgentChatHistory(agentChatState.history);
             } else {

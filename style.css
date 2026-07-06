@@ -7283,10 +7283,25 @@ body.light-mode .agent-task-proposal-table td {
     padding: 0.5rem 1rem;
 }
 
+.agent-task-proposal-delete {
+    background: var(--danger);
+    border-color: var(--danger);
+}
+
+.agent-task-proposal-delete:hover:not(:disabled) {
+    background: #dc2626;
+    border-color: #dc2626;
+}
+
 .agent-task-proposal-note {
     font-size: 0.8rem;
     opacity: 0.65;
     margin-top: 0.35rem;
+}
+
+.agent-delete-proposal-warning {
+    color: var(--danger);
+    opacity: 1;
 }
 
 /* ===== Project view switcher (sidebar, under active project) ===== */

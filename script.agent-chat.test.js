@@ -22,7 +22,7 @@
 // fetch() promise is manually controlled (see "generation-counter guard"
 // describe block), so there's no reason to leave it to manual-only
 // verification.
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,6 +68,12 @@ let ctx;
 
 beforeAll(() => {
   ctx = loadScriptEnv();
+});
+
+afterEach(() => {
+  if (!ctx) return;
+  ctx.firebase.auth = () => ({ currentUser: null });
+  ctx.fetch = () => Promise.reject(new Error("network disabled in test"));
 });
 
 function getFn(name) {
@@ -221,6 +227,110 @@ describe("appendAgentChatMessage (end-to-end bubble rendering)", () => {
     expect(bubble.getAttribute("onmouseover")).toBeNull();
     expect(bubble.textContent).toBe(breakoutPayload);
     expect(bubble.querySelectorAll("script").length).toBe(0);
+  });
+});
+
+describe("appendAgentDeleteProposal / confirmAgentDeleteProposal", () => {
+  function setBody() {
+    ctx.document.body.textContent = "";
+    const messages = ctx.document.createElement("div");
+    messages.id = "agent-chat-messages";
+    ctx.document.body.appendChild(messages);
+    vm.runInContext(
+      `
+      elements.agentChatMessages = document.getElementById('agent-chat-messages');
+      agentChatState.history = [];
+      `,
+      ctx
+    );
+    return messages;
+  }
+
+  it("renders deletion proposal data as inert text and shows a confirmation button", () => {
+    const messages = setBody();
+    const appendAgentDeleteProposal = getFn("appendAgentDeleteProposal");
+    appendAgentDeleteProposal({
+      projectId: "p1",
+      projectName: "Елисеевский парк",
+      filterLabel: "назначенные",
+      canDelete: true,
+      tasks: [
+        {
+          id: "t1",
+          title: '<img src=x onerror=alert(1)>',
+          deadline: null,
+          assigneeDisplay: "Эльдар Исаев",
+          statusDisplay: "назначена",
+        },
+      ],
+    });
+
+    expect(messages.querySelectorAll("img").length).toBe(0);
+    expect(messages.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(messages.querySelector(".agent-task-proposal-delete")).not.toBeNull();
+  });
+
+  it("confirms deletion only when the server returns an integer deleted count", async () => {
+    const messages = setBody();
+    const btn = ctx.document.createElement("button");
+    btn.textContent = "Удалить 1 задач(и)";
+    messages.appendChild(btn);
+
+    ctx.firebase.auth = () => ({
+      currentUser: { getIdToken: async () => "fake-id-token" },
+    });
+    const fetchCalls = [];
+    ctx.fetch = async (url, options) => {
+      fetchCalls.push({ url, options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, deleted: 1 }),
+      };
+    };
+
+    const confirmAgentDeleteProposal = getFn("confirmAgentDeleteProposal");
+    await confirmAgentDeleteProposal(
+      { projectId: "p1", projectName: "Елисеевский парк" },
+      [{ id: "t1", title: "Task" }],
+      btn
+    );
+
+    expect(fetchCalls).toHaveLength(1);
+    expect(JSON.parse(fetchCalls[0].options.body)).toEqual({
+      action: "delete_tasks",
+      projectId: "p1",
+      taskIds: ["t1"],
+    });
+    expect(btn.isConnected).toBe(false);
+    expect(messages.textContent).toContain("Удалено задач: 1");
+  });
+
+  it("does not remove the confirmation button on a soft ok:true response without deleted", async () => {
+    const messages = setBody();
+    const btn = ctx.document.createElement("button");
+    btn.textContent = "Удалить 1 задач(и)";
+    messages.appendChild(btn);
+
+    ctx.firebase.auth = () => ({
+      currentUser: { getIdToken: async () => "fake-id-token" },
+    });
+    ctx.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, answer: "Мягкая ошибка" }),
+    });
+
+    const confirmAgentDeleteProposal = getFn("confirmAgentDeleteProposal");
+    await confirmAgentDeleteProposal(
+      { projectId: "p1", projectName: "Елисеевский парк" },
+      [{ id: "t1", title: "Task" }],
+      btn
+    );
+
+    expect(btn.isConnected).toBe(true);
+    expect(btn.disabled).toBe(false);
+    expect(messages.textContent).toContain("Не удалось удалить задачи");
   });
 });
 

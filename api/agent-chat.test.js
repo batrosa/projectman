@@ -1,5 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { cleanAnswer, normalizeHistory, compactContext, accessibleProjectIdsFor, evaluateRateLimit, formatRecentDialogue, isCreateAffirmation, lastAssistantListContent, isLikelyTextTaskContinuation } from "./agent-chat.js";
+import {
+  cleanAnswer,
+  normalizeHistory,
+  compactContext,
+  accessibleProjectIdsFor,
+  evaluateRateLimit,
+  formatRecentDialogue,
+  isCreateAffirmation,
+  lastAssistantListContent,
+  isLikelyTextTaskContinuation,
+  looksLikeTaskDeletionRequest,
+  extractDeletionFilter,
+  matchTasksForDeletion,
+  agentTaskBoardStatus,
+} from "./agent-chat.js";
 
 describe("isCreateAffirmation + lastAssistantListContent (создание из списка агента)", () => {
   it("короткие команды создания распознаются, болтовня — нет", () => {
@@ -42,6 +56,38 @@ describe("isLikelyTextTaskContinuation", () => {
     const afterBase = [{ role: "assistant", content: "Не понял, кому поставить задачу. Назовите имена участников." }];
     expect(isLikelyTextTaskContinuation("Тэко Исаев", afterBase)).toBe(true);
     expect(isLikelyTextTaskContinuation("Тэко Исаев", [])).toBe(false);
+  });
+});
+
+describe("task deletion request helpers", () => {
+  it("recognizes deletion requests without treating ordinary messages as deletion", () => {
+    expect(looksLikeTaskDeletionRequest("удали все назначенные задачи из проекта Елисеевский парк")).toBe(true);
+    expect(looksLikeTaskDeletionRequest("убери просроченные поручения")).toBe(true);
+    expect(looksLikeTaskDeletionRequest("какие задачи назначены по проекту")).toBe(false);
+  });
+
+  it("extracts only strict deletion filters", () => {
+    expect(extractDeletionFilter("удали все назначенные задачи")).toEqual({ kind: "status", status: "assigned" });
+    expect(extractDeletionFilter("удали просроченные задачи")).toEqual({ kind: "overdue" });
+    expect(extractDeletionFilter("удали задачу «Проверить договор»")).toEqual({ kind: "title", titles: ["Проверить договор"] });
+    expect(extractDeletionFilter("удали задачи по договору")).toBe(null);
+  });
+
+  it("matches board statuses using the same legacy semantics as the board", () => {
+    expect(agentTaskBoardStatus({ status: "in-progress" })).toBe("assigned");
+    expect(agentTaskBoardStatus({ status: "in-progress", subStatus: "in_work" })).toBe("in-progress");
+    expect(agentTaskBoardStatus({ status: "in-progress", assigneeCompleted: true })).toBe("review");
+    expect(agentTaskBoardStatus({ status: "done" })).toBe("done");
+
+    const tasks = [
+      { id: "t1", title: "Назначенная", status: "in-progress" },
+      { id: "t2", title: "В работе", status: "in-progress", subStatus: "in_work" },
+      { id: "t3", title: "Готовая", status: "done" },
+      { id: "t4", title: "Просроченная", status: "in-progress", deadline: "2026-07-01" },
+    ];
+    expect(matchTasksForDeletion(tasks, { kind: "status", status: "assigned" }, "2026-07-06").map((t) => t.id)).toEqual(["t1", "t4"]);
+    expect(matchTasksForDeletion(tasks, { kind: "overdue" }, "2026-07-06").map((t) => t.id)).toEqual(["t4"]);
+    expect(matchTasksForDeletion(tasks, { kind: "title", titles: ["готовая"] }, "2026-07-06").map((t) => t.id)).toEqual(["t3"]);
   });
 });
 
@@ -563,8 +609,12 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
   const filesCalls = [];
   const rateLimitDocs = new Map();
   const notifications = new Map(Object.entries(agentNotifications));
+  const projectDocs = new Map(projects.filter((p) => p && p.id).map((p) => [p.id, p]));
+  const taskDocs = new Map(tasks.filter((t) => t && t.id).map((t) => [t.id, t]));
+  const deletedTasks = [];
   const userDocs = new Map(orgUsers.filter((u) => u && u.id).map((u) => [u.id, u]));
   if (userDoc) userDocs.set("user-1", userDoc);
+  let autoId = 0;
   const docsSnapshot = (docs) => ({
     size: docs.length,
     docs: docs.map((doc) => ({ id: doc.id, data: () => doc })),
@@ -584,6 +634,33 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
   return {
     filesCalls,
     notifications,
+    taskDocs,
+    deletedTasks,
+    batch() {
+      const ops = [];
+      return {
+        set(ref, value) {
+          ops.push({ type: "set", ref, value });
+        },
+        delete(ref) {
+          ops.push({ type: "delete", ref });
+        },
+        async commit() {
+          ops.forEach((op) => {
+            if (op.type === "set" && op.ref.collectionName === "tasks") {
+              taskDocs.set(op.ref.id, { id: op.ref.id, ...op.value });
+            }
+            if (op.type === "set" && op.ref.collectionName === "agentNotifications") {
+              notifications.set(op.ref.id, op.value);
+            }
+            if (op.type === "delete" && op.ref.collectionName === "tasks") {
+              taskDocs.delete(op.ref.id);
+              deletedTasks.push(op.ref.id);
+            }
+          });
+        },
+      };
+    },
     async runTransaction(fn) {
       const tx = {
         async get(ref) {
@@ -606,13 +683,16 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
       if (name === "agentNotifications") {
         return {
           doc(id) {
+            const docId = id || `auto-note-${++autoId}`;
             return {
+              id: docId,
+              collectionName: "agentNotifications",
               async get() {
-                const data = notifications.get(id);
+                const data = notifications.get(docId);
                 return { exists: Boolean(data), data: () => data };
               },
               async delete() {
-                notifications.delete(id);
+                notifications.delete(docId);
               },
             };
           },
@@ -646,6 +726,12 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
           },
           doc(projectId) {
             return {
+              id: projectId,
+              collectionName: "projects",
+              async get() {
+                const data = projectDocs.get(projectId) || null;
+                return { exists: Boolean(data), data: () => data };
+              },
               collection(sub) {
                 if (sub !== "files") throw new Error(`unexpected subcollection ${sub}`);
                 return {
@@ -666,10 +752,23 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
         return {
           where(field, op, value) {
             return query(() => {
-              if (field === "projectId" && op === "in") return tasks.filter((t) => value.includes(t.projectId));
-              if (field === "organizationId" && op === "==") return tasks.filter((t) => t.organizationId === value);
-              return tasks;
+              const currentTasks = [...taskDocs.values()];
+              if (field === "projectId" && op === "in") return currentTasks.filter((t) => value.includes(t.projectId));
+              if (field === "projectId" && op === "==") return currentTasks.filter((t) => t.projectId === value);
+              if (field === "organizationId" && op === "==") return currentTasks.filter((t) => t.organizationId === value);
+              return currentTasks;
             });
+          },
+          doc(id) {
+            const docId = id || `auto-task-${++autoId}`;
+            return {
+              id: docId,
+              collectionName: "tasks",
+              async get() {
+                const data = taskDocs.get(docId) || null;
+                return { exists: Boolean(data), data: () => data };
+              },
+            };
           },
         };
       }
@@ -1039,6 +1138,105 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(res.statusCode).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.answer).toContain("У исполнителя нет прав");
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("returns a delete confirmation proposal for assigned tasks in a named project without calling the model", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "admin" },
+      projects: [
+        { id: "p-elis", name: "Елисеевский парк", organizationId: "org-1" },
+        { id: "p-other", name: "Другой проект", organizationId: "org-1" },
+      ],
+      tasks: [
+        { id: "t-assigned", projectId: "p-elis", organizationId: "org-1", title: "Назначенная", assignee: "Эльдар Исаев", status: "in-progress", subStatus: "assigned" },
+        { id: "t-legacy", projectId: "p-elis", title: "Legacy без subStatus", assignee: "Не назначен", status: "in-progress" },
+        { id: "t-work", projectId: "p-elis", organizationId: "org-1", title: "В работе", assignee: "Амирхан", status: "in-progress", subStatus: "in_work" },
+        { id: "t-other", projectId: "p-other", organizationId: "org-1", title: "Чужой проект", status: "in-progress", subStatus: "assigned" },
+      ],
+      filesByProject: {},
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      message: "удали все назначенные задачи из проекта елисеевский парк",
+      projectId: "p-other",
+      clientToday: "2026-07-06",
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.deleteProposal).toMatchObject({
+      source: "delete_tasks",
+      projectId: "p-elis",
+      projectName: "Елисеевский парк",
+      filterLabel: "назначенные",
+      canDelete: true,
+    });
+    expect(res.body.deleteProposal.tasks.map((t) => t.id)).toEqual(["t-assigned", "t-legacy"]);
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("does not call the model when an employee asks the agent to delete tasks", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "employee" },
+      projects: [{ id: "p-elis", name: "Елисеевский парк", organizationId: "org-1" }],
+      tasks: [{ id: "t1", projectId: "p-elis", organizationId: "org-1", title: "Task" }],
+      filesByProject: {},
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({ message: "удали все задачи из проекта елисеевский парк" }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.answer).toContain("У исполнителя нет прав");
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("delete_tasks confirmation re-validates and deletes the confirmed task ids without calling the model", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "moderator", allowedProjects: ["p-elis"] },
+      projects: [{ id: "p-elis", name: "Елисеевский парк", organizationId: "org-1" }],
+      tasks: [
+        { id: "t1", projectId: "p-elis", organizationId: "org-1", title: "Task 1" },
+        { id: "t2", projectId: "p-elis", title: "Legacy Task 2" },
+      ],
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      action: "delete_tasks",
+      projectId: "p-elis",
+      taskIds: ["t1", "t2"],
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, deleted: 2 });
+    expect(state.db.deletedTasks).toEqual(["t1", "t2"]);
+    expect(state.db.taskDocs.has("t1")).toBe(false);
+    expect(state.db.taskDocs.has("t2")).toBe(false);
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("delete_tasks confirmation rejects stale/missing task ids without partial deletion", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "admin" },
+      projects: [{ id: "p-elis", name: "Елисеевский парк", organizationId: "org-1" }],
+      tasks: [{ id: "t1", projectId: "p-elis", organizationId: "org-1", title: "Task 1" }],
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      action: "delete_tasks",
+      projectId: "p-elis",
+      taskIds: ["t1", "missing"],
+    }), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toContain("заново");
+    expect(state.db.deletedTasks).toEqual([]);
+    expect(state.db.taskDocs.has("t1")).toBe(true);
     expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
   });
 
