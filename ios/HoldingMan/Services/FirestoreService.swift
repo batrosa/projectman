@@ -311,51 +311,68 @@ final class OrgUsersStore: ObservableObject {
 }
 
 // «Мои задачи»: активные задачи, где текущий пользователь — исполнитель.
-// Как в web: запрос по assigneeIds (chunked in — здесь одним запросом
-// array-contains, что покрывает тот же случай).
+// КАК В WEB: подписки по projectId доступных проектов (чанки where-in по 10)
+// с клиентским фильтром «я в assigneeIds». Прямой запрос по всей организации
+// (organizationId == + assigneeIds contains) ПРАВИЛА FIRESTORE НЕ ПРОПУСКАЮТ:
+// правило read проверяет доступ через get(projects/{resource.data.projectId}),
+// что вычислимо только при зафиксированном в запросе projectId — серверный
+// слушатель всегда получал permission-denied и список жил на кэше
+// (прод-баг «обновляется только после перезапуска»).
 @MainActor
 final class MyTasksStore: ObservableObject {
     @Published var tasks: [TaskItem] = []
-    private var listener: ListenerRegistration?
-    private var retryCount = 0
+    private var listeners: [ListenerRegistration] = []
+    private var chunkResults: [Int: [TaskItem]] = [:]
+    private var currentUid = ""
 
-    func subscribe(uid: String, organizationId: String) {
-        listener?.remove()
-        listener = Firestore.firestore().collection("tasks")
-            .whereField("organizationId", isEqualTo: organizationId)
-            .whereField("assigneeIds", arrayContains: uid)
-            .addSnapshotListener { [weak self] snapshot, error in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    // Умерший слушатель = замерший список (прод-баг «мои задачи
-                    // не обновляются до перезапуска»: composite-индекс ещё
-                    // строился, сервер отвечал failed-precondition). Логируем и
-                    // ПЕРЕПОДПИСЫВАЕМСЯ с задержкой — до 10 попыток.
-                    if let error {
-                        print("my-tasks listener error:", error.localizedDescription)
-                        guard self.retryCount < 10 else { return }
-                        self.retryCount += 1
-                        Task { [weak self] in
-                            try? await Task.sleep(nanoseconds: 20_000_000_000)
-                            await MainActor.run { [weak self] in
-                                self?.subscribe(uid: uid, organizationId: organizationId)
-                            }
+    func subscribe(uid: String, projects: [Project]) {
+        stopListeners()
+        currentUid = uid
+        guard !uid.isEmpty, !projects.isEmpty else {
+            tasks = []
+            return
+        }
+
+        let projectIds = projects.map(\.id)
+        let chunks = stride(from: 0, to: projectIds.count, by: 10).map {
+            Array(projectIds[$0..<min($0 + 10, projectIds.count)])
+        }
+
+        for (index, chunk) in chunks.enumerated() {
+            let listener = Firestore.firestore().collection("tasks")
+                .whereField("projectId", in: chunk)
+                .addSnapshotListener { [weak self] snapshot, error in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if let error {
+                            print("my-tasks listener error (chunk \(index)):", error.localizedDescription)
+                            return
                         }
-                        return
+                        guard let snapshot else { return }
+                        self.chunkResults[index] = snapshot.documents.map {
+                            TaskItem.from(id: $0.documentID, data: $0.data())
+                        }
+                        self.rebuild()
                     }
-                    guard let snapshot else { return }
-                    self.retryCount = 0
-                    self.tasks = snapshot.documents
-                        .map { TaskItem.from(id: $0.documentID, data: $0.data()) }
-                        .filter { $0.status != "done" }
-                        .sorted { ($0.deadline ?? "9999") < ($1.deadline ?? "9999") }
                 }
-            }
+            listeners.append(listener)
+        }
+    }
+
+    private func rebuild() {
+        tasks = chunkResults.values.flatMap { $0 }
+            .filter { $0.assigneeIds.contains(currentUid) && $0.status != "done" }
+            .sorted { ($0.deadline ?? "9999") < ($1.deadline ?? "9999") }
+    }
+
+    private func stopListeners() {
+        listeners.forEach { $0.remove() }
+        listeners = []
+        chunkResults = [:]
     }
 
     func stop() {
-        listener?.remove()
-        listener = nil
+        stopListeners()
         tasks = []
     }
 

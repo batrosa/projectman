@@ -43,6 +43,9 @@ struct MainTabView: View {
         .environmentObject(orgUsersStore)
         .onAppear { resubscribe() }
         .onChange(of: appState.user?.organizationId) { resubscribe() }
+        // «Мои задачи» слушают задачи ПО ПРОЕКТАМ (как web) — пересобираем
+        // подписку, когда список доступных проектов загрузился/изменился
+        .onChange(of: projectsStore.projects) { resubscribeMyTasks() }
         // Возврат из фона: пересобрать подписки (мёртвый после долгого фона
         // слушатель = «замёрзшие» списки)
         .onChange(of: scenePhase) {
@@ -72,8 +75,16 @@ struct MainTabView: View {
         #endif
         guard let user = appState.user, let orgId = user.organizationId else { return }
         projectsStore.subscribe(organizationId: orgId, user: user)
-        myTasksStore.subscribe(uid: user.uid, organizationId: orgId)
+        resubscribeMyTasks()
         notificationsStore.subscribe(uid: user.uid, organizationId: orgId)
         orgUsersStore.subscribe(organizationId: orgId)
+    }
+
+    private func resubscribeMyTasks() {
+        #if DEBUG
+        if DemoData.isEnabled { return }
+        #endif
+        guard let user = appState.user else { return }
+        myTasksStore.subscribe(uid: user.uid, projects: projectsStore.projects)
     }
 }
