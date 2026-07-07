@@ -64,7 +64,7 @@ struct AgentChatView: View {
                                     .font(.system(size: 26, weight: .semibold))
                                     .foregroundStyle(.white)
                             }
-                            Text("ИИ Руководитель проекта")
+                            Text("ИИ Агент")
                                 .font(.headline)
                                 .foregroundStyle(Theme.textPrimary)
                             Text("Спросите о проектах, задачах и сроках.\nМогу создавать и удалять задачи —\nс карточкой подтверждения.")
