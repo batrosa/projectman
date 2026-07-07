@@ -4,6 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
     @State private var confirmLogout = false
+    @State private var showOrgScreen = false
 
     private var appearance: Appearance {
         get { Appearance(rawValue: appearanceRaw) ?? .system }
@@ -172,29 +173,42 @@ struct SettingsView: View {
     }
 
     private var organizationCard: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(Theme.primary.opacity(0.12))
-                Image(systemName: "building.2.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.primary)
-            }
-            .frame(width: 40, height: 40)
+        Button {
+            showOrgScreen = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Theme.primary.opacity(0.12))
+                    Image(systemName: "building.2.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.primary)
+                }
+                .frame(width: 40, height: 40)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Организация")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
-                Text(appState.organizationName.isEmpty ? "—" : appState.organizationName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(appState.organizationName.isEmpty ? "Организация" : appState.organizationName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Сменить, вступить по коду или создать")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.6))
             }
-            Spacer(minLength: 0)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
         }
-        .padding(14)
-        .card()
+        .buttonStyle(PressableStyle())
+        .sheet(isPresented: $showOrgScreen) {
+            OrgSelectView(embedded: true)
+        }
     }
 
     private func settingsRow(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {

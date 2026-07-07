@@ -6,7 +6,13 @@ import SwiftUI
 // preview / create, api/join-org); после успеха слушатель user-doc в AppState
 // сам переводит приложение в рабочее состояние.
 struct OrgSelectView: View {
+    // embedded: экран открыт из Профиля поверх приложения (шторкой) — вместо
+    // «Выйти» показываем «Закрыть», текущую организацию помечаем, а успешное
+    // переключение/создание закрывает шторку.
+    var embedded = false
+
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
 
     @State private var organizations: [Organization] = []
     @State private var isLoading = true
@@ -66,9 +72,15 @@ struct OrgSelectView: View {
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Выйти") { appState.signOut() }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.danger)
+                    if embedded {
+                        Button("Закрыть") { dismiss() }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                    } else {
+                        Button("Выйти") { appState.signOut() }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.danger)
+                    }
                 }
             }
         }
@@ -122,6 +134,7 @@ struct OrgSelectView: View {
         VStack(spacing: 10) {
             sectionTitle("Мои организации")
             ForEach(organizations) { org in
+                let isCurrent = org.id == appState.user?.organizationId
                 Button {
                     enter(org)
                 } label: {
@@ -151,6 +164,17 @@ struct OrgSelectView: View {
 
                         if busyOrgId == org.id {
                             ProgressView().tint(Theme.primary)
+                        } else if isCurrent {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text("Текущая")
+                                    .font(.footnote.weight(.bold))
+                            }
+                            .foregroundStyle(Theme.statusDone)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Theme.statusDone.opacity(0.12), in: Capsule())
                         } else {
                             HStack(spacing: 4) {
                                 Text("Войти")
@@ -169,7 +193,7 @@ struct OrgSelectView: View {
                     .card()
                 }
                 .buttonStyle(PressableStyle())
-                .disabled(busyOrgId != nil)
+                .disabled(busyOrgId != nil || isCurrent)
             }
         }
     }
@@ -448,7 +472,8 @@ struct OrgSelectView: View {
             defer { busyOrgId = nil }
             do {
                 try await ApiClient.switchOrganization(id: org.id)
-                // Дальше — слушатель user-doc в AppState
+                // Слушатель user-doc в AppState обновит приложение под шторкой
+                if embedded { dismiss() }
             } catch {
                 errorMessage = (error as? ApiError)?.errorDescription ?? "Не удалось войти в организацию"
             }
@@ -462,6 +487,7 @@ struct OrgSelectView: View {
             defer { busyOrgId = nil }
             do {
                 try await ApiClient.joinOrganization(inviteCode: inviteCode.trimmingCharacters(in: .whitespaces))
+                if embedded { dismiss() }
             } catch {
                 errorMessage = (error as? ApiError)?.errorDescription ?? "Не удалось вступить в организацию"
             }
@@ -475,7 +501,8 @@ struct OrgSelectView: View {
             defer { busyOrgId = nil }
             do {
                 _ = try await ApiClient.createOrganization(name: newOrgName.trimmingCharacters(in: .whitespaces))
-                // Сервер уже сделал нас владельцем — user-doc слушатель переключит экран
+                // Сервер уже сделал нас владельцем — user-doc слушатель переключит приложение
+                if embedded { dismiss() }
             } catch {
                 errorMessage = (error as? ApiError)?.errorDescription ?? "Не удалось создать организацию"
             }
