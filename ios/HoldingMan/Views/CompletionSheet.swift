@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct CompletionSheet: View {
     let task: TaskItem
     let onSubmit: (String, [FileRef]) async throws -> Void
+    var onFinished: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var comment = ""
@@ -17,6 +18,7 @@ struct CompletionSheet: View {
     @State private var errorMessage: String?
     @State private var photoItem: PhotosPickerItem?
     @State private var showFileImporter = false
+    @FocusState private var commentFocused: Bool
 
     private let maxProofs = 3
 
@@ -28,6 +30,7 @@ struct CompletionSheet: View {
                         .lineLimit(3...8)
                         .foregroundStyle(Theme.textPrimary)
                         .listRowBackground(Theme.surface)
+                        .focused($commentFocused)
                 }
 
                 Section("Файлы подтверждения (1–\(maxProofs))") {
@@ -83,6 +86,7 @@ struct CompletionSheet: View {
                 }
             }
             .screenBackground()
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Завершение задачи")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -98,6 +102,11 @@ struct CompletionSheet: View {
                                       || proofs.isEmpty || isUploading)
                     }
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Готово") { commentFocused = false }
+                        .font(.subheadline.weight(.semibold))
+                }
             }
             .onChange(of: photoItem) { uploadPickedPhoto() }
             .fileImporter(
@@ -110,7 +119,6 @@ struct CompletionSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func uploadPickedPhoto() {
@@ -152,6 +160,7 @@ struct CompletionSheet: View {
     }
 
     private func submit() {
+        commentFocused = false
         isSubmitting = true
         errorMessage = nil
         Task {
@@ -159,6 +168,7 @@ struct CompletionSheet: View {
             do {
                 try await onSubmit(comment.trimmingCharacters(in: .whitespacesAndNewlines), proofs)
                 dismiss()
+                onFinished()
             } catch {
                 errorMessage = "Не удалось отправить на проверку: \(error.localizedDescription)"
             }

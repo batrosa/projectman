@@ -103,7 +103,6 @@ struct NewTaskView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func create() {

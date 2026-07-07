@@ -1,92 +1,124 @@
 import SwiftUI
 
-// Канбан: горизонтальный пейджинг по колонкам (мобильный аналог вкладок
-// web-доски), внутри — карточки задач.
+// Канбан: вкладки-статусы со «скользящим» индикатором + свайп между
+// колонками (TabView .page). Цвета статусов — как на web-доске.
 struct BoardView: View {
     let project: Project
     @EnvironmentObject private var tasksStore: TasksStore
     @State private var column: BoardStatus = .assigned
+    @Namespace private var tabIndicator
 
     var body: some View {
         VStack(spacing: 0) {
-            // Вкладки-статусы с количеством, цвета как на web-доске
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(BoardStatus.allCases) { status in
-                        let count = tasksStore.tasks(in: status).count
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.18)) { column = status }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Theme.color(for: status))
-                                    .frame(width: 8, height: 8)
-                                Text(status.titleRu)
-                                    .font(.subheadline.weight(.semibold))
-                                Text("\(count)")
-                                    .font(.caption2.bold())
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 2)
-                                    .background(Theme.color(for: status).opacity(0.25), in: Capsule())
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                column == status
-                                    ? Theme.color(for: status).opacity(0.28)
-                                    : Theme.surface,
-                                in: RoundedRectangle(cornerRadius: 11)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 11)
-                                    .stroke(
-                                        column == status
-                                            ? Theme.color(for: status).opacity(0.6)
-                                            : .clear,
-                                        lineWidth: 1
-                                    )
-                            )
-                            .foregroundStyle(Theme.textPrimary)
-                        }
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-            }
+            statusTabs
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
 
-            let tasks = tasksStore.tasks(in: column)
             if !tasksStore.loaded {
                 Spacer()
                 ProgressView().tint(Theme.primary)
                 Spacer()
-            } else if tasks.isEmpty {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "tray")
-                        .font(.title)
-                        .foregroundStyle(Theme.textSecondary)
-                    Text("В колонке «\(column.titleRu)» пусто")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textSecondary)
-                }
-                Spacer()
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(tasks) { task in
-                            NavigationLink {
-                                TaskDetailView(task: task, project: project)
-                                    .environmentObject(tasksStore)
-                            } label: {
-                                TaskCardView(task: task)
-                            }
-                            .buttonStyle(.plain)
+                TabView(selection: $column.animation(.spring(duration: 0.32, bounce: 0.2))) {
+                    ForEach(BoardStatus.allCases) { status in
+                        columnView(status)
+                            .tag(status)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+        }
+    }
+
+    // MARK: — вкладки
+
+    private var statusTabs: some View {
+        HStack(spacing: 6) {
+            ForEach(BoardStatus.allCases) { status in
+                let isActive = column == status
+                let count = tasksStore.tasks(in: status).count
+                Button {
+                    withAnimation(.spring(duration: 0.32, bounce: 0.2)) { column = status }
+                } label: {
+                    VStack(spacing: 5) {
+                        Text("\(count)")
+                            .font(.system(.callout, design: .rounded).weight(.bold))
+                            .foregroundStyle(isActive ? Theme.color(for: status) : Theme.textPrimary)
+                            .contentTransition(.numericText())
+                        Text(status.titleRu)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(isActive ? Theme.color(for: status) : Theme.textSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background {
+                        if isActive {
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .fill(Theme.color(for: status).opacity(0.13))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                        .stroke(Theme.color(for: status).opacity(0.35), lineWidth: 1)
+                                )
+                                .matchedGeometryEffect(id: "tab", in: tabIndicator)
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
                 }
+                .buttonStyle(.plain)
             }
+        }
+        .padding(5)
+        .card(cornerRadius: 18)
+    }
+
+    // MARK: — колонка
+
+    @ViewBuilder
+    private func columnView(_ status: BoardStatus) -> some View {
+        let tasks = tasksStore.tasks(in: status)
+        if tasks.isEmpty {
+            EmptyStateView(
+                icon: emptyIcon(for: status),
+                title: "«\(status.titleRu)» — пусто",
+                message: emptyMessage(for: status)
+            )
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(tasks) { task in
+                        NavigationLink {
+                            TaskDetailView(task: task, project: project)
+                                .environmentObject(tasksStore)
+                        } label: {
+                            TaskCardView(task: task)
+                        }
+                        .buttonStyle(PressableStyle())
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
+                .padding(.bottom, 16)
+            }
+        }
+    }
+
+    private func emptyIcon(for status: BoardStatus) -> String {
+        switch status {
+        case .assigned: return "tray"
+        case .inProgress: return "hammer"
+        case .review: return "eye"
+        case .done: return "checkmark.seal"
+        }
+    }
+
+    private func emptyMessage(for status: BoardStatus) -> String {
+        switch status {
+        case .assigned: return "Новые задачи появятся в этой колонке."
+        case .inProgress: return "Здесь будут задачи, взятые в работу."
+        case .review: return "Задачи, отправленные на проверку, появятся здесь."
+        case .done: return "Принятые задачи попадают в архив «Готово»."
         }
     }
 }
@@ -95,42 +127,46 @@ struct TaskCardView: View {
     let task: TaskItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(task.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .multilineTextAlignment(.leading)
-                .lineLimit(3)
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Theme.color(for: task.boardStatus))
+                .frame(width: 4)
 
-            HStack(spacing: 10) {
-                Label(task.assignee, systemImage: "person")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(task.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                Spacer()
+                HStack(spacing: 8) {
+                    if task.assignee != "Не назначен" {
+                        HStack(spacing: 6) {
+                            AvatarView(name: task.assignee, size: 22)
+                            Text(task.assignee)
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                        }
+                    } else {
+                        HStack(spacing: 5) {
+                            Image(systemName: "person.slash")
+                                .font(.system(size: 10))
+                            Text("Не назначен")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                    }
 
-                if let deadline = task.deadline,
-                   let date = DateFormatter.isoDay.date(from: deadline) {
-                    Label(DateFormatter.dayMonth.string(from: date), systemImage: "calendar")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(task.isOverdue ? Theme.danger : Theme.textSecondary)
+                    Spacer(minLength: 6)
+
+                    DeadlineChip(deadline: task.deadline, isOverdue: task.isOverdue)
                 }
             }
         }
-        .padding(12)
+        .padding(.vertical, 13)
+        .padding(.horizontal, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Theme.color(for: task.boardStatus))
-                .frame(width: 3)
-                .padding(.vertical, 8)
-                .padding(.leading, 1)
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(task.isOverdue ? Theme.danger.opacity(0.55) : .clear, lineWidth: 1)
-        )
+        .card()
     }
 }

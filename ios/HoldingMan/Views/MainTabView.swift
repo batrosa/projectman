@@ -6,24 +6,34 @@ struct MainTabView: View {
     @StateObject private var myTasksStore = MyTasksStore()
     @StateObject private var notificationsStore = NotificationsStore()
     @StateObject private var orgUsersStore = OrgUsersStore()
+    @State private var selectedTab: String
+
+    init(initialTab: String = "projects") {
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             ProjectsView()
                 .tabItem { Label("Проекты", systemImage: "folder.fill") }
+                .tag("projects")
 
             MyTasksView()
                 .tabItem { Label("Мои задачи", systemImage: "checklist") }
+                .tag("mytasks")
 
             AgentChatView()
                 .tabItem { Label("ИИ-агент", systemImage: "sparkles") }
+                .tag("chat")
 
             NotificationsView()
                 .tabItem { Label("Уведомления", systemImage: "bell.fill") }
                 .badge(notificationsStore.unreadCount)
+                .tag("notifications")
 
             SettingsView()
                 .tabItem { Label("Профиль", systemImage: "person.crop.circle") }
+                .tag("settings")
         }
         .environmentObject(projectsStore)
         .environmentObject(myTasksStore)
@@ -34,6 +44,15 @@ struct MainTabView: View {
     }
 
     private func resubscribe() {
+        #if DEBUG
+        if DemoData.isEnabled {
+            projectsStore.loadDemo()
+            myTasksStore.loadDemo()
+            notificationsStore.loadDemo()
+            orgUsersStore.loadDemo()
+            return
+        }
+        #endif
         guard let user = appState.user, let orgId = user.organizationId else { return }
         projectsStore.subscribe(organizationId: orgId, user: user)
         myTasksStore.subscribe(uid: user.uid, organizationId: orgId)

@@ -15,7 +15,6 @@ struct TaskDetailView: View {
     @State private var revisionReason = ""
     @State private var confirmAccept = false
 
-    // Живая версия задачи из стора (обновляется листенером)
     private var current: TaskItem { tasksStore.tasks.first(where: { $0.id == task.id }) ?? task }
 
     private var isAssignee: Bool {
@@ -27,161 +26,57 @@ struct TaskDetailView: View {
         appState.user?.canManage(projectId: project.id) == true
     }
 
+    private var hasActions: Bool {
+        canManage
+        || (isAssignee && current.boardStatus == .assigned)
+        || (isAssignee && current.boardStatus == .inProgress)
+    }
+
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(current.title)
-                        .font(.title3.bold())
-                        .foregroundStyle(Theme.textPrimary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                headerCard
+                detailCard
 
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Theme.color(for: current.boardStatus))
-                            .frame(width: 9, height: 9)
-                        Text(current.boardStatus.singleRu)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.color(for: current.boardStatus))
-                        if current.isOverdue {
-                            Text("• просрочена")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Theme.danger)
-                        }
-                    }
+                if !current.descriptionText.isEmpty {
+                    infoBlock(title: "Описание", text: current.descriptionText)
                 }
-                .listRowBackground(Theme.surface)
-            }
 
-            Section("Детали") {
-                row("Проект", project.name)
-                row("Ответственный", current.assignee)
-                if let deadline = current.deadline,
-                   let date = DateFormatter.isoDay.date(from: deadline) {
-                    row("Срок", DateFormatter.dayMonthYear.string(from: date))
-                } else {
-                    row("Срок", "Без срока")
+                if !current.attachments.isEmpty {
+                    filesBlock(title: "Вложения", files: current.attachments)
                 }
-                if let created = current.createdAt {
-                    row("Создана", DateFormatter.dateTime.string(from: created))
+
+                if let comment = current.completionComment, !comment.isEmpty {
+                    infoBlock(title: "Отчёт исполнителя", text: comment)
                 }
-                if !current.createdBy.isEmpty {
-                    row("Постановщик", current.createdBy)
+
+                if !current.completionProofs.isEmpty {
+                    filesBlock(title: "Файлы подтверждения", files: current.completionProofs)
+                }
+
+                if let reason = current.revisionReason, !reason.isEmpty {
+                    infoBlock(title: "Возвращена на доработку", text: reason, tint: Theme.warning)
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.danger)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                 }
             }
-
-            if !current.descriptionText.isEmpty {
-                Section("Описание") {
-                    Text(current.descriptionText)
-                        .foregroundStyle(Theme.textPrimary)
-                        .listRowBackground(Theme.surface)
-                }
-            }
-
-            if !current.attachments.isEmpty {
-                Section("Вложения") {
-                    ForEach(current.attachments) { file in
-                        fileLink(file)
-                    }
-                }
-            }
-
-            if let comment = current.completionComment, !comment.isEmpty {
-                Section("Отчёт исполнителя") {
-                    Text(comment)
-                        .foregroundStyle(Theme.textPrimary)
-                        .listRowBackground(Theme.surface)
-                }
-            }
-
-            if !current.completionProofs.isEmpty {
-                Section("Файлы подтверждения") {
-                    ForEach(current.completionProofs) { file in
-                        fileLink(file)
-                    }
-                }
-            }
-
-            if let reason = current.revisionReason, !reason.isEmpty {
-                Section("Возвращена на доработку") {
-                    Text(reason)
-                        .foregroundStyle(Theme.warning)
-                        .listRowBackground(Theme.surface)
-                }
-            }
-
-            Section {
-                if isAssignee && current.boardStatus == .assigned {
-                    Button {
-                        takeToWork()
-                    } label: {
-                        Label("Взять в работу", systemImage: "play.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isBusy)
-                    .listRowBackground(Color.clear)
-                }
-
-                if isAssignee && current.boardStatus == .inProgress {
-                    Button {
-                        showCompletionSheet = true
-                    } label: {
-                        Label("Завершить задачу", systemImage: "checkmark.seal.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.statusDone)
-                    .disabled(isBusy)
-                    .listRowBackground(Color.clear)
-                }
-
-                if canManage && current.boardStatus == .review {
-                    Button {
-                        confirmAccept = true
-                    } label: {
-                        Label("Принять в «Готово»", systemImage: "checkmark.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.statusDone)
-                    .disabled(isBusy)
-                    .listRowBackground(Color.clear)
-
-                    Button {
-                        revisionReason = ""
-                        showRevisionPrompt = true
-                    } label: {
-                        Label("Вернуть на доработку", systemImage: "arrow.uturn.backward")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(Theme.warning)
-                    .disabled(isBusy)
-                    .listRowBackground(Color.clear)
-                }
-
-                if canManage {
-                    Button(role: .destructive) {
-                        confirmDelete = true
-                    } label: {
-                        Label("Удалить задачу", systemImage: "trash")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .disabled(isBusy)
-                    .listRowBackground(Theme.danger.opacity(0.12))
-                }
-            }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.danger)
-                    .listRowBackground(Color.clear)
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 18)
         }
-        .screenBackground()
+        .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Задача")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            if hasActions { actionPanel }
+        }
         .confirmationDialog(
             "Удалить задачу «\(current.title)»? Действие необратимо.",
             isPresented: $confirmDelete,
@@ -211,8 +106,101 @@ struct TaskDetailView: View {
                 try await tasksStore.completeWithProofs(
                     task: current, comment: comment, proofs: proofs, byName: user.displayName
                 )
+            } onFinished: {
+                showCompletionSheet = false
+                dismiss()
             }
         }
+    }
+
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(current.title)
+                .font(.title3.bold())
+                .foregroundStyle(Theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                statusPill(current.boardStatus)
+                if current.isOverdue {
+                    Label("Просрочена", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.danger)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var detailCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            detailRow("Проект", project.name)
+            divider
+            detailRow("Ответственный", current.assignee)
+            divider
+            detailRow("Срок", formattedDeadline)
+            if let created = current.createdAt {
+                divider
+                detailRow("Создана", DateFormatter.dateTime.string(from: created))
+            }
+            if !current.createdBy.isEmpty {
+                divider
+                detailRow("Постановщик", current.createdBy)
+            }
+        }
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var divider: some View {
+        Divider()
+            .background(Theme.textSecondary.opacity(0.18))
+            .padding(.horizontal, 14)
+    }
+
+    private var formattedDeadline: String {
+        guard let deadline = current.deadline,
+              let date = DateFormatter.isoDay.date(from: deadline) else {
+            return "Без срока"
+        }
+        return DateFormatter.dayMonthYear.string(from: date)
+    }
+
+    private var actionPanel: some View {
+        VStack(spacing: 10) {
+            if isAssignee && current.boardStatus == .assigned {
+                taskActionButton("Взять в работу", icon: "play.fill", tint: Theme.primary) {
+                    takeToWork()
+                }
+            }
+
+            if isAssignee && current.boardStatus == .inProgress {
+                taskActionButton("Завершить задачу", icon: "checkmark.seal.fill", tint: Theme.statusDone) {
+                    showCompletionSheet = true
+                }
+            }
+
+            if canManage && current.boardStatus == .review {
+                taskActionButton("Принять в «Готово»", icon: "checkmark.circle.fill", tint: Theme.statusDone) {
+                    confirmAccept = true
+                }
+                taskActionButton("Вернуть на доработку", icon: "arrow.uturn.backward", tint: Theme.warning, filled: false) {
+                    revisionReason = ""
+                    showRevisionPrompt = true
+                }
+            }
+
+            if canManage {
+                taskActionButton("Удалить задачу", icon: "trash", tint: Theme.danger, filled: false, role: .destructive) {
+                    confirmDelete = true
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .background(.ultraThinMaterial)
     }
 
     @ViewBuilder
@@ -232,20 +220,107 @@ struct TaskDetailView: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
             }
-            .listRowBackground(Theme.surface)
+            .padding(12)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    @ViewBuilder
-    private func row(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(Theme.textSecondary)
-            Spacer()
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 118, alignment: .leading)
+            Spacer(minLength: 10)
             Text(value)
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.textPrimary)
                 .multilineTextAlignment(.trailing)
+                .lineLimit(3)
+                .minimumScaleFactor(0.82)
         }
-        .listRowBackground(Theme.surface)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+    }
+
+    private func infoBlock(title: String, text: String, tint: Color = Theme.textPrimary) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(Theme.textSecondary)
+            Text(text)
+                .font(.body)
+                .foregroundStyle(tint)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    private func filesBlock(title: String, files: [FileRef]) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(Theme.textSecondary)
+            VStack(spacing: 8) {
+                ForEach(files) { file in
+                    fileLink(file)
+                }
+            }
+        }
+    }
+
+    private func statusPill(_ status: BoardStatus) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Theme.color(for: status))
+                .frame(width: 8, height: 8)
+            Text(status.singleRu)
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(Theme.color(for: status))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.color(for: status).opacity(0.14), in: Capsule())
+        .overlay(Capsule().stroke(Theme.color(for: status).opacity(0.36), lineWidth: 1))
+    }
+
+    private func taskActionButton(
+        _ title: String,
+        icon: String,
+        tint: Color,
+        filled: Bool = true,
+        role: ButtonRole? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: role) {
+            action()
+        } label: {
+            HStack(spacing: 10) {
+                if isBusy {
+                    ProgressView().tint(filled ? .white : tint)
+                } else {
+                    Image(systemName: icon)
+                        .font(.headline)
+                    Text(title)
+                        .font(.headline.weight(.semibold))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .foregroundStyle(filled ? .white : tint)
+            .background(
+                filled ? tint : tint.opacity(0.13),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(filled ? .clear : tint.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
     }
 
     private func takeToWork() {
@@ -256,6 +331,7 @@ struct TaskDetailView: View {
             defer { isBusy = false }
             do {
                 try await tasksStore.takeToWork(task: current, byName: user.displayName)
+                dismiss()
             } catch {
                 errorMessage = "Не удалось взять задачу в работу: \(error.localizedDescription)"
             }
@@ -284,6 +360,7 @@ struct TaskDetailView: View {
             defer { isBusy = false }
             do {
                 try await tasksStore.acceptDone(task: current, byName: user.displayName)
+                dismiss()
             } catch {
                 errorMessage = "Не удалось принять задачу: \(error.localizedDescription)"
             }
@@ -299,6 +376,7 @@ struct TaskDetailView: View {
             defer { isBusy = false }
             do {
                 try await tasksStore.returnForRevision(task: current, reason: reason, byName: user.displayName)
+                dismiss()
             } catch {
                 errorMessage = "Не удалось вернуть задачу: \(error.localizedDescription)"
             }

@@ -31,7 +31,6 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
         INFOPLIST_KEY_CFBundleDisplayName: HoldingMan
         # Telegram-бот открывается внешней ссылкой (tg:// или https://t.me)
         INFOPLIST_KEY_LSApplicationQueriesSchemes: tg

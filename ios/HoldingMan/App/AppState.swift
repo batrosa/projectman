@@ -28,6 +28,14 @@ final class AppState: ObservableObject {
     }
 
     func start() {
+        #if DEBUG
+        if DemoData.isEnabled {
+            user = DemoData.user
+            organizationName = "NF Group"
+            phase = .ready
+            return
+        }
+        #endif
         guard authHandle == nil else { return }
         authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, firebaseUser in
             Task { @MainActor [weak self] in

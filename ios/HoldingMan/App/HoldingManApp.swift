@@ -5,6 +5,7 @@ import FirebaseCore
 struct HoldingManApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var appState = AppState()
+    @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
 
     init() {
         FirebaseApp.configure()
@@ -15,7 +16,7 @@ struct HoldingManApp: App {
             RootView()
                 .environmentObject(appState)
                 .tint(Theme.primary)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme((Appearance(rawValue: appearanceRaw) ?? .system).colorScheme)
         }
     }
 }
@@ -45,7 +46,15 @@ struct RootView: View {
             case .needsOrganization:
                 OrgSelectView()
             case .ready:
+                #if DEBUG
+                if DemoData.isEnabled, let screen = DemoData.screen {
+                    DemoScreenRouter(screen: screen)
+                } else {
+                    MainTabView()
+                }
+                #else
                 MainTabView()
+                #endif
             }
         }
         .animation(.easeInOut(duration: 0.25), value: phaseKey)

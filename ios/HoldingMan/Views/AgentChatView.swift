@@ -11,6 +11,7 @@ struct AgentChatView: View {
     @State private var input = ""
     @State private var isSending = false
     @State private var targetProject: Project?
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -29,9 +30,25 @@ struct AgentChatView: View {
                             Button(project.name) { targetProject = project }
                         }
                     } label: {
-                        Label(targetProject?.name ?? "Проект", systemImage: "folder")
-                            .font(.caption)
+                        HStack(spacing: 5) {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 11))
+                            Text(targetProject?.name ?? "Проект")
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.primary.opacity(0.12), in: Capsule())
                     }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Готово") { inputFocused = false }
+                        .font(.subheadline.weight(.semibold))
                 }
             }
         }
@@ -42,19 +59,26 @@ struct AgentChatView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     if entries.isEmpty {
-                        VStack(spacing: 10) {
-                            Image(systemName: "sparkles")
-                                .font(.largeTitle)
-                                .foregroundStyle(Theme.primary)
+                        VStack(spacing: 14) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .fill(Theme.primaryGradient)
+                                    .frame(width: 64, height: 64)
+                                    .shadow(color: Theme.primary.opacity(0.3), radius: 14, y: 6)
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 26, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
                             Text("ИИ Руководитель проекта")
                                 .font(.headline)
                                 .foregroundStyle(Theme.textPrimary)
-                            Text("Спросите о проектах, задачах и сроках. Могу создавать задачи («поставь задачу … в проект …») и удалять их с подтверждением («удали все назначенные задачи из проекта …»).")
+                            Text("Спросите о проектах, задачах и сроках.\nМогу создавать и удалять задачи —\nс карточкой подтверждения.")
                                 .font(.footnote)
                                 .foregroundStyle(Theme.textSecondary)
                                 .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.top, 60)
+                        .padding(.top, 70)
                         .padding(.horizontal, 30)
                     }
 
@@ -64,19 +88,17 @@ struct AgentChatView: View {
                     }
 
                     if isSending {
-                        HStack {
-                            ProgressView().tint(Theme.primary)
-                            Text("Агент печатает…")
-                                .font(.footnote)
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        .id("typing")
+                        TypingIndicator()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .id("typing")
                     }
                 }
                 .padding(.vertical, 10)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .contentShape(Rectangle())
+            .onTapGesture { inputFocused = false }
             .onChange(of: entries.count) {
                 if let last = entries.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -92,27 +114,41 @@ struct AgentChatView: View {
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(.white)
-                .padding(12)
-                .background(Theme.primary, in: RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(Theme.primaryGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.leading, 60)
+                .padding(.leading, 56)
                 .padding(.trailing, 12)
+                .transition(.scale(scale: 0.95, anchor: .bottomTrailing).combined(with: .opacity))
         case .assistant(_, let text):
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(Theme.textPrimary)
-                .padding(12)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 1)
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.trailing, 40)
                 .padding(.leading, 12)
+                .transition(.scale(scale: 0.95, anchor: .bottomLeading).combined(with: .opacity))
         case .error(_, let text):
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(Theme.danger)
-                .padding(10)
-                .background(Theme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 12)
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.circle.fill")
+                Text(text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.footnote)
+            .foregroundStyle(Theme.danger)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 12)
         case .createProposal(_, let proposal):
             AgentCreateProposalCard(proposal: proposal) { resultText in
                 appendAssistant(resultText)
@@ -127,21 +163,34 @@ struct AgentChatView: View {
     }
 
     private var inputBar: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .bottom, spacing: 8) {
             TextField("Сообщение агенту…", text: $input, axis: .vertical)
                 .lineLimit(1...4)
-                .padding(10)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(inputFocused ? Theme.primary.opacity(0.5) : Theme.hairline, lineWidth: 1)
+                )
                 .foregroundStyle(Theme.textPrimary)
+                .focused($inputFocused)
+                .submitLabel(.send)
+                .onSubmit { send() }
+                .animation(.easeInOut(duration: 0.15), value: inputFocused)
 
             Button {
                 send()
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Theme.primary)
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Theme.primaryGradient, in: Circle())
             }
+            .buttonStyle(PressableStyle())
             .disabled(isSending || input.trimmingCharacters(in: .whitespaces).isEmpty)
+            .opacity(isSending || input.trimmingCharacters(in: .whitespaces).isEmpty ? 0.45 : 1)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -152,6 +201,7 @@ struct AgentChatView: View {
         let message = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty, !isSending else { return }
         input = ""
+        inputFocused = false
         entries.append(.user(id: UUID(), text: message))
         let historyForRequest = history
         history.append(["role": "user", "content": message])
@@ -198,6 +248,37 @@ struct AgentChatView: View {
     }
 }
 
+// Анимированный индикатор «агент печатает» — три пульсирующие точки
+private struct TypingIndicator: View {
+    @State private var animate = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(Theme.textSecondary)
+                    .frame(width: 7, height: 7)
+                    .scaleEffect(animate ? 1 : 0.55)
+                    .opacity(animate ? 1 : 0.4)
+                    .animation(
+                        .easeInOut(duration: 0.5)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.16),
+                        value: animate
+                    )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Theme.hairline, lineWidth: 1)
+        )
+        .onAppear { animate = true }
+    }
+}
+
 // Карточка «что я создам» — аналог web appendAgentTaskProposal.
 struct AgentCreateProposalCard: View {
     let proposal: AgentTaskProposal
@@ -207,16 +288,26 @@ struct AgentCreateProposalCard: View {
     @State private var errorText: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(proposal.source == "text"
-                 ? "Задачи из текстового запроса — проект «\(proposal.projectName)»"
-                 : "Задачи из документа «\(proposal.file ?? "")» — проект «\(proposal.projectName)»")
-                .font(.subheadline.bold())
-                .foregroundStyle(Theme.textPrimary)
-
-            ForEach(proposal.tasks) { task in
-                proposalRow(task)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "wand.and.stars")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.primary)
+                Text("Создание задач · «\(proposal.projectName)»")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            VStack(spacing: 0) {
+                ForEach(Array(proposal.tasks.enumerated()), id: \.element.id) { index, task in
+                    proposalRow(task)
+                    if index < proposal.tasks.count - 1 {
+                        Divider().overlay(Theme.hairline)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
 
             let okCount = proposal.tasks.filter(\.ok).count
             if proposal.canCreate && okCount > 0 && !done {
@@ -224,46 +315,56 @@ struct AgentCreateProposalCard: View {
                     confirm()
                 } label: {
                     if isBusy {
-                        ProgressView().tint(.white).frame(maxWidth: .infinity)
+                        ProgressView().tint(.white)
                     } else {
-                        Text("Создать \(okCount) задач(и)")
-                            .font(.subheadline.bold())
-                            .frame(maxWidth: .infinity)
+                        Text("Создать: \(okCount)")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(isBusy)
+            } else if done {
+                Label("Задачи созданы", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.statusDone)
             } else if !proposal.canCreate {
                 Text("Создавать задачи может владелец, админ или модератор с доступом к проекту.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let errorText {
-                Text(errorText).font(.caption).foregroundStyle(Theme.danger)
+                Text(errorText)
+                    .font(.caption)
+                    .foregroundStyle(Theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .padding(14)
+        .card()
     }
 
     @ViewBuilder
     private func proposalRow(_ task: AgentProposalTask) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 9) {
             Image(systemName: task.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(task.ok ? Theme.statusDone : Theme.warning)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(task.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.textPrimary)
-                Text("\(task.deadline ?? "без срока") • \(task.assigneeDisplay)"
-                     + (task.ok ? "" : " • \(task.reason ?? "не будет создана")"))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(task.deadline ?? "без срока") · \(task.assigneeDisplay)"
+                     + (task.ok ? "" : " · \(task.reason ?? "не будет создана")"))
                     .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 7)
         .opacity(task.ok ? 1 : 0.6)
     }
 
@@ -293,62 +394,81 @@ struct AgentDeleteProposalCard: View {
     @State private var errorText: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Удаление задач — проект «\(proposal.projectName)»")
-                .font(.subheadline.bold())
-                .foregroundStyle(Theme.textPrimary)
-            if !proposal.filterLabel.isEmpty {
-                Text("Условие: \(proposal.filterLabel)")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            Text("⚠️ Действие необратимо")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.danger)
-
-            ForEach(proposal.tasks) { task in
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "trash")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.danger)
-                        .padding(.top, 2)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(task.title)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                        Text("\(task.statusLabel ?? "") • \(task.deadline ?? "без срока") • \(task.assigneeDisplay)")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "trash.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.danger)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Удаление задач · «\(proposal.projectName)»")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !proposal.filterLabel.isEmpty {
+                        Text("Условие: \(proposal.filterLabel) · необратимо")
                             .font(.caption2)
-                            .foregroundStyle(Theme.textSecondary)
+                            .foregroundStyle(Theme.danger)
                     }
                 }
             }
 
+            VStack(spacing: 0) {
+                ForEach(Array(proposal.tasks.enumerated()), id: \.element.id) { index, task in
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.danger.opacity(0.8))
+                            .padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(task.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("\(task.statusLabel ?? "") · \(task.deadline ?? "без срока") · \(task.assigneeDisplay)")
+                                .font(.caption2)
+                                .foregroundStyle(Theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 7)
+                    if index < proposal.tasks.count - 1 {
+                        Divider().overlay(Theme.hairline)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+
             if proposal.canDelete && !done {
-                Button(role: .destructive) {
+                Button {
                     confirm()
                 } label: {
                     if isBusy {
-                        ProgressView().tint(.white).frame(maxWidth: .infinity)
+                        ProgressView().tint(.white)
                     } else {
-                        Text("Удалить \(proposal.tasks.count) задач(и)")
-                            .font(.subheadline.bold())
-                            .frame(maxWidth: .infinity)
+                        Text("Удалить: \(proposal.tasks.count)")
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.danger)
+                .buttonStyle(PrimaryButtonStyle(tint: Theme.danger))
                 .disabled(isBusy)
+            } else if done {
+                Label("Задачи удалены", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.statusDone)
             }
 
             if let errorText {
-                Text(errorText).font(.caption).foregroundStyle(Theme.danger)
+                Text(errorText)
+                    .font(.caption)
+                    .foregroundStyle(Theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .padding(14)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Theme.danger.opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Theme.danger.opacity(0.3), lineWidth: 1)
         )
     }
 

@@ -35,6 +35,13 @@ final class ProjectsStore: ObservableObject {
         projects = []
         loaded = false
     }
+
+    #if DEBUG
+    func loadDemo() {
+        projects = DemoData.projects
+        loaded = true
+    }
+    #endif
 }
 
 @MainActor
@@ -44,6 +51,13 @@ final class TasksStore: ObservableObject {
     private var listener: ListenerRegistration?
 
     func subscribe(projectId: String) {
+        #if DEBUG
+        if DemoData.isEnabled {
+            tasks = DemoData.tasks.filter { $0.projectId == projectId }
+            loaded = true
+            return
+        }
+        #endif
         listener?.remove()
         loaded = false
         tasks = []
@@ -215,6 +229,10 @@ final class OrgUsersStore: ObservableObject {
     func assignable(projectId: String) -> [OrgUser] {
         users.filter { $0.canBeAssigned(projectId: projectId) }
     }
+
+    #if DEBUG
+    func loadDemo() { users = DemoData.orgUsers }
+    #endif
 }
 
 // «Мои задачи»: активные задачи, где текущий пользователь — исполнитель.
@@ -246,6 +264,10 @@ final class MyTasksStore: ObservableObject {
         listener = nil
         tasks = []
     }
+
+    #if DEBUG
+    func loadDemo() { tasks = DemoData.myTasks }
+    #endif
 }
 
 @MainActor
@@ -280,8 +302,20 @@ final class NotificationsStore: ObservableObject {
 
     func markRead(_ notification: AgentNotification) {
         guard notification.readAt == nil else { return }
+        #if DEBUG
+        if DemoData.isEnabled {
+            if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+                notifications[index].readAt = Date()
+            }
+            return
+        }
+        #endif
         Firestore.firestore().collection("agentNotifications")
             .document(notification.id)
             .updateData(["readAt": FieldValue.serverTimestamp()])
     }
+
+    #if DEBUG
+    func loadDemo() { notifications = DemoData.notifications }
+    #endif
 }

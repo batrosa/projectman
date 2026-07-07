@@ -38,6 +38,9 @@ struct UserDoc {
     var organizationId: String?
     var orgRole: String // owner / admin / moderator / employee / reader
     var allowedProjects: [String]
+    var level: Int
+    var totalXP: Int
+    var completedTasksCount: Int
 
     var displayName: String {
         let full = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
@@ -80,7 +83,10 @@ struct UserDoc {
             lastName: data["lastName"] as? String ?? "",
             organizationId: data["organizationId"] as? String,
             orgRole: data["orgRole"] as? String ?? "employee",
-            allowedProjects: data["allowedProjects"] as? [String] ?? []
+            allowedProjects: data["allowedProjects"] as? [String] ?? [],
+            level: data["level"] as? Int ?? 1,
+            totalXP: data["totalXP"] as? Int ?? 0,
+            completedTasksCount: data["completedTasksCount"] as? Int ?? 0
         )
     }
 }

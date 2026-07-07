@@ -74,6 +74,16 @@ struct ApiClient {
         _ = try await post("api/join-org", body: ["inviteCode": inviteCode.uppercased()])
     }
 
+    // Смена роли участника (owner/admin; те же серверные ограничения, что в
+    // веб-админке: владельца не трогаем, админ не управляет админами).
+    static func updateMemberRole(userId: String, role: String) async throws {
+        _ = try await post("api/org", body: ["action": "updateMemberRole", "userId": userId, "orgRole": role])
+    }
+
+    static func removeMember(userId: String) async throws {
+        _ = try await post("api/org", body: ["action": "removeMember", "userId": userId])
+    }
+
     // ===== Telegram-бот логин (та же пара endpoints, что в web) =====
 
     struct TelegramLoginStart {

@@ -4,97 +4,182 @@ struct LoginView: View {
     @StateObject private var auth = AuthService()
     @State private var email = ""
     @State private var password = ""
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case email, password }
 
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 22) {
-                    VStack(spacing: 10) {
-                        Image(systemName: "building.2.fill")
-                            .font(.system(size: 46))
-                            .foregroundStyle(Theme.primary)
-                        Text("HoldingMan")
-                            .font(.largeTitle.bold())
-                            .foregroundStyle(Theme.textPrimary)
-                        Text("Проекты, задачи и сроки холдинга под контролем")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.top, 60)
+                VStack(spacing: 28) {
+                    header
+                        .padding(.top, 64)
 
                     VStack(spacing: 12) {
-                        TextField("Email", text: $email)
-                            .textContentType(.emailAddress)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .padding(14)
-                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-                            .foregroundStyle(Theme.textPrimary)
+                        inputField(
+                            icon: "envelope.fill",
+                            placeholder: "Email",
+                            text: $email,
+                            field: .email
+                        )
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .password }
 
-                        SecureField("Пароль", text: $password)
-                            .textContentType(.password)
-                            .padding(14)
-                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-                            .foregroundStyle(Theme.textPrimary)
+                        secureInputField
 
                         Button {
+                            focusedField = nil
                             Task { await auth.signIn(email: email, password: password) }
                         } label: {
-                            Text("Войти")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                            if auth.isBusy {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("Войти")
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PrimaryButtonStyle())
                         .disabled(auth.isBusy || email.isEmpty || password.isEmpty)
+                        .opacity(email.isEmpty || password.isEmpty ? 0.55 : 1)
 
-                        HStack {
-                            Rectangle().fill(Theme.textSecondary.opacity(0.25)).frame(height: 1)
-                            Text("или").font(.caption).foregroundStyle(Theme.textSecondary)
-                            Rectangle().fill(Theme.textSecondary.opacity(0.25)).frame(height: 1)
+                        HStack(spacing: 12) {
+                            line
+                            Text("или")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                            line
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 2)
 
                         Button {
+                            focusedField = nil
                             Task { await auth.startTelegramLogin() }
                         } label: {
-                            Label("Войти через Telegram", systemImage: "paperplane.fill")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                            HStack(spacing: 8) {
+                                Image(systemName: "paperplane.fill")
+                                Text("Войти через Telegram")
+                            }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(SoftButtonStyle(tint: Color(hex: 0x0EA5E9)))
                         .disabled(auth.isBusy)
                     }
                     .padding(.horizontal, 24)
 
-                    if let message = auth.statusMessage {
-                        HStack(spacing: 8) {
-                            if auth.isBusy && !auth.statusIsSuccess {
-                                ProgressView().tint(Theme.primary)
-                            }
-                            Text(message)
-                                .font(.footnote)
-                                .foregroundStyle(auth.statusIsSuccess ? Theme.statusDone : Theme.danger)
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            (auth.statusIsSuccess ? Theme.statusDone : Theme.danger).opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 10)
-                        )
-                        .padding(.horizontal, 24)
-                        .transition(.opacity)
-                    }
+                    statusBanner
 
                     Spacer(minLength: 40)
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
         }
-        .animation(.easeInOut(duration: 0.2), value: auth.statusMessage)
+        .animation(.spring(duration: 0.3), value: auth.statusMessage)
+    }
+
+    private var header: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Theme.primaryGradient)
+                    .frame(width: 84, height: 84)
+                    .shadow(color: Theme.primary.opacity(0.35), radius: 18, y: 8)
+                Image(systemName: "building.2.fill")
+                    .font(.system(size: 36, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(spacing: 6) {
+                Text("HoldingMan")
+                    .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("Проекты, задачи и сроки холдинга\nпод контролем")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var line: some View {
+        Rectangle()
+            .fill(Theme.hairline)
+            .frame(height: 1)
+    }
+
+    private func inputField(icon: String, placeholder: String, text: Binding<String>, field: Field) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(focusedField == field ? Theme.primary : Theme.textSecondary)
+                .frame(width: 20)
+            TextField(placeholder, text: text)
+                .foregroundStyle(Theme.textPrimary)
+                .focused($focusedField, equals: field)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(focusedField == field ? Theme.primary.opacity(0.55) : Theme.hairline, lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.15), value: focusedField)
+    }
+
+    private var secureInputField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.fill")
+                .font(.subheadline)
+                .foregroundStyle(focusedField == .password ? Theme.primary : Theme.textSecondary)
+                .frame(width: 20)
+            SecureField("Пароль", text: $password)
+                .textContentType(.password)
+                .foregroundStyle(Theme.textPrimary)
+                .focused($focusedField, equals: .password)
+                .submitLabel(.go)
+                .onSubmit {
+                    guard !email.isEmpty, !password.isEmpty else { return }
+                    Task { await auth.signIn(email: email, password: password) }
+                }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(focusedField == .password ? Theme.primary.opacity(0.55) : Theme.hairline, lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.15), value: focusedField)
+    }
+
+    @ViewBuilder
+    private var statusBanner: some View {
+        if let message = auth.statusMessage {
+            HStack(spacing: 10) {
+                if auth.isBusy && !auth.statusIsSuccess {
+                    ProgressView().tint(Theme.primary)
+                } else {
+                    Image(systemName: auth.statusIsSuccess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundStyle(auth.statusIsSuccess ? Theme.statusDone : Theme.danger)
+                }
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(auth.statusIsSuccess ? Theme.statusDone : Theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                (auth.statusIsSuccess ? Theme.statusDone : Theme.danger).opacity(0.1),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .padding(.horizontal, 24)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
     }
 }
