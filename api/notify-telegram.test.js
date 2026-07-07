@@ -19,19 +19,33 @@ function mockResponse() {
   };
 }
 
-// In-memory fake Firestore: only implements what api/notify-telegram.js
-// uses — a doc lookup for the caller's user record, and a
-// where('telegramChatId', '==', ...).limit(1).get() query for the recipient.
+// In-memory fake Firestore: users lookup (doc + telegramChatId query), the
+// users/{uid}/devices subcollection push-send reads (empty), and the
+// agentNotifications feed the event path writes into (captured for asserts).
 function makeFakeDb(usersById = {}) {
   const users = new Map(Object.entries(usersById));
+  const feed = [];
   return {
+    feed,
     collection(name) {
+      if (name === "agentNotifications") {
+        return {
+          async add(doc) {
+            feed.push(doc);
+            return { id: `note-${feed.length}` };
+          },
+        };
+      }
       if (name !== "users") throw new Error(`unexpected collection ${name}`);
       return {
         doc(id) {
           return {
             async get() {
               return { exists: users.has(id), data: () => users.get(id) };
+            },
+            collection(sub) {
+              if (sub !== "devices") throw new Error(`unexpected subcollection ${sub}`);
+              return { async get() { return { docs: [] }; } };
             },
           };
         },
@@ -94,11 +108,17 @@ describe("POST /api/notify-telegram", () => {
     expect(res.headers.Allow).toBe("POST");
   });
 
-  it("returns 503 when TELEGRAM_BOT_TOKEN is not configured", async () => {
+  it("succeeds without TELEGRAM_BOT_TOKEN — push/feed are delivered, telegram is skipped", async () => {
     delete process.env.TELEGRAM_BOT_TOKEN;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
     const res = mockResponse();
-    await handler({ method: "POST", headers: {}, body: { chatId: "1", text: "hello" } }, res);
-    expect(res.statusCode).toBe(503);
+    await handler({ method: "POST", headers: AUTH_HEADERS, body: { chatId: "123", text: "hello" } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, telegram: "skipped" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("returns 401 when no bearer token is provided", async () => {
@@ -236,5 +256,107 @@ describe("POST /api/notify-telegram", () => {
       text: "hello",
       parse_mode: "HTML",
     });
+  });
+
+  // ===== события задач: recipientUid, лента agentNotifications =====
+
+  it("delivers to a recipientUid WITHOUT telegram: feed entry written, 200 ok, no telegram call", async () => {
+    state.db = makeFakeDb({
+      [CALLER_UID]: { organizationId: CALLER_ORG },
+      no_tg_user: { organizationId: CALLER_ORG }, // без telegramChatId
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = mockResponse();
+    await handler({
+      method: "POST",
+      headers: AUTH_HEADERS,
+      body: {
+        recipientUid: "no_tg_user",
+        text: "<b>Новая задача:</b> «Смета»",
+        event: { type: "task_created", taskId: "task-1", projectId: "proj-1" },
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, telegram: "no-chat" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(state.db.feed).toHaveLength(1);
+    expect(state.db.feed[0]).toMatchObject({
+      uid: "no_tg_user",
+      organizationId: CALLER_ORG,
+      taskId: "task-1",
+      projectId: "proj-1",
+      type: "task_created",
+      text: "Новая задача: «Смета»", // HTML срезан
+      readAt: null,
+    });
+  });
+
+  it("writes the feed entry AND sends telegram when the uid recipient has a linked chat", async () => {
+    state.db = makeFakeDb({
+      [CALLER_UID]: { organizationId: CALLER_ORG },
+      recipient_in_org: { organizationId: CALLER_ORG, telegramChatId: "123" },
+    });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 7 } }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = mockResponse();
+    await handler({
+      method: "POST",
+      headers: AUTH_HEADERS,
+      body: {
+        recipientUid: "recipient_in_org",
+        text: "Задача принята",
+        event: { type: "task_done", taskId: "task-2", projectId: "proj-1" },
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, messageId: 7 });
+    expect(state.db.feed).toHaveLength(1);
+    expect(state.db.feed[0]).toMatchObject({ uid: "recipient_in_org", type: "task_done" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ chat_id: "123" });
+  });
+
+  it("ignores unknown event types (no feed entry) but still delivers", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 9 } }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = mockResponse();
+    await handler({
+      method: "POST",
+      headers: AUTH_HEADERS,
+      body: { chatId: "123", text: "hello", event: { type: "hack_everything", taskId: "t" } },
+    }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, messageId: 9 });
+    expect(state.db.feed).toHaveLength(0);
+  });
+
+  it("rejects (403) a recipientUid from a DIFFERENT organization", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = mockResponse();
+    await handler({
+      method: "POST",
+      headers: AUTH_HEADERS,
+      body: { recipientUid: "recipient_other_org", text: "hello" },
+    }, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(state.db.feed).toHaveLength(0);
   });
 });

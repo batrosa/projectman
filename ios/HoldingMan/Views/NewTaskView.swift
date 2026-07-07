@@ -111,8 +111,11 @@ struct NewTaskView: View {
         Task {
             defer { isBusy = false }
             do {
+                // События task_created исполнителям (Telegram + push + лента)
+                // отправляет TasksStore.create через сервер
                 try await tasksStore.create(
                     projectId: project.id,
+                    projectName: project.name,
                     organizationId: orgId,
                     title: taskTitle,
                     descriptionText: descriptionText.trimmingCharacters(in: .whitespaces),
@@ -120,21 +123,6 @@ struct NewTaskView: View {
                     creator: user,
                     assignees: assignees
                 )
-                // Telegram каждому назначенному — как web
-                // sendNewTaskNotificationToAssignee(); fire-and-forget.
-                for assignee in assignees {
-                    guard let chatId = assignee.telegramChatId else { continue }
-                    let text = """
-                    📋 <b>Новая задача!</b>
-
-                    <b>Задача:</b> \(taskTitle)
-                    <b>Проект:</b> \(project.name)
-                    <b>Срок:</b> \(deadlineString ?? "Не указан")
-
-                    Откройте HoldingMan для подробностей.
-                    """
-                    Task { try? await ApiClient.notifyTelegram(chatId: chatId, text: text) }
-                }
                 dismiss()
             } catch {
                 errorMessage = "Не удалось создать задачу: \(error.localizedDescription)"

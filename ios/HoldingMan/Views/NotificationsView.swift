@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NotificationsView: View {
     @EnvironmentObject private var notificationsStore: NotificationsStore
+    @State private var route: TaskRoute?
 
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -33,6 +34,9 @@ struct NotificationsView: View {
             }
             .screenBackground()
             .navigationTitle("Уведомления")
+            .sheet(item: $route) { route in
+                TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId)
+            }
         }
     }
 
@@ -62,17 +66,30 @@ struct NotificationsView: View {
 
             Spacer(minLength: 4)
 
-            if unread {
-                Circle()
-                    .fill(Theme.primary)
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 6)
+            VStack(alignment: .trailing, spacing: 6) {
+                if unread {
+                    Circle()
+                        .fill(Theme.primary)
+                        .frame(width: 8, height: 8)
+                }
+                if note.hasTaskLink {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.5))
+                }
             }
+            .padding(.top, 6)
         }
         .padding(13)
         .card()
         .contentShape(Rectangle())
-        .onTapGesture { notificationsStore.markRead(note) }
+        .onTapGesture {
+            notificationsStore.markRead(note)
+            // Тап по уведомлению с задачей — открыть её в разделе статуса
+            if let taskId = note.taskId, let projectId = note.projectId, note.hasTaskLink {
+                route = TaskRoute(taskId: taskId, projectId: projectId)
+            }
+        }
         .swipeActions {
             Button(role: .destructive) {
                 Task { try? await ApiClient.deleteAgentNotification(id: note.id) }

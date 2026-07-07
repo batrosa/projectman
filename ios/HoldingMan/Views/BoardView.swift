@@ -5,8 +5,13 @@ import SwiftUI
 struct BoardView: View {
     let project: Project
     @EnvironmentObject private var tasksStore: TasksStore
-    @State private var column: BoardStatus = .assigned
+    @State private var column: BoardStatus
     @Namespace private var tabIndicator
+
+    init(project: Project, initialColumn: BoardStatus = .assigned) {
+        self.project = project
+        _column = State(initialValue: initialColumn)
+    }
 
     var body: some View {
         VStack(spacing: 0) {

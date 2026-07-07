@@ -222,13 +222,16 @@ struct ApiClient {
         _ = try await post("api/award-xp", body: ["taskId": taskId])
     }
 
-    // Telegram-уведомление участнику — тот же endpoint и payload, что web
-    // sendTelegramNotification(). Fire-and-forget у вызывающих.
-    static func notifyTelegram(chatId: String, text: String) async throws {
+    // Событие задачи участнику ПО UID: сервер (api/notify-telegram) доставит
+    // Telegram (если чат привязан) + мобильный push + запись в ленту
+    // «Уведомления» с типом и deep-link-данными. Fire-and-forget у вызывающих.
+    static func sendTaskEvent(recipientUid: String, text: String,
+                              type: String, taskId: String, projectId: String) async throws {
         _ = try await post("api/notify-telegram", body: [
-            "chatId": chatId,
+            "recipientUid": recipientUid,
             "text": text,
             "parseMode": "HTML",
+            "event": ["type": type, "taskId": taskId, "projectId": projectId],
         ])
     }
 }

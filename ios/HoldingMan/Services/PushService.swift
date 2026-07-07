@@ -81,6 +81,28 @@ extension PushService: UNUserNotificationCenterDelegate {
     ) {
         completionHandler([.banner, .sound, .badge])
     }
+
+    // Тап по системному push: сервер кладёт taskId/projectId в data —
+    // открываем задачу прямо в нужном разделе (см. MainTabView.onReceive)
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        let taskId = userInfo["taskId"] as? String
+        let projectId = userInfo["projectId"] as? String
+        Task { @MainActor in
+            if let taskId, let projectId, !taskId.isEmpty, !projectId.isEmpty {
+                NotificationCenter.default.post(
+                    name: .hmOpenTask,
+                    object: nil,
+                    userInfo: ["taskId": taskId, "projectId": projectId]
+                )
+            }
+            completionHandler()
+        }
+    }
 }
 
 // APNs-токен пробрасывается в FCM через AppDelegate (SwiftUI adaptor).

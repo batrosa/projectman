@@ -127,6 +127,7 @@ struct TaskItem: Identifiable, Equatable {
     var assigneeCompleted: Bool
     var createdAt: Date?
     var createdBy: String
+    var createdByUid: String?
     var completionComment: String?
     var revisionReason: String?
     var attachments: [FileRef]
@@ -165,6 +166,7 @@ struct TaskItem: Identifiable, Equatable {
             assigneeCompleted: data["assigneeCompleted"] as? Bool ?? false,
             createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
             createdBy: data["createdBy"] as? String ?? "",
+            createdByUid: (data["createdByUid"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             completionComment: data["completionComment"] as? String,
             revisionReason: data["revisionReason"] as? String,
             attachments: (data["attachments"] as? [[String: Any]] ?? []).compactMap(FileRef.from),
@@ -211,17 +213,23 @@ struct OrgUser: Identifiable, Equatable {
 struct AgentNotification: Identifiable {
     var id: String
     var text: String
+    var type: String?
     var taskId: String?
     var projectId: String?
     var createdAt: Date?
     var readAt: Date?
 
+    var hasTaskLink: Bool {
+        (taskId?.isEmpty == false) && (projectId?.isEmpty == false)
+    }
+
     static func from(id: String, data: [String: Any]) -> AgentNotification {
         AgentNotification(
             id: id,
             text: data["text"] as? String ?? "",
-            taskId: data["taskId"] as? String,
-            projectId: data["projectId"] as? String,
+            type: data["type"] as? String,
+            taskId: (data["taskId"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            projectId: (data["projectId"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
             readAt: (data["readAt"] as? Timestamp)?.dateValue()
         )

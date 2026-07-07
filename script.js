@@ -1865,7 +1865,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.8'; // Agent task deletion (two-phase confirm card)
+    const CURRENT_VERSION = '6.9'; // Task event notifications (feed+push for created/completed/revision/done)
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -3605,26 +3605,23 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                 const taskDoc = await db.collection('tasks').doc(taskId).get();
                 if (taskDoc.exists) {
                     const taskData = taskDoc.data();
-                    // Resolve the creator's Telegram chat id by uid first (the
-                    // creator may be a Telegram-login user with no email), email
-                    // as fallback.
-                    const chatId = resolveAssigneeChatId({
-                        id: taskData.createdByUid,
-                        email: taskData.createdByEmail
-                    });
-                    if (chatId) {
-                        const project = state.projects.find(p => p.id === taskData.projectId);
-                        const projectName = project?.name || 'Проект';
-                        const message = `✅ <b>Задача выполнена!</b>
+                    const project = state.projects.find(p => p.id === taskData.projectId);
+                    const projectName = project?.name || 'Проект';
+                    const message = `📤 <b>Задача на проверке</b>
 
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Задача:</b> ${escapeHtmlForTelegram(taskData.title)}
 <b>Исполнитель:</b> ${escapeHtmlForTelegram(completedByName)}
 
 Пожалуйста, проверьте выполнение задачи.`;
-                        await sendTelegramNotification(chatId, message);
+                    const completionEvent = { type: 'task_completed', taskId, projectId: taskData.projectId || null };
+                    if (taskData.createdByUid) {
+                        // uid-путь: Telegram (если привязан) + push + лента
+                        await sendTaskEventToUid(taskData.createdByUid, message, completionEvent);
                     } else {
-                        console.log('Creator has no linked Telegram, completion notification skipped');
+                        // Легаси-задача без createdByUid: старый путь по chatId
+                        const chatId = resolveAssigneeChatId({ email: taskData.createdByEmail });
+                        if (chatId) await sendTelegramNotification(chatId, message, completionEvent);
                     }
                 }
             } catch (err) {
@@ -3662,6 +3659,25 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                 }
             } catch (error) {
                 console.error('Error awarding XP (server):', error);
+            }
+
+            // Уведомление исполнителям: задача принята в «Готово» (Telegram
+            // при наличии + push + лента — сервер решает доставку по uid)
+            try {
+                const doneTask = state.tasks.find(t => t.id === taskId);
+                if (doneTask && Array.isArray(doneTask.assigneeIds) && doneTask.assigneeIds.length > 0) {
+                    const project = state.projects.find(p => p.id === doneTask.projectId);
+                    const doneMessage = `✅ <b>Задача принята!</b>
+
+<b>Проект:</b> ${escapeHtmlForTelegram(project?.name || 'Проект')}
+<b>Задача:</b> ${escapeHtmlForTelegram(doneTask.title)}
+
+Руководитель принял выполнение. Отличная работа!`;
+                    const doneEvent = { type: 'task_done', taskId, projectId: doneTask.projectId || null };
+                    doneTask.assigneeIds.forEach(uid => sendTaskEventToUid(uid, doneMessage, doneEvent));
+                }
+            } catch (error) {
+                console.error('Error sending task-done notification:', error);
             }
         }
     }).catch(error => {
@@ -3843,12 +3859,26 @@ function submitRevisionReason(e) {
         returnedAt: new Date().toISOString()
     };
 
-    // Find task to get assignee info for notifications (by uid, email fallback)
+    // Уведомление исполнителям о возврате — по uid (Telegram при наличии +
+    // push + лента); для легаси-задач без assigneeIds — старый путь по chatId.
     const task = state.tasks.find(t => t.id === taskId);
     if (task) {
-        taskAssigneeChatIds(task).forEach(chatId => {
-            sendTelegramRevisionNotification(chatId, task.title, reason, returnedBy);
-        });
+        const revisionEvent = { type: 'task_revision', taskId, projectId: task.projectId || null };
+        const revisionMessage = `🔄 <b>Задача возвращена на доработку</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(task.title)}
+
+<b>Причина:</b>
+${escapeHtmlForTelegram(reason)}
+
+<b>Вернул:</b> ${escapeHtmlForTelegram(returnedBy)}`;
+        if (Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0) {
+            task.assigneeIds.forEach(uid => sendTaskEventToUid(uid, revisionMessage, revisionEvent));
+        } else {
+            taskAssigneeChatIds(task).forEach(chatId => {
+                sendTelegramRevisionNotification(chatId, task.title, reason, returnedBy);
+            });
+        }
     }
 
     updateTaskSubStatus(taskId, 'in_work', null, revisionData);
@@ -5070,7 +5100,7 @@ function setupEventListeners() {
             const createdBy = state.currentUser ?
                 `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : '';
 
-            await db.collection('tasks').add({
+            const newTaskRef = await db.collection('tasks').add({
                 projectId: state.activeProjectId,
                 organizationId,
                 title,
@@ -5090,11 +5120,21 @@ function setupEventListeners() {
                 createdByUid: state.currentUser?.uid || null
             });
 
-            // Notify every assignee by uid (email fallback) so self-assignment
-            // by a Telegram-login user — who has no email — still gets a message.
+            // Уведомление каждому исполнителю ПО UID: сервер доставит Telegram
+            // (если привязан) + push + запись в ленту «Уведомления» с
+            // deep-link на задачу. Работает и для участников без Telegram.
             const projectName = document.getElementById('project-title')?.textContent || 'Проект';
+            const newTaskEvent = { type: 'task_created', taskId: newTaskRef.id, projectId: state.activeProjectId };
             selectedAssignees.forEach(a => {
-                sendNewTaskNotificationToAssignee(a, title, projectName, deadline);
+                if (!a.id) return;
+                const message = `📋 <b>Новая задача!</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(title)}
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Срок:</b> ${deadline || 'Не указан'}
+
+Откройте HoldingMan для подробностей.`;
+                sendTaskEventToUid(a.id, message, newTaskEvent);
             });
 
             console.log("✅ Задача успешно создана!");
@@ -6644,7 +6684,27 @@ function calculateXPProgress(currentXP) {
 // ========== TELEGRAM NOTIFICATIONS ==========
 
 // Send Telegram notification via server-side endpoint (bot token stays server-only)
-async function sendTelegramNotification(chatId, message) {
+// Событие задачи участнику ПО UID: сервер (api/notify-telegram) сам решает
+// доставку — Telegram (если чат привязан) + мобильный push + запись в ленту
+// agentNotifications с типом события (task_created / task_completed /
+// task_revision / task_done) и taskId/projectId для перехода к задаче.
+async function sendTaskEventToUid(recipientUid, text, event) {
+    if (!recipientUid) return;
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) return;
+    try {
+        const idToken = await currentUser.getIdToken();
+        await fetch('/api/notify-telegram', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ recipientUid, text, parseMode: 'HTML', event })
+        });
+    } catch (error) {
+        console.error('Error sending task event notification:', error);
+    }
+}
+
+async function sendTelegramNotification(chatId, message, event = null) {
     if (!chatId) return;
 
     // Fire-and-forget: the endpoint now requires an authenticated, org-scoped
@@ -6661,7 +6721,8 @@ async function sendTelegramNotification(chatId, message) {
             body: JSON.stringify({
                 chatId,
                 text: message,
-                parseMode: 'HTML'
+                parseMode: 'HTML',
+                ...(event ? { event } : {})
             })
         });
 

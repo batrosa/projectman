@@ -112,8 +112,9 @@ final class TasksStore: ObservableObject {
 
     // Создание задачи менеджером — форма полей ровно как createTask() в web
     // (включая многосоставные assignee / assigneeEmail при нескольких
-    // исполнителях).
-    func create(projectId: String, organizationId: String, title: String,
+    // исполнителях). Каждому исполнителю уходит событие task_created
+    // (Telegram при наличии + push + лента «Уведомления»).
+    func create(projectId: String, projectName: String, organizationId: String, title: String,
                 descriptionText: String, deadline: String?, creator: UserDoc,
                 assignees: [OrgUser]) async throws {
         let assigneeDisplay = assignees.isEmpty
@@ -138,13 +139,32 @@ final class TasksStore: ObservableObject {
             "createdByEmail": creator.email,
             "createdByUid": creator.uid,
         ]
-        _ = try await Firestore.firestore().collection("tasks").addDocument(data: data)
+        let ref = try await Firestore.firestore().collection("tasks").addDocument(data: data)
+
+        let text = """
+        📋 <b>Новая задача!</b>
+
+        <b>Задача:</b> \(title)
+        <b>Проект:</b> \(projectName)
+        <b>Срок:</b> \(deadline ?? "Не указан")
+        """
+        for assignee in assignees {
+            let uid = assignee.id
+            Task {
+                try? await ApiClient.sendTaskEvent(
+                    recipientUid: uid, text: text,
+                    type: "task_created", taskId: ref.documentID, projectId: projectId
+                )
+            }
+        }
     }
 
     // «Завершить задачу» исполнителем — ровно web updateTaskSubStatus
     // ('completed', {comment, proofs}): серверный completedAt (правила требуют
     // request.time), отчёт + файлы подтверждения, очистка полей доработки.
-    func completeWithProofs(task: TaskItem, comment: String, proofs: [FileRef], byName: String) async throws {
+    // Постановщику уходит событие task_completed («задача на проверке»).
+    func completeWithProofs(task: TaskItem, projectName: String, comment: String,
+                            proofs: [FileRef], byName: String) async throws {
         let updates: [String: Any] = [
             "subStatus": "completed",
             "status": "in-progress",
@@ -159,11 +179,29 @@ final class TasksStore: ObservableObject {
             "revisionReturnedAt": NSNull(),
         ]
         try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
+
+        if let creatorUid = task.createdByUid {
+            let text = """
+            📤 <b>Задача на проверке</b>
+
+            <b>Проект:</b> \(projectName)
+            <b>Задача:</b> \(task.title)
+            <b>Исполнитель:</b> \(byName)
+
+            Пожалуйста, проверьте выполнение задачи.
+            """
+            Task {
+                try? await ApiClient.sendTaskEvent(
+                    recipientUid: creatorUid, text: text,
+                    type: "task_completed", taskId: task.id, projectId: task.projectId
+                )
+            }
+        }
     }
 
     // «Принять в Готово» менеджером — web updateTaskSubStatus('done') + XP
-    // начисляется СЕРВЕРОМ (api/award-xp), клиент только помечает задачу.
-    func acceptDone(task: TaskItem, byName: String) async throws {
+    // начисляется СЕРВЕРОМ (api/award-xp). Исполнителям уходит task_done.
+    func acceptDone(task: TaskItem, projectName: String, byName: String) async throws {
         let updates: [String: Any] = [
             "status": "done",
             "subStatus": "completed",
@@ -174,10 +212,28 @@ final class TasksStore: ObservableObject {
         ]
         try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
         try await ApiClient.awardXp(taskId: task.id)
+
+        let text = """
+        ✅ <b>Задача принята!</b>
+
+        <b>Проект:</b> \(projectName)
+        <b>Задача:</b> \(task.title)
+
+        Руководитель принял выполнение. Отличная работа!
+        """
+        for uid in task.assigneeIds {
+            Task {
+                try? await ApiClient.sendTaskEvent(
+                    recipientUid: uid, text: text,
+                    type: "task_done", taskId: task.id, projectId: task.projectId
+                )
+            }
+        }
     }
 
     // «Вернуть на доработку» менеджером — web updateTaskSubStatus('in_work',
     // null, revisionData): задача снова в работе с причиной возврата.
+    // Исполнителям уходит task_revision.
     func returnForRevision(task: TaskItem, reason: String, byName: String) async throws {
         let updates: [String: Any] = [
             "subStatus": "in_work",
@@ -197,6 +253,25 @@ final class TasksStore: ObservableObject {
             "wasReturned": true,
         ]
         try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
+
+        let text = """
+        🔄 <b>Задача возвращена на доработку</b>
+
+        <b>Задача:</b> \(task.title)
+
+        <b>Причина:</b>
+        \(reason)
+
+        <b>Вернул:</b> \(byName)
+        """
+        for uid in task.assigneeIds {
+            Task {
+                try? await ApiClient.sendTaskEvent(
+                    recipientUid: uid, text: text,
+                    type: "task_revision", taskId: task.id, projectId: task.projectId
+                )
+            }
+        }
     }
 }
 
@@ -242,6 +317,7 @@ final class OrgUsersStore: ObservableObject {
 final class MyTasksStore: ObservableObject {
     @Published var tasks: [TaskItem] = []
     private var listener: ListenerRegistration?
+    private var retryCount = 0
 
     func subscribe(uid: String, organizationId: String) {
         listener?.remove()
@@ -251,15 +327,24 @@ final class MyTasksStore: ObservableObject {
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    // Ошибку слушателя НЕЛЬЗЯ молча глотать: без composite-индекса
-                    // (assigneeIds CONTAINS + organizationId) сервер отвечает
-                    // failed-precondition, и список навсегда замирал на кэше —
-                    // прод-баг «мои задачи не обновляются до перезапуска».
+                    // Умерший слушатель = замерший список (прод-баг «мои задачи
+                    // не обновляются до перезапуска»: composite-индекс ещё
+                    // строился, сервер отвечал failed-precondition). Логируем и
+                    // ПЕРЕПОДПИСЫВАЕМСЯ с задержкой — до 10 попыток.
                     if let error {
                         print("my-tasks listener error:", error.localizedDescription)
+                        guard self.retryCount < 10 else { return }
+                        self.retryCount += 1
+                        Task { [weak self] in
+                            try? await Task.sleep(nanoseconds: 20_000_000_000)
+                            await MainActor.run { [weak self] in
+                                self?.subscribe(uid: uid, organizationId: organizationId)
+                            }
+                        }
                         return
                     }
                     guard let snapshot else { return }
+                    self.retryCount = 0
                     self.tasks = snapshot.documents
                         .map { TaskItem.from(id: $0.documentID, data: $0.data()) }
                         .filter { $0.status != "done" }

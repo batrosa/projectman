@@ -1,9 +1,24 @@
-// Server-side proxy for sending Telegram notifications.
-// Keeps the bot token out of the browser bundle — the client only ever
-// calls this endpoint, never api.telegram.org directly.
+// Уведомление участнику о событии задачи (единая серверная точка):
+//   Telegram (если у получателя привязан чат) + мобильный push + запись в
+//   ленту agentNotifications (раздел «Уведомления» в приложениях), когда
+//   передан event.type. Держит bot token вне клиента.
+//
+// Обратная совместимость: старый вызов {chatId, text} работает как раньше
+// (telegram + push, без записи в ленту). Новое: получателя можно задать
+// recipientUid (для участников БЕЗ Telegram), event {type, taskId, projectId}
+// добавляет запись в ленту и типизированный push с deep-link-данными.
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
+import { FieldValue } from "firebase-admin/firestore";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 import { sendPushToUser } from "../lib/push-send.js";
+
+// Типы событий задачи → заголовок системного push
+export const TASK_EVENT_TITLES = {
+    task_created: "Новая задача",
+    task_completed: "Задача на проверке",
+    task_revision: "Возврат на доработку",
+    task_done: "Задача принята",
+};
 
 async function parseJsonBody(request) {
     if (request.body && typeof request.body === 'object') return request.body;
@@ -18,11 +33,6 @@ export default async function handler(request, response) {
     if (request.method !== 'POST') {
         response.setHeader('Allow', 'POST');
         return response.status(405).json({ error: 'Method not allowed' });
-    }
-
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) {
-        return response.status(503).json({ error: 'Telegram is not configured' });
     }
 
     const idToken = (request.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -56,56 +66,108 @@ export default async function handler(request, response) {
     }
 
     const chatId = String(body.chatId || '').trim();
+    const recipientUid = String(body.recipientUid || '').trim();
     const text = String(body.text || '').trim();
-    if (!chatId || !text) {
-        return response.status(400).json({ error: 'chatId and text are required' });
+    if ((!chatId && !recipientUid) || !text) {
+        return response.status(400).json({ error: 'text and chatId or recipientUid are required' });
+    }
+    if (recipientUid && !/^[A-Za-z0-9_-]{1,160}$/.test(recipientUid)) {
+        return response.status(400).json({ error: 'Invalid recipientUid' });
     }
 
-    // Anti-open-relay + tenant isolation: the caller may only message a Telegram
-    // chatId that belongs to a registered ProjectMan user IN THE CALLER'S OWN
-    // organization. Every legitimate notification targets an org member (task
-    // assignee, task creator, or the caller themselves), so this is the correct
-    // scope and stops an authenticated user from relaying text to members of
-    // OTHER organizations. (The old "any registered user" rule was a workaround
-    // for legacy null-org accounts; the org data is now clean.)
-    let recipientSnap;
+    // Anti-open-relay + tenant isolation: получатель обязан быть
+    // зарегистрированным пользователем В ОРГАНИЗАЦИИ вызывающего. Каждое
+    // легитимное уведомление адресовано участнику (исполнитель, постановщик,
+    // сам вызывающий) — это правильный скоуп, и он не даёт авторизованному
+    // пользователю рассылать текст участникам ЧУЖИХ организаций.
+    let recipientDoc;
     try {
-        recipientSnap = await adminDb()
-            .collection('users')
-            .where('telegramChatId', '==', chatId)
-            .limit(1)
-            .get();
+        if (recipientUid) {
+            const snap = await adminDb().collection('users').doc(recipientUid).get();
+            recipientDoc = snap.exists ? { id: recipientUid, data: snap.data() } : null;
+        } else {
+            const snap = await adminDb()
+                .collection('users')
+                .where('telegramChatId', '==', chatId)
+                .limit(1)
+                .get();
+            recipientDoc = snap.empty ? null : { id: snap.docs[0].id, data: snap.docs[0].data() };
+        }
     } catch (error) {
         console.error('notify-telegram: failed to look up recipient', error);
         return response.status(500).json({ ok: false, error: 'Failed to verify recipient' });
     }
-    if (recipientSnap.empty) {
+    if (!recipientDoc) {
         return response.status(403).json({ ok: false, error: 'Unknown recipient' });
     }
-    const recipientOrgId = recipientSnap.docs[0].data().organizationId || null;
+    const recipientOrgId = recipientDoc.data.organizationId || null;
     if (!callerOrgId || recipientOrgId !== callerOrgId) {
         return response.status(403).json({ ok: false, error: 'Recipient is not in your organization' });
     }
 
     const parseMode = body.parseMode ? String(body.parseMode) : undefined;
+    const plainText = text.replace(/<[^>]+>/g, '');
 
-    // Мобильный push тому же получателю (roadmap Этап 3). Fail-open: сбой
-    // push не влияет ни на Telegram-доставку, ни на ответ endpoint'а.
-    // Тело — тот же текст без HTML-разметки Telegram.
+    // Событие задачи: запись в ленту (раздел «Уведомления») + типизированный push
+    const event = body.event && typeof body.event === 'object' ? body.event : null;
+    const eventType = event && TASK_EVENT_TITLES[event.type] ? String(event.type) : null;
+    const taskId = event && typeof event.taskId === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(event.taskId)
+        ? event.taskId : null;
+    const projectId = event && typeof event.projectId === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(event.projectId)
+        ? event.projectId : null;
+
+    if (eventType) {
+        try {
+            await adminDb().collection('agentNotifications').add({
+                uid: recipientDoc.id,
+                organizationId: callerOrgId,
+                taskId,
+                projectId,
+                type: eventType,
+                text: plainText,
+                createdAt: FieldValue.serverTimestamp(),
+                readAt: null,
+            });
+        } catch (error) {
+            // Лента — не повод ронять доставку telegram/push
+            console.error('notify-telegram: feed write failed', error);
+        }
+    }
+
+    // Мобильный push (fail-open внутри sendPushToUser)
     try {
-        await sendPushToUser(recipientSnap.docs[0].id, {
-            title: 'HoldingMan',
-            body: text.replace(/<[^>]+>/g, ''),
+        await sendPushToUser(recipientDoc.id, {
+            title: eventType ? TASK_EVENT_TITLES[eventType] : 'HoldingMan',
+            body: plainText,
+            data: {
+                ...(taskId ? { taskId } : {}),
+                ...(projectId ? { projectId } : {}),
+                ...(eventType ? { type: eventType } : {}),
+            },
         });
     } catch (error) {
         console.error('notify-telegram: push send failed', error);
+    }
+
+    // Telegram — только если чат привязан. Для uid-получателя без Telegram
+    // push и лента уже доставлены — это успех, а не 4xx/5xx.
+    const targetChatId = chatId || String(recipientDoc.data.telegramChatId || '').trim();
+    if (!targetChatId) {
+        if (!process.env.TELEGRAM_BOT_TOKEN) {
+            return response.status(200).json({ ok: true, messageId: null, telegram: 'skipped' });
+        }
+        return response.status(200).json({ ok: true, messageId: null, telegram: 'no-chat' });
+    }
+    if (!process.env.TELEGRAM_BOT_TOKEN) {
+        // Токен не настроен: push/лента доставлены, телеграм пропущен
+        return response.status(200).json({ ok: true, messageId: null, telegram: 'skipped' });
     }
 
     // Shared sender (lib/telegram-send). Its rich result lets this endpoint
     // keep the exact response semantics it always had: transport failure →
     // 502; Telegram logical refusal on HTTP 200 → 502; Telegram HTTP error →
     // proxy the upstream status; success → 200 with messageId.
-    const result = await sendTelegramMessage(chatId, text, { parseMode });
+    const result = await sendTelegramMessage(targetChatId, text, { parseMode });
 
     if (result.ok) {
         return response.status(200).json({ ok: true, messageId: result.messageId || null });

@@ -7,6 +7,8 @@ struct MainTabView: View {
     @StateObject private var notificationsStore = NotificationsStore()
     @StateObject private var orgUsersStore = OrgUsersStore()
     @State private var selectedTab: String
+    @State private var pushRoute: TaskRoute?
+    @Environment(\.scenePhase) private var scenePhase
 
     init(initialTab: String = "projects") {
         _selectedTab = State(initialValue: initialTab)
@@ -41,6 +43,21 @@ struct MainTabView: View {
         .environmentObject(orgUsersStore)
         .onAppear { resubscribe() }
         .onChange(of: appState.user?.organizationId) { resubscribe() }
+        // Возврат из фона: пересобрать подписки (мёртвый после долгого фона
+        // слушатель = «замёрзшие» списки)
+        .onChange(of: scenePhase) {
+            if scenePhase == .active { resubscribe() }
+        }
+        // Тап по системному push (данные taskId/projectId) → открыть задачу
+        .onReceive(NotificationCenter.default.publisher(for: .hmOpenTask)) { note in
+            guard let taskId = note.userInfo?["taskId"] as? String,
+                  let projectId = note.userInfo?["projectId"] as? String else { return }
+            pushRoute = TaskRoute(taskId: taskId, projectId: projectId)
+        }
+        .sheet(item: $pushRoute) { route in
+            TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId)
+                .environmentObject(appState)
+        }
     }
 
     private func resubscribe() {

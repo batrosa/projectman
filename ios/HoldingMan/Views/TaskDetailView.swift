@@ -97,7 +97,8 @@ struct TaskDetailView: View {
             CompletionSheet(task: current) { comment, proofs in
                 guard let user = appState.user else { throw ApiError.notAuthenticated }
                 try await tasksStore.completeWithProofs(
-                    task: current, comment: comment, proofs: proofs, byName: user.displayName
+                    task: current, projectName: project.name,
+                    comment: comment, proofs: proofs, byName: user.displayName
                 )
             } onFinished: {
                 showCompletionSheet = false
@@ -370,7 +371,7 @@ struct TaskDetailView: View {
         Task {
             defer { isBusy = false }
             do {
-                try await tasksStore.acceptDone(task: current, byName: user.displayName)
+                try await tasksStore.acceptDone(task: current, projectName: project.name, byName: user.displayName)
                 dismiss()
             } catch {
                 errorMessage = "Не удалось принять задачу: \(error.localizedDescription)"
