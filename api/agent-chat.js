@@ -230,6 +230,23 @@ export default async function handler(request, response) {
   if (looksLikeTaskDeletionRequest(message)) {
     return handleTaskDeletionProposal({ db, response, body, message, context, callerData });
   }
+  // Прод-кейс: агент назвал задачу(и) в своём ответе, пользователь пишет
+  // «удали её» — слова «задача» в команде нет, полный матчер молчит, и запрос
+  // раньше уходил в обычный чат, где модель ЛИШЬ ОБЕЩАЛА карточку. Теперь
+  // короткая команда удаления строит title-фильтр из «кавычек» ПОСЛЕДНЕГО
+  // ответа агента (сверка с реальными задачами — в общем конвейере), а проект
+  // при необходимости резолвится из того же ответа. По-прежнему без LLM.
+  if (isTaskDeleteAffirmation(message)) {
+    const lastAssistantText = [...history].reverse().find((t) => t?.role === "assistant")?.content || "";
+    const dialogTitles = extractQuotedTitles(lastAssistantText);
+    if (dialogTitles.length > 0) {
+      return handleTaskDeletionProposal({
+        db, response, body, message, context, callerData,
+        dialogTitles,
+        dialogText: lastAssistantText,
+      });
+    }
+  }
 
   let contextText;
   try {
@@ -443,6 +460,28 @@ export function looksLikeTaskDeletionRequest(message) {
 
 // Recognized deletion filters. Returns null when the request is ambiguous —
 // the handler then ASKS instead of guessing (deletion must never guess).
+// Короткая команда удаления без «задач»-подсказки: «удали её», «удаляй»,
+// «да, удали», «убери это». Срабатывает только вместе с контекстом диалога
+// (см. dispatch в handler) — сама по себе карточку не строит.
+export function isTaskDeleteAffirmation(message) {
+  const text = normalizeLookup(message);
+  if (!text || text.length > 60) return false;
+  return /(удали|удаляй|удалить|убери|снеси)/u.test(text);
+}
+
+// Кандидаты-названия задач из ответа агента: строки в «…» / "…". Реальность
+// названий проверяет matchTasksForDeletion по свежим задачам проекта, так что
+// лишние кавычки (имя проекта и т.п.) безопасно отсеиваются.
+export function extractQuotedTitles(text) {
+  const raw = String(text || "");
+  const titles = [];
+  for (const m of raw.matchAll(/«([^«»]{1,300})»|"([^"]{1,300})"/gu)) {
+    const t = (m[1] || m[2] || "").trim();
+    if (t) titles.push(t);
+  }
+  return [...new Set(titles)];
+}
+
 export function extractDeletionFilter(message) {
   const raw = String(message || "");
 
@@ -517,7 +556,7 @@ export function matchTasksForDeletion(tasks, filter, todayIso) {
 // sends the currently open project's id, and «удали … из проекта X» while
 // project Y is open must hit X, never Y. Falls back to the open project only
 // when the message names none.
-function resolveDeletionProject({ projects, body, message, callerData }) {
+function resolveDeletionProject({ projects, body, message, callerData, fallbackText = "" }) {
   const list = Array.isArray(projects) ? projects : [];
   let project = null;
 
@@ -527,6 +566,19 @@ function resolveDeletionProject({ projects, body, message, callerData }) {
     : resolveProjectFromText(list, message);
   if (explicitProjectText && fromMessage.error === "not_found") {
     fromMessage = resolveProjectFromText(list, message);
+  }
+  // Короткая команда («удали её») проекта не называет — ищем его в последнем
+  // ответе агента. Матчим ТОЛЬКО по полному вхождению имени проекта: пословный
+  // резолвер тут слишком жаден (слово «проект» в ответе матчило бы любой
+  // проект со словом «проект» в названии → ложная неоднозначность).
+  if (fromMessage.error === "not_found" && fallbackText) {
+    const textNorm = normalizeLookup(fallbackText);
+    const hits = list.filter((p) => {
+      const name = normalizeLookup(p?.name);
+      return name && name.length >= 3 && textNorm.includes(name);
+    });
+    if (hits.length === 1) fromMessage = { project: hits[0] };
+    else if (hits.length > 1) fromMessage = { error: "ambiguous" };
   }
   if (fromMessage.project) {
     project = fromMessage.project;
@@ -555,12 +607,17 @@ function extractProjectTextAfterProjectWord(message) {
     .trim();
 }
 
-async function handleTaskDeletionProposal({ db, response, body, message, context, callerData }) {
+async function handleTaskDeletionProposal({ db, response, body, message, context, callerData, dialogTitles = null, dialogText = "" }) {
   if (!["owner", "admin", "moderator"].includes(callerData?.orgRole)) {
     return response.status(200).json({ ok: true, answer: "Удалять задачи через агента может владелец, админ или модератор. У исполнителя нет прав на удаление задач." });
   }
 
-  const filter = extractDeletionFilter(message);
+  // Явный фильтр из сообщения главнее; для короткой команды («удали её»)
+  // фильтром становятся названия из последнего ответа агента.
+  let filter = extractDeletionFilter(message);
+  if (!filter && Array.isArray(dialogTitles) && dialogTitles.length > 0) {
+    filter = { kind: "title", titles: dialogTitles };
+  }
   if (!filter) {
     return response.status(200).json({
       ok: true,
@@ -573,6 +630,7 @@ async function handleTaskDeletionProposal({ db, response, body, message, context
     body,
     message,
     callerData,
+    fallbackText: dialogText,
   });
   if (projectResult.answer) return response.status(200).json({ ok: true, answer: projectResult.answer });
 

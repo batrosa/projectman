@@ -10,6 +10,8 @@ import {
   lastAssistantListContent,
   isLikelyTextTaskContinuation,
   looksLikeTaskDeletionRequest,
+  isTaskDeleteAffirmation,
+  extractQuotedTitles,
   extractDeletionFilter,
   matchTasksForDeletion,
   agentTaskBoardStatus,
@@ -64,6 +66,21 @@ describe("task deletion request helpers", () => {
     expect(looksLikeTaskDeletionRequest("удали все назначенные задачи из проекта Елисеевский парк")).toBe(true);
     expect(looksLikeTaskDeletionRequest("убери просроченные поручения")).toBe(true);
     expect(looksLikeTaskDeletionRequest("какие задачи назначены по проекту")).toBe(false);
+  });
+
+  it("recognizes short delete affirmations («удали её») but not chatter or long sentences", () => {
+    expect(isTaskDeleteAffirmation("Удали её")).toBe(true);
+    expect(isTaskDeleteAffirmation("удаляй")).toBe(true);
+    expect(isTaskDeleteAffirmation("да, убери это")).toBe(true);
+    expect(isTaskDeleteAffirmation("спасибо")).toBe(false);
+    expect(isTaskDeleteAffirmation("расскажи, как правильно организовать работу так, чтобы ничего не удалять и не терять")).toBe(false);
+  });
+
+  it("extracts quoted titles from the agent's answer", () => {
+    const text = 'В проекте **Елисеевский парк** есть задача — **«Дыра»** (статус «готово») и "Смета"';
+    expect(extractQuotedTitles(text)).toEqual(["Дыра", "готово", "Смета"]);
+    expect(extractQuotedTitles("без кавычек")).toEqual([]);
+    expect(extractQuotedTitles(null)).toEqual([]);
   });
 
   it("extracts only strict deletion filters", () => {
@@ -1190,6 +1207,61 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     });
     expect(res.body.deleteProposal.tasks.map((t) => t.id)).toEqual(["t-assigned", "t-legacy"]);
     expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("«Удали её» after the agent mentioned a task builds the delete card from dialogue quotes (no model call)", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
+      projects: [
+        { id: "p-elis", name: "Елисеевский парк", organizationId: "org-1" },
+        { id: "p-other", name: "Другой проект", organizationId: "org-1" },
+      ],
+      tasks: [
+        { id: "t-hole", projectId: "p-elis", organizationId: "org-1", title: "Дыра", assignee: "Тэко Исаев", status: "done", subStatus: "completed" },
+        { id: "t-keep", projectId: "p-elis", organizationId: "org-1", title: "Оставить", status: "in-progress", subStatus: "assigned" },
+      ],
+      filesByProject: {},
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      message: "Удали её",
+      history: [
+        { role: "user", content: "какие задачи в елисеевском парке" },
+        { role: "assistant", content: "В проекте **Елисеевский парк** сейчас есть одна задача — **«Дыра»** (статус «готово»)." },
+      ],
+      projectId: "",
+      clientToday: "2026-07-07",
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.deleteProposal).toMatchObject({
+      source: "delete_tasks",
+      projectId: "p-elis",
+      projectName: "Елисеевский парк",
+      canDelete: true,
+    });
+    // «Дыра» — из кавычек диалога; «готово»/«Елисеевский парк» не совпали с
+    // реальными задачами и отсеялись
+    expect(res.body.deleteProposal.tasks.map((t) => t.id)).toEqual(["t-hole"]);
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("plain «удали её» with no dialogue context falls through to the normal chat (no accidental card)", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
+      projects: [{ id: "p-elis", name: "Елисеевский парк", organizationId: "org-1" }],
+      tasks: [{ id: "t1", projectId: "p-elis", organizationId: "org-1", title: "Задача", status: "in-progress" }],
+      filesByProject: {},
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({ message: "удали её", history: [] }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.deleteProposal).toBeUndefined();
+    expect(res.body.answer).toBe("AI answer"); // обычный чат
   });
 
   it("does not call the model when an employee asks the agent to delete tasks", async () => {
