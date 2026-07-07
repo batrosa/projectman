@@ -45,11 +45,6 @@ struct AgentChatView: View {
                         .background(Theme.primary.opacity(0.12), in: Capsule())
                     }
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Готово") { inputFocused = false }
-                        .font(.subheadline.weight(.semibold))
-                }
             }
         }
     }

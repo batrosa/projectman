@@ -107,7 +107,7 @@ struct DemoScreenRouter: View {
                 NavigationStack {
                     ProjectBoardView(project: DemoData.projects[0])
                 }
-            case "task":
+            case "task", "task-delete-confirm":
                 NavigationStack {
                     TaskDetailView(task: DemoData.tasks[1], project: DemoData.projects[0])
                         .environmentObject(tasksStore)
@@ -115,6 +115,8 @@ struct DemoScreenRouter: View {
                 }
             case "team":
                 NavigationStack { TeamView() }
+            case "orgs", "orgs-preview", "orgs-create":
+                OrgSelectView()
             default:
                 MainTabView(initialTab: screen)
             }

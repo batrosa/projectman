@@ -74,6 +74,36 @@ struct ApiClient {
         _ = try await post("api/join-org", body: ["inviteCode": inviteCode.uppercased()])
     }
 
+    // Создание организации: сервер проверяет уникальность имени, генерирует
+    // код приглашения и делает вызывающего владельцем (как web createOrganization).
+    static func createOrganization(name: String) async throws -> Organization {
+        let json = try await post("api/org", body: ["action": "create", "name": name])
+        guard let dict = json["organization"] as? [String: Any], let id = dict["id"] as? String else {
+            throw ApiError.server("Не удалось создать организацию")
+        }
+        return Organization(
+            id: id,
+            name: dict["name"] as? String ?? name,
+            orgRole: "owner",
+            membersCount: dict["membersCount"] as? Int
+        )
+    }
+
+    // Превью организации по коду приглашения (имя + число участников) —
+    // прежде чем вступать (как карточка предпросмотра в web).
+    static func previewOrganization(inviteCode: String) async throws -> Organization? {
+        let json = try await post("api/org", body: ["action": "preview", "inviteCode": inviteCode.uppercased()])
+        guard let dict = json["organization"] as? [String: Any], let id = dict["id"] as? String else {
+            return nil
+        }
+        return Organization(
+            id: id,
+            name: dict["name"] as? String ?? "Организация",
+            orgRole: nil,
+            membersCount: dict["membersCount"] as? Int
+        )
+    }
+
     // Смена роли участника (owner/admin; те же серверные ограничения, что в
     // веб-админке: владельца не трогаем, админ не управляет админами).
     static func updateMemberRole(userId: String, role: String) async throws {

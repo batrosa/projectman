@@ -51,19 +51,14 @@ struct NewTaskView: View {
                                 selectedAssignees.append(user)
                             }
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(user.displayName)
-                                        .foregroundStyle(Theme.textPrimary)
-                                    if user.telegramChatId != nil {
-                                        Label("Telegram подключён", systemImage: "paperplane")
-                                            .font(.caption2)
-                                            .foregroundStyle(Theme.textSecondary)
-                                    }
-                                }
+                            HStack(spacing: 10) {
+                                AvatarView(name: user.displayName, size: 30)
+                                Text(user.displayName)
+                                    .foregroundStyle(Theme.textPrimary)
                                 Spacer()
                                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(isSelected ? Theme.primary : Theme.textSecondary)
+                                    .font(.title3)
+                                    .foregroundStyle(isSelected ? Theme.primary : Theme.textSecondary.opacity(0.5))
                             }
                         }
                         .listRowBackground(Theme.surface)

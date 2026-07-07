@@ -37,5 +37,5 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: 4CAY67356K
+        DEVELOPMENT_TEAM: CKVAJS5NS2
         CODE_SIGN_ENTITLEMENTS: HoldingMan/HoldingMan.entitlements

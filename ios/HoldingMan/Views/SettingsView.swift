@@ -60,6 +60,11 @@ struct SettingsView: View {
                         .background(Theme.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     }
                     .buttonStyle(PressableStyle())
+                    // Диалог привязан к кнопке выхода — появляется над ней
+                    .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
+                        Button("Выйти", role: .destructive) { appState.signOut() }
+                        Button("Отмена", role: .cancel) {}
+                    }
                     .padding(.top, 6)
                 }
                 .padding(.horizontal, 16)
@@ -67,10 +72,6 @@ struct SettingsView: View {
             }
             .screenBackground()
             .navigationTitle("Профиль")
-            .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
-                Button("Выйти", role: .destructive) { appState.signOut() }
-                Button("Отмена", role: .cancel) {}
-            }
         }
     }
 

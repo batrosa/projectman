@@ -40,7 +40,8 @@ final class AuthService: ObservableObject {
                 if delay > 0 { try await Task.sleep(nanoseconds: delay) }
                 delay = min(delay + 500_000_000, 2_000_000_000)
                 guard let token = try await ApiClient.pollTelegramBotLogin(code: start.code) else { continue }
-                setStatus("Вход подтверждён. Загружаем рабочее пространство...", success: true)
+                // Без «вход подтверждён»-баннеров: успешный вход сам сменит экран
+                setStatus(nil)
                 try await Auth.auth().signIn(withCustomToken: token)
                 return
             }

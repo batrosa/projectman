@@ -248,9 +248,18 @@ final class MyTasksStore: ObservableObject {
         listener = Firestore.firestore().collection("tasks")
             .whereField("organizationId", isEqualTo: organizationId)
             .whereField("assigneeIds", arrayContains: uid)
-            .addSnapshotListener { [weak self] snapshot, _ in
+            .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor [weak self] in
-                    guard let self, let snapshot else { return }
+                    guard let self else { return }
+                    // Ошибку слушателя НЕЛЬЗЯ молча глотать: без composite-индекса
+                    // (assigneeIds CONTAINS + organizationId) сервер отвечает
+                    // failed-precondition, и список навсегда замирал на кэше —
+                    // прод-баг «мои задачи не обновляются до перезапуска».
+                    if let error {
+                        print("my-tasks listener error:", error.localizedDescription)
+                        return
+                    }
+                    guard let snapshot else { return }
                     self.tasks = snapshot.documents
                         .map { TaskItem.from(id: $0.documentID, data: $0.data()) }
                         .filter { $0.status != "done" }

@@ -77,22 +77,6 @@ struct TaskDetailView: View {
         .safeAreaInset(edge: .bottom) {
             if hasActions { actionPanel }
         }
-        .confirmationDialog(
-            "Удалить задачу «\(current.title)»? Действие необратимо.",
-            isPresented: $confirmDelete,
-            titleVisibility: .visible
-        ) {
-            Button("Удалить", role: .destructive) { deleteTask() }
-            Button("Отмена", role: .cancel) {}
-        }
-        .confirmationDialog(
-            "Принять задачу в «Готово»? Исполнителям начислится XP.",
-            isPresented: $confirmAccept,
-            titleVisibility: .visible
-        ) {
-            Button("Принять") { acceptDone() }
-            Button("Отмена", role: .cancel) {}
-        }
         .alert("Причина возврата", isPresented: $showRevisionPrompt) {
             TextField("Что нужно доработать", text: $revisionReason)
             Button("Вернуть", role: .destructive) { returnForRevision() }
@@ -100,6 +84,15 @@ struct TaskDetailView: View {
         } message: {
             Text("Задача вернётся исполнителю в статус «В работе».")
         }
+        #if DEBUG
+        .onAppear {
+            // --demo-screen task-delete-confirm: сразу открыть диалог удаления
+            // (проверка позиционирования диалога над кнопкой в скриншотах)
+            if DemoData.isEnabled && DemoData.screen == "task-delete-confirm" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { confirmDelete = true }
+            }
+        }
+        #endif
         .sheet(isPresented: $showCompletionSheet) {
             CompletionSheet(task: current) { comment, proofs in
                 guard let user = appState.user else { throw ApiError.notAuthenticated }
@@ -185,6 +178,16 @@ struct TaskDetailView: View {
                 taskActionButton("Принять в «Готово»", icon: "checkmark.circle.fill", tint: Theme.statusDone) {
                     confirmAccept = true
                 }
+                // Диалог привязан к кнопке — появляется над ней, не в центре экрана
+                .confirmationDialog(
+                    "Принять задачу в «Готово»? Исполнителям начислится XP.",
+                    isPresented: $confirmAccept,
+                    titleVisibility: .visible
+                ) {
+                    Button("Принять") { acceptDone() }
+                    Button("Отмена", role: .cancel) {}
+                }
+
                 taskActionButton("Вернуть на доработку", icon: "arrow.uturn.backward", tint: Theme.warning, filled: false) {
                     revisionReason = ""
                     showRevisionPrompt = true
@@ -194,6 +197,14 @@ struct TaskDetailView: View {
             if canManage {
                 taskActionButton("Удалить задачу", icon: "trash", tint: Theme.danger, filled: false, role: .destructive) {
                     confirmDelete = true
+                }
+                .confirmationDialog(
+                    "Удалить задачу «\(current.title)»? Действие необратимо.",
+                    isPresented: $confirmDelete,
+                    titleVisibility: .visible
+                ) {
+                    Button("Удалить", role: .destructive) { deleteTask() }
+                    Button("Отмена", role: .cancel) {}
                 }
             }
         }
@@ -230,14 +241,14 @@ struct TaskDetailView: View {
             Text(label)
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSecondary)
-                .frame(width: 118, alignment: .leading)
-            Spacer(minLength: 10)
+                .fixedSize() // метка не переносится по слогам («Ответствен-ный»)
+                .layoutPriority(1)
+            Spacer(minLength: 12)
             Text(value)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.textPrimary)
                 .multilineTextAlignment(.trailing)
-                .lineLimit(3)
-                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
