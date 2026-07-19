@@ -386,6 +386,7 @@ export default async function handler(request, response) {
       message: textTaskRequest.message,
       projectHintText: textTaskRequest.projectHintText,
       callerData,
+      history,
     });
     if (projectResult.answer) return response.status(200).json({ ok: true, answer: projectResult.answer });
 
@@ -1616,7 +1617,7 @@ export function resolveFileInventoryQuestion({ message, context = {}, body = {} 
     : [`В проекте «${projectName}» загружено файлов: ${projectFiles.length}.`, ...rows].join("\n");
 }
 
-function resolveTextTaskProject({ projects, body, message, projectHintText, callerData }) {
+function resolveTextTaskProject({ projects, body, message, projectHintText, callerData, history }) {
   const list = Array.isArray(projects) ? projects : [];
   let project = null;
 
@@ -1654,6 +1655,7 @@ function resolveTextTaskProject({ projects, body, message, projectHintText, call
         return { answer: "Название проекта подходит к нескольким проектам. Откройте нужный проект или напишите его полное название." };
       }
     }
+    if (!project) project = resolveProjectFromHistory(list, history);
     if (!project) {
       return { answer: "Не понял, в какой проект поставить задачу. Откройте проект или напишите его точное название в сообщении." };
     }
@@ -1663,6 +1665,24 @@ function resolveTextTaskProject({ projects, body, message, projectHintText, call
     return { answer: "Нет доступа к созданию задач в этом проекте." };
   }
   return { project };
+}
+
+// Прод-кейс «а зачем ты 69 задач сделал?» → «ок»: имя проекта звучало только в
+// РАННЕЙ реплике агента («…проекта “Абрау-Дюрсо”…»), а hint-тексты recovery
+// собирают лишь последние реплики пользователя — карточка отвечала «Не понял,
+// в какой проект». Ищем от новых реплик к старым (любой роли) ту, что
+// однозначно указывает на один доступный проект; реплики с несколькими
+// именами проектов (например, агент перечислил все проекты) отдают
+// «ambiguous» и пропускаются.
+export function resolveProjectFromHistory(projects, history) {
+  const turns = Array.isArray(history) ? history : [];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const content = String(turns[index]?.content || "");
+    if (!content.trim()) continue;
+    const resolved = resolveProjectFromText(projects, content);
+    if (resolved.project) return resolved.project;
+  }
+  return null;
 }
 
 export function isAllProjectsCreationTarget(value) {
@@ -2025,11 +2045,23 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, projects, message = ""
   };
 }
 
-function requestedTaskCount(message) {
-  const match = normalizeLookup(message).match(/(?:создай|создать|добавь|добавить|поставь)?\s*(\d{1,2})\s+(?:рандомн[а-я]*\s+|случайн[а-я]*\s+)?задач/u);
-  if (!match) return null;
-  const count = Number(match[1]);
-  return Number.isInteger(count) && count > 0 && count <= 30 ? count : null;
+const TASK_COUNT_WORDS = new Map([
+  ["один", 1], ["одна", 1], ["одну", 1], ["два", 2], ["две", 2], ["три", 3], ["четыре", 4],
+  ["пять", 5], ["шесть", 6], ["семь", 7], ["восемь", 8], ["девять", 9], ["десять", 10],
+]);
+
+export function requestedTaskCount(message) {
+  const text = normalizeLookup(message);
+  const match = text.match(/(?:создай|создать|добавь|добавить|поставь)?\s*(\d{1,2})\s+(?:рандомн[а-я]*\s+|случайн[а-я]*\s+)?задач/u);
+  if (match) {
+    const count = Number(match[1]);
+    return Number.isInteger(count) && count > 0 && count <= 30 ? count : null;
+  }
+  // Числительные словом: «сформируй одну из задач…», «поставь две задачи» —
+  // без этого «одну» игнорировалось и LLM выгружал ВСЕ задачи из базы знаний
+  // (прод-кейс: карточка на 69 задач вместо одной).
+  const wordMatch = text.match(/(один|одна|одну|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять)\s+(?:из\s+)?(?:рандомн[а-я]*\s+|случайн[а-я]*\s+)?задач/u);
+  return wordMatch ? TASK_COUNT_WORDS.get(wordMatch[1]) || null : null;
 }
 
 function seededNumber(value) {

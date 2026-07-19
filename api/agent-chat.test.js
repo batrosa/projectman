@@ -8,6 +8,8 @@ import {
   formatRecentDialogue,
   isCreateAffirmation,
   getTextTaskCreationRequest,
+  resolveProjectFromHistory,
+  requestedTaskCount,
   lastAssistantListContent,
   isLikelyTextTaskContinuation,
   isReadOnlyInformationRequest,
@@ -56,6 +58,47 @@ describe("getTextTaskCreationRequest (восстановление «ок» по
       { role: "assistant", content: "Все задачи в статусе «Не начато», просроченных нет." },
     ];
     expect(getTextTaskCreationRequest("ок", history)).toBe(null);
+  });
+});
+
+describe("resolveProjectFromHistory (проект из ранних реплик диалога)", () => {
+  const projects = [
+    { id: "p-abrau", name: "Абрау-Дюрсо" },
+    { id: "p-park", name: "Славянский парк" },
+  ];
+
+  it("находит проект, упомянутый только в ранней реплике агента", () => {
+    const history = [
+      { role: "user", content: "какие задачи есть?" },
+      { role: "assistant", content: "В проекте «Абрау-Дюрсо» уже есть набор задач в статусе «Не начато»." },
+      { role: "user", content: "а зачем ты 69 задач сделал? я попросил одну" },
+      { role: "assistant", content: "Извините за недоразумение — я подготовил карточку только для одной задачи." },
+    ];
+    expect(resolveProjectFromHistory(projects, history)?.id).toBe("p-abrau");
+  });
+
+  it("реплика с несколькими проектами пропускается в пользу однозначной", () => {
+    const history = [
+      { role: "assistant", content: "Задачи проекта «Абрау-Дюрсо» готовы к работе." },
+      { role: "assistant", content: "Ваши проекты: Абрау-Дюрсо, Славянский парк." },
+    ];
+    expect(resolveProjectFromHistory(projects, history)?.id).toBe("p-abrau");
+  });
+
+  it("без упоминаний проектов возвращает null", () => {
+    expect(resolveProjectFromHistory(projects, [{ role: "user", content: "ок" }])).toBe(null);
+    expect(resolveProjectFromHistory(projects, [])).toBe(null);
+  });
+});
+
+describe("requestedTaskCount (числительные словом и цифрой)", () => {
+  it("парсит цифры и словесные числительные", () => {
+    expect(requestedTaskCount("создай 5 задач")).toBe(5);
+    expect(requestedTaskCount("сформируй одну из задач для ответственного")).toBe(1);
+    expect(requestedTaskCount("поставь две задачи Ивану")).toBe(2);
+    expect(requestedTaskCount("добавь три случайные задачи")).toBe(3);
+    expect(requestedTaskCount("создай задачи из файла")).toBe(null);
+    expect(requestedTaskCount("")).toBe(null);
   });
 });
 
