@@ -141,6 +141,12 @@ describe("buildTableFallbackProposalFromText", () => {
     expect(proposal.tasks.every((task) => task.assigneeName === "Правообладатели")).toBe(true);
   });
 
+  it("«где X ответсвенный», которого нет в плане — null, а не весь план", () => {
+    expect(buildTableFallbackProposalFromText(text, {
+      userMessage: "создай задачи где христос ответсвенный",
+    })).toBe(null);
+  });
+
   it("поручение про ответственных без имён из плана не режет список", () => {
     const proposal = buildTableFallbackProposalFromText(text, {
       userMessage: "создай задачи из файла, ответственных возьми из плана",

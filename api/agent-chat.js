@@ -432,7 +432,28 @@ export default async function handler(request, response) {
       history,
     });
 
-    if (proposal.answer) return response.status(200).json({ ok: true, answer: proposal.answer, model: proposal.model });
+    if (proposal.answer) {
+      // «создай задачи, где X ответственный», а в базе знаний ОТКРЫТОГО
+      // проекта такого человека нет: канонический ответ «не понял, кому
+      // поставить» вводил в заблуждение и гонял пользователя по кругу.
+      // Отвечаем честно и подсказываем проект, в чьей базе знаний имя есть.
+      if (proposal.emptyTasks) {
+        const filterWords = extractAssigneeFilterWords(textTaskRequest.message);
+        if (filterWords.length > 0) {
+          const currentNames = targetProjects.map((p) => `«${p.name || "без названия"}»`).join(", ");
+          const hintProject = findProjectKnowledgeMentioning(context, targetProjects, filterWords);
+          const hint = hintProject
+            ? ` Похоже, такие задачи есть в базе знаний проекта «${hintProject.name || "без названия"}» — напишите: «создай задачи, где ${filterWords.join(" ")} ответственный, в проекте „${hintProject.name}“».`
+            : " Если эти задачи в другом проекте — назовите его в сообщении или откройте его.";
+          return response.status(200).json({
+            ok: true,
+            answer: `В базе знаний проекта ${currentNames} не нашёл задач, где ответственный — ${filterWords.join(" ")}.${hint}`,
+            model: proposal.model,
+          });
+        }
+      }
+      return response.status(200).json({ ok: true, answer: proposal.answer, model: proposal.model });
+    }
     return response.status(200).json({ ok: true, taskProposal: proposal.taskProposal, model: proposal.model });
   }
 
@@ -606,7 +627,7 @@ function looksLikeTextTaskCreationRequest(message) {
   if (!text) return false;
   if (isReadOnlyInformationRequest(message)) return false;
   const createVerb = /(создай|создать|создайте|дай|дать|дайте|поставь|поставить|поставьте|назначь|назначить|назначьте|добавь|добавить|добавьте|заведи|завести|оформи|оформить|поручи|поручить|озадачь|озадачить|озадачьте|загрузи|загрузить|импортируй|импортировать|перенеси|перенести|сформируй|сформировать|сформируйте|сгенерируй|сгенерировать)/u;
-  const taskHint = /(задач|поручени|исполнител|ответственн|срок|дедлайн|сегодня|завтра|послезавтра)/u;
+  const taskHint = /(задач|поручени|исполнител|ответст?венн|срок|дедлайн|сегодня|завтра|послезавтра)/u;
   return createVerb.test(text) && taskHint.test(text);
 }
 
@@ -615,7 +636,7 @@ export function looksLikeUnsupportedMutationRequest(message) {
   if (!text) return false;
   if (isReadOnlyInformationRequest(message)) return false;
   const verb = /(создай|создать|добавь|добавить|загрузи|загрузить|прикрепи|прикрепить|удали|удалить|измени|изменить|редактир|переимен|назначь|назначить|озадач|возьми|взять|прими|принять|верни|вернуть|заверши|завершить|отметь|очисти|прочитай|перенеси|передай|сдвинь|поставь|сними|отправь)/u;
-  const entity = /(задач|проект|файл|вложен|описан|комментари|уведомлен|участник|сотрудник|роль|доступ|срок|дедлайн|исполнител|ответственн|организац)/u;
+  const entity = /(задач|проект|файл|вложен|описан|комментари|уведомлен|участник|сотрудник|роль|доступ|срок|дедлайн|исполнител|ответст?венн|организац)/u;
   return verb.test(text) && entity.test(text);
 }
 
@@ -1509,7 +1530,7 @@ export function isLikelyTextTaskContinuation(message, historyAfterBase = []) {
     return /^(?:срок\s+|дедлайн\s+)?(?:без\s+срок(?:а|ов)?|сегодня|завтра|послезавтра|до\s+конца\s+(?:дня|недели|месяца)|\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{4}-\d{2}-\d{2})$/u.test(text);
   }
   if (asksAssignee) {
-    if (/^(?:без\s+ответственн[а-я]*|никому|не назначать|им|ему|ей|обоим|обеим|всем)$/u.test(text)) return true;
+    if (/^(?:без\s+ответст?венн[а-я]*|никому|не назначать|им|ему|ей|обоим|обеим|всем)$/u.test(text)) return true;
     return /^[а-яёa-z][а-яёa-z'-]*(?:\s+[а-яёa-z][а-яёa-z'-]*){0,3}$/u.test(text);
   }
   if (asksProject) {
@@ -1547,7 +1568,7 @@ export function isReadOnlyInformationRequest(message) {
       && /(список|перечень|отчет|все\s+(?:задач|проект|файл|документ|уведомлен|участник|сотрудник)|всех\s+(?:задач|проект|участник|сотрудник))/u.test(text)) {
     return true;
   }
-  const entityLead = /^(?:файлы?|документы?|задачи?|проекты?|сроки|ответственн[а-я]*|исполнител[а-я]*|участник[а-я]*|сотрудник[а-я]*)(?:$|[^а-яёa-z0-9])/u;
+  const entityLead = /^(?:файлы?|документы?|задачи?|проекты?|сроки|ответст?венн[а-я]*|исполнител[а-я]*|участник[а-я]*|сотрудник[а-я]*)(?:$|[^а-яёa-z0-9])/u;
   return entityLead.test(text)
     || (/(файл|документ)/u.test(text) && /(список|перечень|имеется|загружен|доступен|в проекте|по проекту)/u.test(text));
 }
@@ -1633,7 +1654,21 @@ function resolveTextTaskProject({ projects, body, message, projectHintText, call
 
   const requestedId = typeof body.projectId === "string" ? body.projectId.trim() : "";
   if (requestedId) {
-    project = list.find((p) => p?.id === requestedId) || null;
+    // Полное имя другого проекта прямо в поручении сильнее открытого проекта:
+    // «создай задачи … в проекте „Абрау-Дюрсо“» из открытого «Елисеевского
+    // парка» должно попасть в названный проект, а не в открытый (прод-кейс).
+    // Только точное вхождение полного имени — без fuzzy, чтобы обычные слова
+    // не «переключали» проект.
+    const messageText = normalizeLookup(message);
+    const explicitByName = list.filter((p) => {
+      const name = normalizeLookup(p?.name);
+      return name && name.length >= 3 && messageText.includes(name);
+    });
+    if (explicitByName.length === 1) {
+      project = explicitByName[0];
+    } else {
+      project = list.find((p) => p?.id === requestedId) || null;
+    }
     if (!project) {
       return { answer: "Проект не найден среди доступных вам проектов." };
     }
@@ -1681,6 +1716,45 @@ export function resolveProjectFromHistory(projects, history) {
     if (!content.trim()) continue;
     const resolved = resolveProjectFromText(projects, content);
     if (resolved.project) return resolved.project;
+  }
+  return null;
+}
+
+// «создай задачи где христос ответсвенный» → ["христос"]. Имя стоит перед
+// «ответственн…» (терпимо к опечатке «ответсвенный»); служебные слова
+// отбрасываем, максимум три слова имени.
+export function extractAssigneeFilterWords(message) {
+  const text = normalizeLookup(message);
+  const match = text.match(/(?:^|[^а-яa-z0-9])(?:где|котор[а-я]+|у)\s+(.{2,60}?)\s+(?:указан[а-я]*\s+)?ответст?венн/u);
+  if (!match) return [];
+  const stop = new Set(["он", "она", "они", "оно", "все", "всех", "будет", "есть", "человек", "участник", "сотрудник", "поле", "указан", "указана"]);
+  return match[1]
+    .split(" ")
+    .filter((word) => word.length >= 3 && !stop.has(word))
+    .slice(-3);
+}
+
+// Ищет среди ДРУГИХ доступных проектов тот, чья база знаний упоминает все
+// слова имени. Нужен для честной подсказки, когда в открытом проекте задач
+// этого ответственного нет.
+export function findProjectKnowledgeMentioning(context, excludeProjects, words) {
+  if (!Array.isArray(words) || words.length === 0) return null;
+  const excluded = new Set((Array.isArray(excludeProjects) ? excludeProjects : []).map((p) => p?.id));
+  const files = Array.isArray(context?.files) ? context.files : [];
+  const projects = Array.isArray(context?.projects) ? context.projects : [];
+  const knowledgeByProject = new Map();
+  for (const file of files) {
+    if (!file?.projectId || excluded.has(file.projectId)) continue;
+    const chunks = Array.isArray(file.knowledgeChunks) ? file.knowledgeChunks.join("\n") : "";
+    if (!chunks) continue;
+    knowledgeByProject.set(file.projectId, `${knowledgeByProject.get(file.projectId) || ""}\n${chunks}`);
+  }
+  for (const [projectId, textValue] of knowledgeByProject) {
+    const normalized = normalizeLookup(textValue);
+    if (words.every((word) => normalized.includes(word))) {
+      const project = projects.find((p) => p?.id === projectId);
+      if (project) return project;
+    }
   }
   return null;
 }
@@ -1975,7 +2049,10 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, projects, message = ""
 
   const proposal = extracted.proposal;
   if (Array.isArray(proposal?.tasks) && proposal.tasks.length === 0) {
-    return { answer: "Не понял однозначно, кому поставить задачу. Назовите имена участников (например: «поставь Эльдару Исаеву и Амирхану Абигасанову задачу …») — и я подготовлю карточку." };
+    return {
+      answer: "Не понял однозначно, кому поставить задачу. Назовите имена участников (например: «поставь Эльдару Исаеву и Амирхану Абигасанову задачу …») — и я подготовлю карточку.",
+      emptyTasks: true,
+    };
   }
 
   const validated = validateProposal({

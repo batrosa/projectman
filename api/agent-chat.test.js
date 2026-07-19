@@ -10,6 +10,8 @@ import {
   getTextTaskCreationRequest,
   resolveProjectFromHistory,
   requestedTaskCount,
+  extractAssigneeFilterWords,
+  findProjectKnowledgeMentioning,
   lastAssistantListContent,
   isLikelyTextTaskContinuation,
   isReadOnlyInformationRequest,
@@ -58,6 +60,30 @@ describe("getTextTaskCreationRequest (восстановление «ок» по
       { role: "assistant", content: "Все задачи в статусе «Не начато», просроченных нет." },
     ];
     expect(getTextTaskCreationRequest("ок", history)).toBe(null);
+  });
+});
+
+describe("extractAssigneeFilterWords + findProjectKnowledgeMentioning", () => {
+  it("извлекает имя перед «ответственный», терпимо к опечатке «ответсвенный»", () => {
+    expect(extractAssigneeFilterWords("создай задачи где христос ответсвенный")).toEqual(["христос"]);
+    expect(extractAssigneeFilterWords("все задачи где чахиров христос указан ответственным")).toEqual(["чахиров", "христос"]);
+    expect(extractAssigneeFilterWords("создай задачи из файла, ответственных возьми из плана")).toEqual([]);
+    expect(extractAssigneeFilterWords("поставь задачу проверить договор")).toEqual([]);
+    expect(extractAssigneeFilterWords("")).toEqual([]);
+  });
+
+  it("находит проект, в чьей базе знаний упомянуто имя, исключая текущие", () => {
+    const context = {
+      projects: [{ id: "p-park", name: "Елисеевский парк" }, { id: "p-abrau", name: "Абрау-Дюрсо" }],
+      files: [
+        { projectId: "p-park", knowledgeChunks: ["Разработать ППТ. Ответственный: Правообладатели"] },
+        { projectId: "p-abrau", knowledgeChunks: ["Выкуп участка. Ответственный: Чахиров Христос"] },
+      ],
+    };
+    expect(findProjectKnowledgeMentioning(context, [{ id: "p-park" }], ["христос"])?.id).toBe("p-abrau");
+    expect(findProjectKnowledgeMentioning(context, [{ id: "p-park" }], ["неизвестный"])).toBe(null);
+    expect(findProjectKnowledgeMentioning(context, [{ id: "p-abrau" }], ["христос"])).toBe(null);
+    expect(findProjectKnowledgeMentioning(context, [], [])).toBe(null);
   });
 });
 

@@ -522,18 +522,19 @@ export function buildTableFallbackProposalFromText(fileText, {
     });
   }
 
-  // «все задачи, где ответственный — Чахиров»: поручение явно про
-  // ответственного и называет конкретных людей из плана — оставляем только их
-  // строки. Без фильтра карточка тащила весь план целиком (прод-кейс: запрос
-  // про задачи одного человека собрал карточку на ~70 строк из базы знаний).
+  // «все задачи, где ответственный — Чахиров»: поручение формы «где X
+  // ответственный» оставляет только строки этого человека. Без фильтра
+  // карточка тащила весь план целиком (прод-кейс: запрос про задачи одного
+  // человека собрал карточку на ~70 строк из базы знаний). Если строк X в
+  // плане нет вовсе — возвращаем «пусто», а не весь план: наверху это даст
+  // честный ответ вместо ложной карточки.
   let visible = found;
-  if (!override.assigneeName && /ответственн/iu.test(String(userMessage || ""))) {
+  if (!override.assigneeName && assigneeFilterWordsFromMessage(userMessage).length > 0) {
     const messageText = normalizeLookup(userMessage);
-    const matched = found.filter((task) => {
+    visible = found.filter((task) => {
       const words = normalizeLookup(task.assigneeName).split(" ").filter((word) => word.length >= 3);
       return words.length > 0 && words.every((word) => messageText.includes(word));
     });
-    if (matched.length > 0) visible = matched;
   }
 
   if (visible.length === 0) return null;
@@ -651,13 +652,27 @@ function parseUserOverrides(message) {
   const assigneeMatch = text.match(/назнач(?:ь|ить)?(?:[^\S\n]+все)?[^\S\n]+на[^\S\n]+(.+?)(?:[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|[^\S\n]+до[^\S\n]+20\d{2}-\d{2}-\d{2}|$)/im);
   if (assigneeMatch) assigneeName = cleanAssigneeOverride(assigneeMatch[1]);
   if (!assigneeName) {
-    const explicit = text.match(/ответственн(?:ый|ого|ым)?[^\S\n]*[:—-]?[^\S\n]+(.+?)(?:,|[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|$)/im);
+    const explicit = text.match(/ответст?венн(?:ый|ого|ым)?[^\S\n]*[:—-]?[^\S\n]+(.+?)(?:,|[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|$)/im);
     if (explicit) assigneeName = cleanAssigneeOverride(explicit[1]);
   }
   return {
     assigneeName,
     deadline: deadlineMatch ? deadlineMatch[1] : null,
   };
+}
+
+// «…где христос ответсвенный» → ["христос"]: слова имени перед
+// «ответственн…» (терпимо к опечатке). Дублирует одноимённую логику
+// agent-chat.js — модули намеренно не связаны (как и rate-limit).
+function assigneeFilterWordsFromMessage(message) {
+  const text = normalizeLookup(message);
+  const match = text.match(/(?:^|[^а-яa-z0-9])(?:где|котор[а-я]+|у)\s+(.{2,60}?)\s+(?:указан[а-я]*\s+)?ответст?венн/u);
+  if (!match) return [];
+  const stop = new Set(["он", "она", "они", "оно", "все", "всех", "будет", "есть", "человек", "участник", "сотрудник", "поле", "указан", "указана"]);
+  return match[1]
+    .split(" ")
+    .filter((word) => word.length >= 3 && !stop.has(word))
+    .slice(-3);
 }
 
 // Захват после «ответственный …» — свободный текст. Всё, что не похоже на
