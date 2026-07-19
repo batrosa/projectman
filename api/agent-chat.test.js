@@ -1472,7 +1472,14 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
                   return docsFactory();
                 }, "projectFiles", docId);
                 return {
-                  select() {
+                  select(...fieldPaths) {
+                    // Match the real @google-cloud/firestore API: select takes
+                    // variadic field paths. Passing one array is rejected by
+                    // validateFieldPath and was the production regression that
+                    // made every agent message fall back before the model call.
+                    if (fieldPaths.length === 1 && Array.isArray(fieldPaths[0])) {
+                      throw new Error("select() field paths must be variadic");
+                    }
                     return filesQuery(withFileIds);
                   },
                   limit() {

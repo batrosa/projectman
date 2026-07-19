@@ -3141,7 +3141,7 @@ async function readOrganizationContext(db, organizationId, accessibleProjectIds 
     projects.map((project) =>
       db
         .collection("projects").doc(project.id).collection("files")
-        .select([
+        .select(
           "filename",
           "extractionStatus",
           "uploadedAt",
@@ -3152,7 +3152,7 @@ async function readOrganizationContext(db, organizationId, accessibleProjectIds 
           "knowledgeStatus",
           "knowledgeCharCount",
           "knowledgeChunks",
-        ])
+        )
         .limit(MAX_CONTEXT_FILES_PER_PROJECT)
         .get()
     )
