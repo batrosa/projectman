@@ -6,6 +6,7 @@
 // join an arbitrary org. Joining itself lives in api/join-org.
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
+import { buildAuthProfilePatch, selectedProviderId } from "../lib/auth-profile.js";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing 0/O, 1/I
 const MAX_ORG_NAME = 80;
@@ -251,6 +252,68 @@ export default async function handler(request, response) {
 
   const action = String(body.action || "");
   const db = adminDb();
+
+  // Common post-auth bootstrap for web and iOS. It makes Google/Apple users
+  // share the same users/{firebaseUid} profile on every platform and never
+  // overwrites organization, role or a name already confirmed by the user.
+  if (action === "bootstrapAuth") {
+    try {
+      const userRef = db.collection("users").doc(decoded.uid);
+      const [userSnap, authUser] = await Promise.all([
+        userRef.get(),
+        adminAuth().getUser(decoded.uid),
+      ]);
+      const existing = userSnap.exists ? (userSnap.data() || {}) : {};
+      const signInProvider = String(decoded.firebase?.sign_in_provider || "");
+      const incomingProvider = selectedProviderId(authUser, existing, signInProvider);
+      const storedProvider = String(existing.authProvider || "");
+      if (storedProvider && incomingProvider && storedProvider !== incomingProvider) {
+        return response.status(409).json({
+          code: "AUTH_PROVIDER_MISMATCH",
+          authProvider: storedProvider,
+          error: "Этот аккаунт использует другой способ входа. Войдите тем способом, который выбрали при регистрации.",
+        });
+      }
+      const patch = buildAuthProfilePatch({ authUser, existing, signInProvider });
+      patch.lastLoginAt = FieldValue.serverTimestamp();
+      patch.updatedAt = FieldValue.serverTimestamp();
+      if (!userSnap.exists) patch.createdAt = FieldValue.serverTimestamp();
+      await userRef.set(patch, { merge: true });
+      return response.status(200).json({
+        ok: true,
+        uid: decoded.uid,
+        email: patch.email || existing.email || "",
+        authProvider: patch.authProvider || existing.authProvider || "",
+      });
+    } catch (error) {
+      console.error("auth bootstrap failed", error);
+      return response.status(500).json({ error: "Не удалось подготовить профиль" });
+    }
+  }
+
+  if (action === "completeProfile") {
+    const firstName = String(body.firstName || "").trim().slice(0, 40);
+    const lastName = String(body.lastName || "").trim().slice(0, 40);
+    if (firstName.length < 2 || lastName.length < 2) {
+      return response.status(400).json({ error: "Введите имя и фамилию: минимум по 2 символа." });
+    }
+    try {
+      const userRef = db.collection("users").doc(decoded.uid);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) return response.status(404).json({ error: "Профиль не найден" });
+      await userRef.set({
+        firstName,
+        lastName,
+        displayName: `${firstName} ${lastName}`,
+        profileCompleted: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return response.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("profile completion failed", error);
+      return response.status(500).json({ error: "Не удалось сохранить имя и фамилию" });
+    }
+  }
 
   // ── List organizations where the caller is a member. This is server-side
   // because the client cannot safely list organization docs or infer counts.

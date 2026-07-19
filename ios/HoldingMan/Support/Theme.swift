@@ -245,14 +245,14 @@ struct AvatarView: View {
     }
 }
 
-// Чип дедлайна («12 июл», красный при просрочке)
+// Чип дедлайна («12.07.2026», красный при просрочке)
 struct DeadlineChip: View {
     let deadline: String?
     let isOverdue: Bool
 
     private var label: String? {
         guard let deadline, let date = DateFormatter.isoDay.date(from: deadline) else { return nil }
-        return DateFormatter.dayMonthShortRu.string(from: date)
+        return DateFormatter.dayMonthYear.string(from: date)
     }
 
     var body: some View {
@@ -303,7 +303,7 @@ struct EmptyStateView: View {
 extension DateFormatter {
     static let dayMonthShortRu: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "d MMM"
+        f.dateFormat = "dd.MM.yyyy"
         f.locale = Locale(identifier: "ru_RU")
         return f
     }()

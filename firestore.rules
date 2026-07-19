@@ -367,5 +367,12 @@ service cloud.firestore {
       // Удаление — серверное (api/agent-chat delete_notification, Admin SDK).
       allow create, delete: if false;
     }
+
+    // Полный журнал запросов переноса срока. Создание и решение выполняет
+    // только api/deadline-change транзакцией через Admin SDK; клиент получает
+    // актуальное ожидающее состояние из защищённого поля задачи.
+    match /deadlineChangeRequests/{requestId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -20,6 +20,8 @@ enum DemoData {
         email: "",
         firstName: "Тэко",
         lastName: "Исаев",
+        authProvider: "telegram",
+        profileCompleted: true,
         organizationId: "demo-org",
         orgRole: "owner",
         allowedProjects: [],

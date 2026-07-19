@@ -875,6 +875,7 @@ async function enterOrganization(organizationId, button = null) {
         button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Вход...';
     }
     try {
+        resetAgentChatForOrganizationChange();
         stopOrgWorkspaceSubscriptions();
         resetWorkspaceState();
         await switchOrganization(organizationId);
@@ -1605,10 +1606,12 @@ function initFirebase() {
         // Enable Auth persistence
         auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
             .then(() => {
+                auth.getRedirectResult().catch(handleFederatedAuthError);
                 auth.onAuthStateChanged(onAuthStateChanged);
             })
             .catch((error) => {
                 console.error("Persistence error:", error);
+                auth.getRedirectResult().catch(handleFederatedAuthError);
                 auth.onAuthStateChanged(onAuthStateChanged);
             });
 
@@ -1794,6 +1797,7 @@ const elements = {
     agentChatAttachBtn: document.getElementById('agent-chat-attach-btn'),
     agentChatFileInput: document.getElementById('agent-chat-file-input'),
     agentChatFileChip: document.getElementById('agent-chat-file-chip'),
+    agentChatRateHint: document.getElementById('agent-chat-rate-hint'),
 };
 
 // Init
@@ -1865,7 +1869,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.9'; // Task event notifications (feed+push for created/completed/revision/done)
+    const CURRENT_VERSION = '6.11'; // Clean profile labels and notification task navigation
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2000,9 +2004,18 @@ function setupRealtimeListeners() {
 
 
     const orgId = getCurrentOrganizationId();
-    const projectsQuery = orgId
-        ? db.collection('projects').where('organizationId', '==', orgId)
-        : db.collection('projects').orderBy('createdAt');
+    // Firebase is initialized before auth/org selection completes. Starting
+    // collection-wide listeners in that gap only produces permission errors
+    // and would be unsafe if rules were ever loosened. Real listeners start
+    // from enterApp() after a concrete current organization is selected.
+    if (!db || !state.currentUser || !orgId) {
+        state.projects = [];
+        state.users = [];
+        renderProjects();
+        renderBoard();
+        return;
+    }
+    const projectsQuery = db.collection('projects').where('organizationId', '==', orgId);
 
     projectsListenerUnsubscribe = projectsQuery.onSnapshot(snapshot => {
         const projects = [];
@@ -2127,15 +2140,6 @@ function setupRealtimeListeners() {
             membershipUnsub();
             legacyUsersUnsub();
         };
-    } else {
-        const usersQuery = db.collection('users').where(firebase.firestore.FieldPath.documentId(), '==', state.currentUser?.uid || '__none__');
-        usersListenerUnsubscribe = usersQuery.onSnapshot(snapshot => {
-            const users = [];
-            snapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
-            publishUsers(users);
-        }, error => {
-            console.error("Error listening to users:", error);
-        });
     }
 
 
@@ -2685,10 +2689,7 @@ function renderProjects() {
                 deadlineClass += ' soon';
             }
 
-            const formattedDate = deadlineDate.toLocaleDateString('ru-RU', {
-                day: 'numeric',
-                month: 'short'
-            });
+            const formattedDate = formatDate(project.deadline);
 
             deadlineHtml = `<span class="${deadlineClass}"><i class="fa-regular fa-clock"></i> ${formattedDate}</span>`;
         }
@@ -2770,11 +2771,7 @@ function renderBoard() {
         const deadlineDate = new Date(activeProject.deadline);
         const now = new Date();
         const daysLeft = Math.ceil((deadlineDate - now) / (1000 * 60 * 60 * 24));
-        const formattedDate = deadlineDate.toLocaleDateString('ru-RU', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
+        const formattedDate = formatDate(activeProject.deadline);
 
         let deadlineText = `<i class="fa-regular fa-calendar"></i> Срок: ${formattedDate}`;
         if (daysLeft < 0) {
@@ -3460,6 +3457,21 @@ function createTaskCard(task) {
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'toolbar-right';
 
+    if (isAssignee && task.status !== 'done' && task.deadline && !task.deadlineChangeRequest?.id) {
+        const deadlineRequestBtn = document.createElement('button');
+        deadlineRequestBtn.type = 'button';
+        deadlineRequestBtn.className = 'deadline-request-task';
+        deadlineRequestBtn.title = 'Запросить перенос срока';
+        deadlineRequestBtn.setAttribute('aria-label', 'Запросить перенос срока');
+        const deadlineRequestIcon = document.createElement('i');
+        deadlineRequestIcon.className = 'fa-regular fa-calendar-plus';
+        deadlineRequestBtn.appendChild(deadlineRequestIcon);
+        deadlineRequestBtn.onclick = (event) => {
+            event.stopPropagation();
+            openDeadlineChangeModal(task);
+        };
+        toolbarRight.appendChild(deadlineRequestBtn);
+    }
 
     if (canManageTasks()) {
         toolbarRight.appendChild(editBtn);
@@ -3957,11 +3969,7 @@ function openTaskDetailsModal(task) {
     const takenToWorkAt = formatDateTime(task.takenToWorkAt);
     const completedAt = formatDateTime(task.completedAt);
     const archivedAt = formatDateTime(task.archivedAt);
-    const deadline = task.deadline ? new Date(task.deadline).toLocaleDateString('ru-RU', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-    }) : 'Не указан';
+    const deadline = task.deadline ? formatDate(task.deadline) : 'Не указан';
 
     // Build timeline HTML
     let timelineHTML = `
@@ -4099,6 +4107,25 @@ function openTaskDetailsModal(task) {
         `;
     }
 
+    let deadlineRequestHTML = '';
+    const deadlineRequest = task.deadlineChangeRequest;
+    if (deadlineRequest?.id) {
+        const isCreator = deadlineRequest.createdByUid === state.currentUser?.uid;
+        deadlineRequestHTML = `
+            <div class="task-details-section">
+                <h3><i class="fa-regular fa-calendar-plus"></i> Запрос переноса срока</h3>
+                <div class="deadline-request-box">
+                    <div><strong>${escapeHtml(deadlineRequest.requestedByName || 'Исполнитель')}</strong> просит изменить срок</div>
+                    <div>Текущий: <strong>${escapeHtml(formatDate(deadlineRequest.currentDeadline) || '—')}</strong> → желаемый: <strong>${escapeHtml(formatDate(deadlineRequest.requestedDeadline) || '—')}</strong></div>
+                    <div class="deadline-request-comment">${escapeHtml(deadlineRequest.comment || '')}</div>
+                    ${isCreator ? `<div class="deadline-request-actions">
+                        <button type="button" class="primary-btn" data-deadline-decision="approve" data-request-id="${escapeHtml(deadlineRequest.id)}">Подтвердить перенос</button>
+                        <button type="button" class="secondary-btn" data-deadline-decision="reject" data-request-id="${escapeHtml(deadlineRequest.id)}">Оставить текущий срок</button>
+                    </div>` : '<div style="color:var(--text-secondary);">Ожидает решения постановщика</div>'}
+                </div>
+            </div>`;
+    }
+
     // Assignees
     const assignees = task.assignee ? task.assignee.split(',').map(n => n.trim()).filter(n => n) : [];
     const assigneesHTML = assignees.length > 0
@@ -4128,6 +4155,8 @@ function openTaskDetailsModal(task) {
             </div>
         </div>
         
+        ${deadlineRequestHTML}
+
         ${revisionHTML}
         
         ${proofHTML}
@@ -4146,6 +4175,50 @@ function openTaskDetailsModal(task) {
         });
     });
 
+    content.querySelectorAll('[data-deadline-decision]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const decision = button.dataset.deadlineDecision;
+            const requestId = button.dataset.requestId;
+            button.disabled = true;
+            try {
+                await callDeadlineChangeApi({ action: 'decide', requestId, decision });
+                modal.classList.remove('active');
+            } catch (error) {
+                button.disabled = false;
+                alert(error.message || 'Не удалось обработать запрос');
+            }
+        });
+    });
+
+    modal.classList.add('active');
+}
+
+async function callDeadlineChangeApi(payload) {
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) throw new Error('Требуется авторизация');
+    const idToken = await currentUser.getIdToken();
+    const response = await fetch('/api/notify-telegram?operation=deadline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Ошибка сервера');
+    return data;
+}
+
+function openDeadlineChangeModal(task) {
+    if (!task?.id || !task.deadline) return;
+    const modal = document.getElementById('deadline-change-modal');
+    document.getElementById('deadline-change-task-id').value = task.id;
+    document.getElementById('deadline-change-current').textContent = formatDate(task.deadline);
+    const dateInput = document.getElementById('deadline-change-date');
+    const next = new Date(`${String(task.deadline).slice(0, 10)}T12:00:00`);
+    next.setDate(next.getDate() + 1);
+    const minimum = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+    dateInput.min = minimum;
+    dateInput.value = minimum;
+    document.getElementById('deadline-change-comment').value = '';
     modal.classList.add('active');
 }
 
@@ -4162,8 +4235,16 @@ function escapeHtml(text) {
 }
 
 function formatDate(dateString) {
-    const options = { month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString('ru-RU', options);
+    const value = String(dateString || '').slice(0, 10);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (match) return `${match[3]}.${match[2]}.${match[1]}`;
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatIsoDatesInText(text) {
+    return String(text || '').replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3.$2.$1');
 }
 
 // Parse various date formats (ISO string, Date, Firestore Timestamp) into a Date object
@@ -4332,7 +4413,7 @@ function setBoardView(view) {
     if (elements.categoryBtnText) {
         const labelMap = {
             'assigned': 'Назначенные',
-            'in-progress': 'В процессе',
+            'in-progress': 'В работе',
             'review': 'На проверке',
             'done': 'Готово'
         };
@@ -4641,7 +4722,7 @@ function renderGantt() {
     body.className = 'gantt-body';
     const fmtDay = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
     const fmtFull = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const statusLabels = { assigned: 'Назначена', 'in-progress': 'В процессе', review: 'На проверке', done: 'Готово' };
+    const statusLabels = { assigned: 'Назначена', 'in-progress': 'В работе', review: 'На проверке', done: 'Готово' };
 
     const makeTrack = () => {
         const track = document.createElement('div');
@@ -4833,10 +4914,33 @@ function setupEventListeners() {
             window.startTelegramBotLogin();
         });
     }
+    document.getElementById('google-login-btn')?.addEventListener('click', () => startFederatedLogin('google.com'));
+    document.getElementById('apple-login-btn')?.addEventListener('click', () => startFederatedLogin('apple.com'));
     if (elements.telegramBotLoginBtn) {
         elements.telegramBotLoginBtn.addEventListener('click', () => {
             playClickSound();
             window.startTelegramBotLogin();
+        });
+    }
+
+    const deadlineChangeForm = document.getElementById('deadline-change-form');
+    if (deadlineChangeForm) {
+        deadlineChangeForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const taskId = document.getElementById('deadline-change-task-id')?.value || '';
+            const requestedDeadline = document.getElementById('deadline-change-date')?.value || '';
+            const comment = document.getElementById('deadline-change-comment')?.value.trim() || '';
+            if (!taskId || !requestedDeadline || !comment) return;
+            const submit = document.getElementById('deadline-change-submit');
+            if (submit) submit.disabled = true;
+            try {
+                await callDeadlineChangeApi({ action: 'request', taskId, requestedDeadline, comment });
+                closeModalElement(document.getElementById('deadline-change-modal'));
+            } catch (error) {
+                alert(error.message || 'Не удалось отправить запрос');
+            } finally {
+                if (submit) submit.disabled = false;
+            }
         });
     }
 
@@ -5131,7 +5235,7 @@ function setupEventListeners() {
 
 <b>Задача:</b> ${escapeHtmlForTelegram(title)}
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
-<b>Срок:</b> ${deadline || 'Не указан'}
+<b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
 Откройте HoldingMan для подробностей.`;
                 sendTaskEventToUid(a.id, message, newTaskEvent);
@@ -5592,10 +5696,26 @@ async function pollTelegramBotLogin(code, expiresAt, attemptId) {
     throw new Error('Ссылка для входа устарела. Нажмите «Войти через бота» ещё раз.');
 }
 
-function onAuthStateChanged(user) {
+let authStateGeneration = 0;
+
+async function onAuthStateChanged(user) {
+    const generation = ++authStateGeneration;
     if (user) {
         clearPendingTelegramBotLogin();
-        // User is signed in
+        try {
+            await bootstrapAuthenticatedProfile(user);
+        } catch (error) {
+            if (error?.code === 'AUTH_PROVIDER_MISMATCH') {
+                await auth.signOut().catch(() => {});
+                setLoginErrorMessage(error.message, 'error');
+                return;
+            }
+            // Existing accounts can continue if the bootstrap endpoint is
+            // temporarily unavailable. A new account will stay behind the
+            // profile-name gate rather than receive fabricated local access.
+            console.error('Auth profile bootstrap failed:', error);
+        }
+        if (generation !== authStateGeneration || auth.currentUser?.uid !== user.uid) return;
         loadUserRole(user);
     } else {
         // No user. Firebase's FIRST onAuthStateChanged fire on page load already
@@ -5616,6 +5736,100 @@ function onAuthStateChanged(user) {
         // user. See agentChatState.generation for the full mechanism.
         agentChatState.generation += 1;
         showAuthScreen();
+    }
+}
+
+function federatedProvider(providerId) {
+    if (providerId === 'google.com') {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        provider.addScope('profile');
+        provider.addScope('email');
+        provider.setCustomParameters({ prompt: 'select_account' });
+        return provider;
+    }
+    if (providerId === 'apple.com') {
+        const provider = new firebase.auth.OAuthProvider('apple.com');
+        provider.addScope('email');
+        provider.addScope('name');
+        provider.setCustomParameters({ locale: 'ru' });
+        return provider;
+    }
+    throw new Error('Неизвестный способ входа.');
+}
+
+function setFederatedLoginBusy(busy) {
+    ['google-login-btn', 'apple-login-btn', 'telegram-login-btn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = busy;
+    });
+}
+
+async function startFederatedLogin(providerId) {
+    if (!auth) return;
+    playClickSound();
+    setLoginErrorMessage('');
+    setFederatedLoginBusy(true);
+    try {
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        const provider = federatedProvider(providerId);
+        // Redirect is more reliable on narrow/mobile browsers and preserves
+        // the session across the external Apple/Google authorization page.
+        if (window.matchMedia('(max-width: 760px)').matches) {
+            await auth.signInWithRedirect(provider);
+            return;
+        }
+        await auth.signInWithPopup(provider);
+    } catch (error) {
+        handleFederatedAuthError(error);
+    } finally {
+        setFederatedLoginBusy(false);
+    }
+}
+
+function handleFederatedAuthError(error) {
+    if (!error || error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') return;
+    console.error('Federated auth failed:', error);
+    let message = 'Не удалось войти. Проверьте настройки входа и попробуйте снова.';
+    if (error.code === 'auth/account-exists-with-different-credential') {
+        message = 'Аккаунт с этой почтой уже существует. Войдите способом, выбранным при регистрации.';
+    } else if (error.code === 'auth/unauthorized-domain') {
+        message = 'Этот домен не разрешён в настройках Firebase Authentication.';
+    } else if (error.code === 'auth/operation-not-allowed') {
+        message = 'Этот способ входа ещё не включён администратором.';
+    }
+    setLoginErrorMessage(message, 'error');
+}
+
+async function bootstrapAuthenticatedProfile(user = auth?.currentUser) {
+    if (!user) throw new Error('Нет активной сессии.');
+    const token = await user.getIdToken();
+    const response = await fetch('/api/org', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'bootstrapAuth' }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const error = new Error(data.error || `Ошибка сервера (${response.status})`);
+        error.code = data.code || '';
+        throw error;
+    }
+    return data;
+}
+
+function renderAuthProvider() {
+    const provider = state.currentUser?.authProvider || '';
+    const title = provider === 'apple.com' ? 'Apple'
+        : provider === 'google.com' ? 'Google'
+            : provider === 'telegram' ? 'Telegram' : 'HoldingMan';
+    const icon = document.getElementById('profile-auth-icon');
+    const label = document.getElementById('profile-auth-provider');
+    if (label) label.textContent = title;
+    if (icon) {
+        icon.className = provider === 'apple.com' ? 'fa-brands fa-apple'
+            : provider === 'telegram' ? 'fa-brands fa-telegram'
+                : provider === 'google.com' ? 'fa-brands fa-google'
+                    : 'fa-solid fa-user-shield';
     }
 }
 
@@ -5650,6 +5864,7 @@ async function loadUserRole(user) {
             state.currentUser.allowedProjects = userData.allowedProjects || [];
             state.currentUser.telegramChatId = userData.telegramChatId || null;
             state.currentUser.telegramUsername = userData.telegramUsername || null;
+            state.currentUser.authProvider = userData.authProvider || null;
             state.currentUser.profileCompleted = userData.profileCompleted === true;
 
             // Set state orgRole
@@ -6762,7 +6977,7 @@ async function sendNewTaskNotificationToAssignee(assignee, taskTitle, projectNam
 
 <b>Задача:</b> ${escapeHtmlForTelegram(taskTitle)}
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
-<b>Срок:</b> ${deadline || 'Не указан'}
+<b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
 Откройте HoldingMan для подробностей.`;
 
@@ -7224,10 +7439,7 @@ function renderMyTasks(tasks) {
             const now = new Date();
             const daysLeft = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
 
-            const formattedDate = deadline.toLocaleDateString('ru-RU', {
-                day: 'numeric',
-                month: 'short'
-            });
+            const formattedDate = formatDate(task.deadline);
 
             // Badges (same semantics as task card): "На проверке" + ("В срок" OR "Просрочено")
             let tags = [];
@@ -7402,6 +7614,7 @@ const AGENT_NOTIFY_ICONS = {
     overdue: 'fa-triangle-exclamation',
     deadline_tomorrow: 'fa-clock',
     not_taken_1h: 'fa-hourglass-half',
+    unassigned_1h: 'fa-user-slash',
     tasks_created: 'fa-square-plus'
 };
 
@@ -7425,7 +7638,7 @@ function renderAgentNotifyList() {
         body.className = 'agent-notify-body';
         const text = document.createElement('div');
         text.className = 'agent-notify-text';
-        text.textContent = n.text || '';
+        text.textContent = formatIsoDatesInText(n.text || '');
         const when = document.createElement('div');
         when.className = 'agent-notify-time';
         when.textContent = formatDateTimeRu(n.createdAt) || '';
@@ -7497,16 +7710,19 @@ async function deleteAgentNotification(n, itemEl) {
     }
 }
 
-// Открыть задачу из уведомления. Задача может быть не в state.tasks (другой
-// проект открыт) — читаем документ напрямую; правила пропустят, если у
-// пользователя есть доступ. Удалённая/недоступная задача — молча ничего.
+// Перейти к карточке задачи из уведомления тем же маршрутом, что и из
+// «Мои задачи». Задача может быть не в state.tasks (открыт другой проект),
+// поэтому читаем документ напрямую и определяем её фактическую колонку.
+// Удалённая/недоступная задача — молча ничего.
 async function openTaskFromNotification(taskId) {
     if (!db || !taskId) return;
     try {
         const doc = await db.collection('tasks').doc(taskId).get();
         if (!doc.exists) return;
+        const task = { id: doc.id, ...doc.data() };
+        if (!task.projectId) return;
         document.getElementById('agent-notify-modal')?.classList.remove('active');
-        openTaskDetailsModal({ id: doc.id, ...doc.data() });
+        navigateToTask(task.projectId, task.id, boardViewForTask(task));
     } catch (err) {
         console.warn('openTaskFromNotification failed:', err?.message || err);
     }
@@ -7981,6 +8197,7 @@ function openProfileModal() {
     const fullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'Без имени';
     document.getElementById('profile-name').textContent = fullName;
     document.getElementById('profile-email').textContent = userData.email || '';
+    renderAuthProvider();
 
     // Update level info
     const totalXP = userData.totalXP || 0;
@@ -8778,6 +8995,17 @@ function closeDayTasksModal() {
 const AGENT_CHAT_MAX_HISTORY_TURNS = 8; // mirrors MAX_HISTORY_TURNS in api/agent-chat.js
 const AGENT_TASK_FILE_MAX_BYTES = 3 * 1024 * 1024;
 const AGENT_TASK_FILE_ALLOWED_EXTENSIONS = ['md', 'xlsx', 'xlsm', 'pdf', 'docx'];
+// Clickable suggestions in the empty chat state. Clicking one only fills the
+// input (no auto-submit) so the user can edit before sending.
+const AGENT_CHAT_EXAMPLE_PROMPTS = [
+    'Что просрочено?',
+    'Создай задачу: название, исполнитель, срок',
+    'Что на этой неделе?',
+    'Удали все готовые задачи проекта',
+];
+// How long the input stays locked after a server 429 (mirrors the «подождите
+// минуту» window in api/agent-chat.js's rate limiter).
+const AGENT_CHAT_RATE_LIMIT_SECONDS = 60;
 
 const agentChatState = {
     // { role: 'user' | 'assistant', content: string }[] — capped to the last
@@ -8787,7 +9015,7 @@ const agentChatState = {
     // avoids having to think about retention/PII-in-localStorage questions
     // for LLM chat transcripts that were never asked for.
     history: [],
-    // Incremented by two real triggers (not by handleAgentChatSubmit itself
+    // Incremented by three lifecycle triggers (not by handleAgentChatSubmit itself
     // firing twice — the synchronous `elements.agentChatInput.disabled`
     // re-entrancy check there already fully serializes sends, so there is no
     // way to reach a second in-flight send while one is pending):
@@ -8817,6 +9045,9 @@ const agentChatState = {
     //      agent response render as if it belonged to their (now-ended)
     //      session.
     //
+    //   3. resetAgentChatForOrganizationChange() — clears history/cards and
+    //      invalidates responses before switching to another organization.
+    //
     // The closure created by a given send() captures its own `generation`
     // value and checks it still matches agentChatState.generation before
     // touching the DOM once the network response resolves; a mismatch means
@@ -8828,7 +9059,31 @@ const agentChatState = {
     // One-off local File selected for "create tasks from attached file".
     // It is never persisted and is cleared as soon as a request starts.
     pendingFile: null,
+    // Server 429 lockout: epoch ms until which the chat input must stay
+    // disabled, plus the 1s interval driving the visible countdown hint.
+    // rateLimitedUntil is checked inside setAgentChatInputDisabled so NO code
+    // path (submit finally-block, org-switch reset, etc.) can re-enable the
+    // input early; the timer below is the only thing that clears it.
+    rateLimitedUntil: 0,
+    rateLimitTimer: null,
 };
+
+function resetAgentChatForOrganizationChange() {
+    // Organization data is a hard trust boundary. Drop both visible cards and
+    // model history, invalidate every in-flight response, and clear a selected
+    // local document before the workspace switch begins.
+    agentChatState.generation += 1;
+    agentChatState.history = [];
+    agentChatState.pendingFile = null;
+    if (elements.agentChatFileInput) elements.agentChatFileInput.value = '';
+    if (elements.agentChatInput) {
+        elements.agentChatInput.value = '';
+        elements.agentChatInput.style.height = '';
+    }
+    setAgentChatInputDisabled(false);
+    renderAgentChatFileChip();
+    renderAgentChatEmptyState();
+}
 
 function truncateAgentChatHistory(history) {
     if (!Array.isArray(history)) return [];
@@ -9136,7 +9391,13 @@ function renderAgentChatMarkdown(container, text) {
     }
 }
 
-function appendAgentChatMessage(role, text) {
+// options.retryMessage: when set on an 'error' bubble, appends a small
+// «Повторить» button that puts the failed message back into the input and
+// re-submits it through the normal handler (so history/truncation/disabled
+// bookkeeping stays in exactly one place). Pass null for failures where a
+// retry is pointless (401/session-expired) or cannot work (file sends — the
+// local File object is already gone by the time the error renders).
+function appendAgentChatMessage(role, text, options) {
     if (!elements.agentChatMessages) return null;
     const emptyState = elements.agentChatMessages.querySelector('.agent-chat-empty');
     if (emptyState) emptyState.remove();
@@ -9145,10 +9406,29 @@ function appendAgentChatMessage(role, text) {
     bubble.className = `agent-chat-message agent-chat-message-${role}`;
     // Only the agent's answers get Markdown (tables/lists/etc.); user, pending
     // and error bubbles are short, app- or user-authored plain text.
+    const displayText = role === 'assistant' ? formatIsoDatesInText(text) : text;
     if (role === 'assistant') {
-        renderAgentChatMarkdown(bubble, text);
+        renderAgentChatMarkdown(bubble, displayText);
     } else {
-        renderAgentChatText(bubble, text);
+        renderAgentChatText(bubble, displayText);
+    }
+    const retryMessage = options && typeof options.retryMessage === 'string'
+        ? options.retryMessage.trim() : '';
+    if (role === 'error' && retryMessage) {
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.className = 'agent-chat-retry-btn';
+        retryBtn.textContent = 'Повторить';
+        retryBtn.addEventListener('click', () => {
+            // Respect whatever currently owns the disabled state (an in-flight
+            // send or a 429 lockout) — retrying INTO either would double-send.
+            if (!elements.agentChatInput || elements.agentChatInput.disabled) return;
+            retryBtn.disabled = true;
+            elements.agentChatInput.value = retryMessage;
+            autoResizeAgentChatInput();
+            handleAgentChatSubmit({ preventDefault() {} });
+        });
+        bubble.appendChild(retryBtn);
     }
     elements.agentChatMessages.appendChild(bubble);
     elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
@@ -9160,8 +9440,109 @@ function renderAgentChatEmptyState() {
     elements.agentChatMessages.innerHTML = '';
     const empty = document.createElement('div');
     empty.className = 'agent-chat-empty';
-    empty.textContent = 'Спросите про задачи, сроки, статусы или файлы текущей организации.';
+    const hint = document.createElement('div');
+    hint.textContent = 'Спросите про задачи, сроки, статусы или файлы текущей организации.';
+    empty.appendChild(hint);
+    const chips = document.createElement('div');
+    chips.className = 'agent-chat-chips';
+    AGENT_CHAT_EXAMPLE_PROMPTS.forEach(promptText => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'agent-chat-chip';
+        chip.textContent = promptText;
+        chip.addEventListener('click', () => {
+            if (!elements.agentChatInput || elements.agentChatInput.disabled) return;
+            elements.agentChatInput.value = promptText;
+            autoResizeAgentChatInput();
+            elements.agentChatInput.focus();
+        });
+        chips.appendChild(chip);
+    });
+    empty.appendChild(chips);
     elements.agentChatMessages.appendChild(empty);
+}
+
+// ===== Proposal-card helpers (create / delete / action cards) =====
+// All three cards share the same lifecycle: a confirm + cancel button row
+// (".agent-task-proposal-actions") that ends in one of three terminal states —
+// done (server confirmed), cancelled (purely client-side; the server treats an
+// unconfirmed proposal as a no-op, so no cancel call exists or is needed), or
+// a live card with an inline error line under the still-enabled buttons.
+
+function setAgentProposalActionsEnabled(actions, enabled) {
+    if (!actions) return;
+    actions.querySelectorAll('button').forEach(btn => { btn.disabled = !enabled; });
+}
+
+// Replaces the whole button row with a one-line terminal status.
+function setAgentProposalCardStatus(actions, text, statusClass) {
+    if (!actions) return;
+    actions.textContent = '';
+    const status = document.createElement('div');
+    status.className = `agent-task-proposal-status ${statusClass || ''}`.trim();
+    status.textContent = text;
+    actions.appendChild(status);
+}
+
+// Shows (or updates) a non-terminal error line under the buttons — the card
+// stays live so the user can retry or cancel.
+function showAgentProposalCardError(actions, text) {
+    if (!actions) return;
+    let err = actions.querySelector('.agent-task-proposal-error');
+    if (!err) {
+        err = document.createElement('div');
+        err.className = 'agent-task-proposal-error';
+        actions.appendChild(err);
+    }
+    err.textContent = text;
+}
+
+function buildAgentProposalCancelBtn(actions) {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'secondary-btn agent-task-proposal-cancel';
+    cancelBtn.textContent = 'Отмена';
+    cancelBtn.addEventListener('click', () => {
+        setAgentProposalActionsEnabled(actions, false);
+        actions?.closest('.agent-task-proposal')?.classList.add('agent-task-proposal-cancelled');
+        setAgentProposalCardStatus(actions, 'Действие отменено', 'agent-task-proposal-status-cancelled');
+    });
+    return cancelBtn;
+}
+
+// Locks the chat input for `seconds` after a server 429 and shows a live
+// countdown above the form. The lockout survives handleAgentChatSubmit's
+// finally-block re-enable because setAgentChatInputDisabled consults
+// agentChatState.rateLimitedUntil; this timer is the only place that clears it.
+function startAgentChatRateLimitCountdown(seconds) {
+    const totalSeconds = Number.isFinite(seconds) && seconds > 0
+        ? Math.ceil(seconds) : AGENT_CHAT_RATE_LIMIT_SECONDS;
+    agentChatState.rateLimitedUntil = Date.now() + totalSeconds * 1000;
+    if (agentChatState.rateLimitTimer) {
+        clearInterval(agentChatState.rateLimitTimer);
+        agentChatState.rateLimitTimer = null;
+    }
+    const tick = () => {
+        const remaining = Math.max(0, Math.ceil((agentChatState.rateLimitedUntil - Date.now()) / 1000));
+        if (remaining <= 0) {
+            if (agentChatState.rateLimitTimer) {
+                clearInterval(agentChatState.rateLimitTimer);
+                agentChatState.rateLimitTimer = null;
+            }
+            agentChatState.rateLimitedUntil = 0;
+            if (elements.agentChatRateHint) elements.agentChatRateHint.hidden = true;
+            setAgentChatInputDisabled(false);
+            elements.agentChatInput?.focus();
+            return;
+        }
+        if (elements.agentChatRateHint) {
+            elements.agentChatRateHint.hidden = false;
+            elements.agentChatRateHint.textContent = `Можно отправить снова через ${remaining} с.`;
+        }
+        setAgentChatInputDisabled(true);
+    };
+    tick();
+    agentChatState.rateLimitTimer = setInterval(tick, 1000);
 }
 
 // ===== TASK PROPOSAL CARD (создание задач из документа, фаза предпросмотра) =====
@@ -9196,7 +9577,10 @@ function appendAgentTaskProposal(proposal) {
     table.className = 'agent-task-proposal-table';
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    ['Задача', 'Срок', 'Ответственный', 'Статус'].forEach(label => {
+    const proposalColumns = proposal.multiProject
+        ? ['Задача', 'Проект', 'Срок', 'Ответственный', 'Статус']
+        : ['Задача', 'Срок', 'Ответственный', 'Статус'];
+    proposalColumns.forEach(label => {
         const th = document.createElement('th');
         th.textContent = label;
         headRow.appendChild(th);
@@ -9207,12 +9591,29 @@ function appendAgentTaskProposal(proposal) {
     const tbody = document.createElement('tbody');
     proposal.tasks.forEach(t => {
         const tr = document.createElement('tr');
-        const cells = [
-            t.title || '',
-            t.deadline || '—',
-            t.assigneeDisplay || t.assigneeName || 'Не назначен',
-            t.ok ? '✅ будет создана' : `⚠️ ${t.reason || 'не будет создана'}`
-        ];
+        const taskCell = document.createElement('td');
+        const taskTitle = document.createElement('div');
+        taskTitle.textContent = t.title || '';
+        taskCell.appendChild(taskTitle);
+        if (typeof t.description === 'string' && t.description.trim()) {
+            const taskDescription = document.createElement('div');
+            taskDescription.className = 'agent-task-proposal-description';
+            taskDescription.textContent = t.description.trim();
+            taskCell.appendChild(taskDescription);
+        }
+        const cells = proposal.multiProject
+            ? [
+                t.projectName || '—',
+                t.deadline ? formatDate(t.deadline) : '—',
+                t.assigneeDisplay || t.assigneeName || 'Не назначен',
+                t.ok ? '✅ будет создана' : `⚠️ ${t.reason || 'не будет создана'}`
+            ]
+            : [
+                t.deadline ? formatDate(t.deadline) : '—',
+                t.assigneeDisplay || t.assigneeName || 'Не назначен',
+                t.ok ? '✅ будет создана' : `⚠️ ${t.reason || 'не будет создана'}`
+            ];
+        tr.appendChild(taskCell);
         cells.forEach(value => {
             const td = document.createElement('td');
             td.textContent = value;
@@ -9234,15 +9635,22 @@ function appendAgentTaskProposal(proposal) {
     // «Не назначен» (пользователь вправе просить «без ответственных»).
     const okTasks = proposal.tasks.filter(t => t.ok);
     if (proposal.canCreate && okTasks.length > 0) {
+        const actions = document.createElement('div');
+        actions.className = 'agent-task-proposal-actions';
         const btn = document.createElement('button');
         btn.className = 'primary-btn agent-task-proposal-create';
         btn.textContent = `Создать ${okTasks.length} задач(и)`;
         btn.addEventListener('click', () => {
-            btn.disabled = true;
+            // Disable the whole row (confirm AND cancel) while the request is
+            // in flight — cancelling mid-flight would mislabel tasks the
+            // server is already creating.
+            setAgentProposalActionsEnabled(actions, false);
             btn.textContent = 'Создаю…';
-            confirmAgentTaskProposal(proposal, okTasks, btn);
+            confirmAgentTaskProposal(proposal, okTasks, btn, actions);
         });
-        card.appendChild(btn);
+        actions.appendChild(btn);
+        actions.appendChild(buildAgentProposalCancelBtn(actions));
+        card.appendChild(actions);
     } else if (okTasks.length === 0) {
         const note = document.createElement('div');
         note.className = 'agent-task-proposal-note';
@@ -9260,7 +9668,10 @@ function appendAgentTaskProposal(proposal) {
 }
 
 // Фаза 2: подтверждение — POST {action:'create_tasks'} на тот же endpoint.
-async function confirmAgentTaskProposal(proposal, okTasks, btn) {
+// On success the button row becomes a «✓ Задачи созданы» status line (same
+// done-state as iOS); on failure the row is re-enabled and the server message
+// is shown inline in the card so it can't be missed between chat bubbles.
+async function confirmAgentTaskProposal(proposal, okTasks, btn, actions) {
     try {
         const currentUser = firebase.auth().currentUser;
         if (!currentUser) throw new Error('Не авторизован');
@@ -9270,27 +9681,39 @@ async function confirmAgentTaskProposal(proposal, okTasks, btn) {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({
                 action: 'create_tasks',
+                proposalId: proposal.proposalId || '',
                 projectId: proposal.projectId,
                 file: proposal.source === 'text' ? '' : (proposal.file || ''),
-                tasks: okTasks.map(t => ({ title: t.title, deadline: t.deadline || null, assigneeUid: t.assigneeUid || null }))
+                tasks: okTasks.map(t => ({
+                    title: t.title,
+                    description: t.description || '',
+                    deadline: t.deadline || null,
+                    assigneeUid: t.assigneeUid || null,
+                    projectId: t.projectId || null,
+                }))
             })
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data && data.ok && Number.isInteger(data.created)) {
-            if (btn) btn.remove();
+            if (actions) setAgentProposalCardStatus(actions, '✓ Задачи созданы', 'agent-task-proposal-status-done');
+            else if (btn) btn.remove();
             const doneText = `✅ Создано задач: ${data.created}. Проект «${proposal.projectName || ''}», раздел «Назначенные». Исполнители получили уведомления.`;
             appendAgentChatMessage('assistant', doneText);
             agentChatState.history.push({ role: 'assistant', content: doneText });
             agentChatState.history = truncateAgentChatHistory(agentChatState.history);
         } else {
             if (btn) { btn.disabled = false; btn.textContent = `Создать ${okTasks.length} задач(и)`; }
+            setAgentProposalActionsEnabled(actions, true);
             const detail = data && typeof data.error === 'string' ? data.error : 'Попробуйте ещё раз.';
-            appendAgentChatMessage('error', `Не удалось создать задачи: ${detail}`);
+            if (actions) showAgentProposalCardError(actions, `Не удалось создать задачи: ${detail}`);
+            else appendAgentChatMessage('error', `Не удалось создать задачи: ${detail}`);
         }
     } catch (error) {
         if (btn) { btn.disabled = false; btn.textContent = `Создать ${okTasks.length} задач(и)`; }
+        setAgentProposalActionsEnabled(actions, true);
         console.error('agent-chat create_tasks failed:', error);
-        appendAgentChatMessage('error', 'Ошибка сети при создании задач. Попробуйте ещё раз.');
+        if (actions) showAgentProposalCardError(actions, 'Ошибка сети при создании задач. Попробуйте ещё раз.');
+        else appendAgentChatMessage('error', 'Ошибка сети при создании задач. Попробуйте ещё раз.');
     }
 }
 
@@ -9332,7 +9755,7 @@ function appendAgentDeleteProposal(proposal) {
         const tr = document.createElement('tr');
         [
             t.title || '',
-            t.deadline || '—',
+            t.deadline ? formatDate(t.deadline) : '—',
             t.assigneeDisplay || 'Не назначен',
             t.statusDisplay || ''
         ].forEach(value => {
@@ -9351,15 +9774,19 @@ function appendAgentDeleteProposal(proposal) {
 
     const deletableTasks = proposal.tasks.filter(t => t.id);
     if (proposal.canDelete && deletableTasks.length > 0) {
+        const actions = document.createElement('div');
+        actions.className = 'agent-task-proposal-actions';
         const btn = document.createElement('button');
         btn.className = 'primary-btn agent-task-proposal-create agent-task-proposal-delete';
         btn.textContent = `Удалить ${deletableTasks.length} задач(и)`;
         btn.addEventListener('click', () => {
-            btn.disabled = true;
+            setAgentProposalActionsEnabled(actions, false);
             btn.textContent = 'Удаляю…';
-            confirmAgentDeleteProposal(proposal, deletableTasks, btn);
+            confirmAgentDeleteProposal(proposal, deletableTasks, btn, actions);
         });
-        card.appendChild(btn);
+        actions.appendChild(btn);
+        actions.appendChild(buildAgentProposalCancelBtn(actions));
+        card.appendChild(actions);
     } else {
         const note = document.createElement('div');
         note.className = 'agent-task-proposal-note';
@@ -9371,7 +9798,7 @@ function appendAgentDeleteProposal(proposal) {
     elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
 }
 
-async function confirmAgentDeleteProposal(proposal, tasksToDelete, btn) {
+async function confirmAgentDeleteProposal(proposal, tasksToDelete, btn, actions) {
     try {
         const currentUser = firebase.auth().currentUser;
         if (!currentUser) throw new Error('Не авторизован');
@@ -9381,30 +9808,110 @@ async function confirmAgentDeleteProposal(proposal, tasksToDelete, btn) {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({
                 action: 'delete_tasks',
+                proposalId: proposal.proposalId || '',
                 projectId: proposal.projectId,
                 taskIds: tasksToDelete.map(t => t.id)
             })
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data && data.ok && Number.isInteger(data.deleted)) {
-            if (btn) btn.remove();
+            if (actions) setAgentProposalCardStatus(actions, '✓ Задачи удалены', 'agent-task-proposal-status-done');
+            else if (btn) btn.remove();
             const doneText = `✅ Удалено задач: ${data.deleted}. Проект «${proposal.projectName || ''}».`;
             appendAgentChatMessage('assistant', doneText);
             agentChatState.history.push({ role: 'assistant', content: doneText });
             agentChatState.history = truncateAgentChatHistory(agentChatState.history);
         } else {
             if (btn) { btn.disabled = false; btn.textContent = `Удалить ${tasksToDelete.length} задач(и)`; }
+            setAgentProposalActionsEnabled(actions, true);
             const detail = data && typeof data.error === 'string' ? data.error : 'Попробуйте сформировать карточку удаления заново.';
-            appendAgentChatMessage('error', `Не удалось удалить задачи: ${detail}`);
+            if (actions) showAgentProposalCardError(actions, `Не удалось удалить задачи: ${detail}`);
+            else appendAgentChatMessage('error', `Не удалось удалить задачи: ${detail}`);
         }
     } catch (error) {
         if (btn) { btn.disabled = false; btn.textContent = `Удалить ${tasksToDelete.length} задач(и)`; }
+        setAgentProposalActionsEnabled(actions, true);
         console.error('agent-chat delete_tasks failed:', error);
-        appendAgentChatMessage('error', 'Ошибка сети при удалении задач. Попробуйте ещё раз.');
+        if (actions) showAgentProposalCardError(actions, 'Ошибка сети при удалении задач. Попробуйте ещё раз.');
+        else appendAgentChatMessage('error', 'Ошибка сети при удалении задач. Попробуйте ещё раз.');
+    }
+}
+
+function appendAgentActionProposal(proposal) {
+    if (!elements.agentChatMessages || !proposal || typeof proposal.action !== 'string') return;
+    const emptyState = elements.agentChatMessages.querySelector('.agent-chat-empty');
+    if (emptyState) emptyState.remove();
+
+    const card = document.createElement('div');
+    card.className = `agent-chat-message agent-chat-message-assistant agent-task-proposal${proposal.destructive ? ' agent-delete-proposal' : ''}`;
+    const heading = document.createElement('div');
+    heading.className = 'agent-task-proposal-title';
+    heading.textContent = proposal.title || 'Подтверждение действия';
+    card.appendChild(heading);
+    const summary = document.createElement('div');
+    summary.className = 'agent-task-proposal-note';
+    summary.textContent = formatIsoDatesInText(proposal.summary || '');
+    card.appendChild(summary);
+    const actions = document.createElement('div');
+    actions.className = 'agent-task-proposal-actions';
+    const btn = document.createElement('button');
+    btn.className = `primary-btn agent-task-proposal-create${proposal.destructive ? ' agent-task-proposal-delete' : ''}`;
+    btn.textContent = proposal.confirmLabel || 'Подтвердить';
+    btn.addEventListener('click', () => {
+        setAgentProposalActionsEnabled(actions, false);
+        confirmAgentActionProposal(proposal, btn, actions);
+    });
+    actions.appendChild(btn);
+    actions.appendChild(buildAgentProposalCancelBtn(actions));
+    card.appendChild(actions);
+    elements.agentChatMessages.appendChild(card);
+    elements.agentChatMessages.scrollTop = elements.agentChatMessages.scrollHeight;
+}
+
+async function confirmAgentActionProposal(proposal, btn, actions) {
+    const original = btn?.textContent || 'Подтвердить';
+    try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Выполняю…'; }
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('Не авторизован');
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch('/api/agent-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({
+                action: 'execute_agent_action',
+                proposalId: proposal.proposalId || '',
+                agentAction: proposal.action,
+                payload: proposal.payload || {},
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+            throw new Error(typeof data?.error === 'string' ? data.error : 'Действие не выполнено');
+        }
+        if (actions) setAgentProposalCardStatus(actions, '✓ Действие выполнено', 'agent-task-proposal-status-done');
+        else btn?.remove();
+        const resultText = typeof data.result === 'string' ? `✅ ${data.result}` : '✅ Действие выполнено.';
+        appendAgentChatMessage('assistant', resultText);
+        agentChatState.history.push({ role: 'assistant', content: resultText });
+        agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+    } catch (error) {
+        if (btn) { btn.disabled = false; btn.textContent = original; }
+        setAgentProposalActionsEnabled(actions, true);
+        const failText = `Не удалось выполнить действие: ${error.message || 'попробуйте ещё раз'}`;
+        if (actions) showAgentProposalCardError(actions, failText);
+        else appendAgentChatMessage('error', failText);
     }
 }
 
 function setAgentChatInputDisabled(disabled) {
+    // A 429 lockout owns the disabled state until it expires: suppress any
+    // re-enable attempt (submit finally-block, org-switch reset, …) while the
+    // countdown is still running. startAgentChatRateLimitCountdown clears
+    // rateLimitedUntil first, so its own re-enable call passes through.
+    if (!disabled && agentChatState.rateLimitedUntil && Date.now() < agentChatState.rateLimitedUntil) {
+        disabled = true;
+    }
     if (elements.agentChatInput) elements.agentChatInput.disabled = disabled;
     if (elements.agentChatSendBtn) elements.agentChatSendBtn.disabled = disabled;
     if (elements.agentChatAttachBtn) elements.agentChatAttachBtn.disabled = disabled || !canUseAgentTaskFileUpload();
@@ -9443,6 +9950,7 @@ async function sendAgentMessage(message, history) {
                 history,
                 projectId: targetProject.id || '',
                 projectName: targetProject.name || '',
+                clientPlatform: 'web',
                 clientToday: localDateStr(new Date())
             }),
             ...(controller ? { signal: controller.signal } : {}),
@@ -9466,6 +9974,51 @@ async function sendAgentMessage(message, history) {
         data = null;
     }
     return { status: res.status, data };
+}
+
+async function performAgentNavigation(navigation) {
+    if (!navigation || typeof navigation.target !== 'string') return false;
+    const closeChat = () => elements.agentChatModal?.classList.remove('active');
+    switch (navigation.target) {
+        case 'projects':
+            closeChat();
+            closeSidebarOnMobile();
+            return true;
+        case 'my_tasks':
+            closeChat();
+            await openMyTasksModal();
+            return true;
+        case 'notifications':
+            closeChat();
+            renderAgentNotifyList();
+            document.getElementById('agent-notify-modal')?.classList.add('active');
+            return true;
+        case 'profile':
+            closeChat();
+            openProfileModal();
+            return true;
+        case 'calendar':
+            closeChat();
+            openCalendar();
+            return true;
+        case 'team':
+            if (!hasPermission('manage_users')) return false;
+            closeChat();
+            elements.adminPanelModal?.classList.add('active');
+            return true;
+        case 'project':
+            if (!navigation.projectId || !state.projects.some(project => project.id === navigation.projectId)) return false;
+            closeChat();
+            selectProject(navigation.projectId);
+            return true;
+        case 'task':
+            if (!navigation.projectId || !navigation.taskId) return false;
+            closeChat();
+            await navigateToTask(navigation.projectId, navigation.taskId);
+            return true;
+        default:
+            return false;
+    }
 }
 
 async function sendAgentTaskFileMessage(message, file) {
@@ -9576,7 +10129,20 @@ async function handleAgentChatSubmit(event) {
         if (myGeneration !== agentChatState.generation) return;
 
         if (status === 200 && data && data.ok) {
-            if (data.taskProposal && typeof data.taskProposal === 'object') {
+            if (data.navigation && typeof data.navigation === 'object') {
+                const opened = await performAgentNavigation(data.navigation);
+                const answer = opened
+                    ? (typeof data.answer === 'string' && data.answer.trim() ? data.answer : 'Раздел открыт.')
+                    : 'Не удалось открыть раздел: доступ изменился или объект больше не существует.';
+                appendAgentChatMessage(opened ? 'assistant' : 'error', answer);
+                agentChatState.history.push({ role: 'assistant', content: answer });
+                agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+            } else if (data.actionProposal && typeof data.actionProposal === 'object') {
+                appendAgentActionProposal(data.actionProposal);
+                const summary = `Подготовлено действие: ${data.actionProposal.title || data.actionProposal.action}. Ожидается подтверждение.`;
+                agentChatState.history.push({ role: 'assistant', content: summary });
+                agentChatState.history = truncateAgentChatHistory(agentChatState.history);
+            } else if (data.taskProposal && typeof data.taskProposal === 'object') {
                 // Предпросмотр задач из текста/документа: карточка + кнопка. В историю
                 // для LLM кладём компактный текст, а не карточку.
                 appendAgentTaskProposal(data.taskProposal);
@@ -9627,6 +10193,19 @@ async function handleAgentChatSubmit(event) {
             // running after sign-out. Small delay so the notice is readable before
             // logout() reloads the page back to the login screen.
             setTimeout(() => { logout(); }, 1500);
+        } else if (status === 429) {
+            // Server-side rate limit (api/agent-chat.js returns the Russian
+            // explanation in data.error). Show THAT text instead of the
+            // generic failure, drop the unprocessed user turn from history,
+            // and lock the input for a minute with a visible countdown —
+            // without the lockout users kept hammering Send into more 429s.
+            // The retry button stays inert while the lockout owns the input.
+            const detail = data && typeof data.error === 'string' && data.error.trim()
+                ? data.error
+                : 'Слишком много запросов подряд. Подождите минуту и попробуйте снова.';
+            appendAgentChatMessage('error', detail, { retryMessage: message || null });
+            agentChatState.history.pop();
+            startAgentChatRateLimitCountdown(AGENT_CHAT_RATE_LIMIT_SECONDS);
         } else if (status === 400) {
             // Validation error from a well-formed client call "shouldn't"
             // happen, but defend anyway (e.g. a future server-side change
@@ -9634,10 +10213,12 @@ async function handleAgentChatSubmit(event) {
             const detail = data && typeof data.error === 'string' ? data.error : null;
             appendAgentChatMessage('error', detail
                 ? `Не удалось отправить сообщение: ${detail}`
-                : 'Не удалось отправить сообщение. Попробуйте ещё раз.');
+                : 'Не удалось отправить сообщение. Попробуйте ещё раз.',
+                { retryMessage: message || null });
             agentChatState.history.pop();
         } else {
-            appendAgentChatMessage('error', 'Не удалось получить ответ от агента. Попробуйте ещё раз.');
+            appendAgentChatMessage('error', 'Не удалось получить ответ от агента. Попробуйте ещё раз.',
+                { retryMessage: message || null });
             agentChatState.history.pop();
         }
     } catch (error) {
@@ -9646,12 +10227,14 @@ async function handleAgentChatSubmit(event) {
         if (error && error.code === 'not-authenticated') {
             appendAgentChatMessage('error', 'Вы вышли из аккаунта. Войдите заново, чтобы продолжить общение с агентом.');
         } else if (error && error.code === 'timeout') {
-            appendAgentChatMessage('error', 'Агент отвечает слишком долго. Запрос прерван — попробуйте ещё раз (при большом документе сформулируйте запрос точнее).');
+            appendAgentChatMessage('error', 'Агент отвечает слишком долго. Запрос прерван — попробуйте ещё раз (при большом документе сформулируйте запрос точнее).',
+                { retryMessage: message || null });
         } else {
             // fetch() itself rejected — network failure (offline, DNS, CORS,
             // timeout before headers, etc.), not a server-returned status.
             console.error('agent-chat: network error', error);
-            appendAgentChatMessage('error', 'Ошибка сети. Проверьте подключение к интернету и попробуйте ещё раз.');
+            appendAgentChatMessage('error', 'Ошибка сети. Проверьте подключение к интернету и попробуйте ещё раз.',
+                { retryMessage: message || null });
         }
         agentChatState.history.pop();
     } finally {

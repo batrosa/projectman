@@ -3,6 +3,7 @@ import UIKit
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseMessaging
+import GoogleSignIn
 import UserNotifications
 
 // Push-инфраструктура (roadmap Этап 3):
@@ -16,6 +17,7 @@ final class PushService: NSObject, ObservableObject {
     static let shared = PushService()
 
     private var lastSavedToken: String?
+    private var isConfigured = false
 
     private var deviceId: String {
         UIDevice.current.identifierForVendor?.uuidString ?? "unknown-device"
@@ -23,24 +25,58 @@ final class PushService: NSObject, ObservableObject {
 
     // Вызывается после входа: запросить разрешение, зарегистрироваться в APNs.
     func enable() {
+        isConfigured = true
         UNUserNotificationCenter.current().delegate = self
         Messaging.messaging().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
-            guard granted else { return }
-            Task { @MainActor in
-                UIApplication.shared.registerForRemoteNotifications()
+
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                    if let error { print("push: authorization request failed —", error.localizedDescription) }
+                    guard granted else {
+                        print("push: authorization denied")
+                        return
+                    }
+                    Task { @MainActor in UIApplication.shared.registerForRemoteNotifications() }
+                }
+            case .authorized, .provisional, .ephemeral:
+                Task { @MainActor in UIApplication.shared.registerForRemoteNotifications() }
+            case .denied:
+                print("push: authorization denied in iOS settings")
+            @unknown default:
+                Task { @MainActor in UIApplication.shared.registerForRemoteNotifications() }
             }
         }
-        // Если токен уже есть (повторный вход) — сохранить сразу
-        Messaging.messaging().token { [weak self] token, _ in
+
+        // Если APNs уже привязан к Firebase Messaging (например, повторный вход
+        // без перезапуска приложения), сохраняем текущий FCM-токен сразу.
+        refreshAndSaveToken(reason: "enable", forceWrite: false)
+    }
+
+    func handleAPNsDeviceToken(_ deviceToken: Data) {
+        Messaging.messaging().apnsToken = deviceToken
+        // Критично: FCM-токен, полученный ДО APNs-токена, может не доставлять
+        // уведомления через APNs. После APNs callback перечитываем и
+        // пересохраняем токен, даже если строка токена визуально не изменилась.
+        refreshAndSaveToken(reason: "apns", forceWrite: true)
+    }
+
+    private func refreshAndSaveToken(reason: String, forceWrite: Bool) {
+        guard isConfigured else { return }
+        Messaging.messaging().token { [weak self] token, error in
+            if let error {
+                print("push: FCM token fetch failed (\(reason)) —", error.localizedDescription)
+                return
+            }
             guard let token else { return }
-            Task { @MainActor [weak self] in self?.saveToken(token) }
+            Task { @MainActor [weak self] in self?.saveToken(token, force: forceWrite) }
         }
     }
 
-    private func saveToken(_ token: String) {
+    private func saveToken(_ token: String, force: Bool = false) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        guard token != lastSavedToken else { return }
+        guard force || token != lastSavedToken else { return }
         lastSavedToken = token
         Firestore.firestore()
             .collection("users").document(uid)
@@ -58,6 +94,7 @@ final class PushService: NSObject, ObservableObject {
     func unregister() async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         lastSavedToken = nil
+        isConfigured = false
         try? await Firestore.firestore()
             .collection("users").document(uid)
             .collection("devices").document(deviceId)
@@ -107,9 +144,17 @@ extension PushService: UNUserNotificationCenterDelegate {
 
 // APNs-токен пробрасывается в FCM через AppDelegate (SwiftUI adaptor).
 final class PushAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ app: UIApplication,
+                     open url: URL,
+                     options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        GIDSignIn.sharedInstance.handle(url)
+    }
+
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        Messaging.messaging().apnsToken = deviceToken
+        Task { @MainActor in
+            PushService.shared.handleAPNsDeviceToken(deviceToken)
+        }
     }
 
     func application(_ application: UIApplication,

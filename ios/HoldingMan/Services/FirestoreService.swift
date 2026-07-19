@@ -2,6 +2,14 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 
+private func telegramHTML(_ value: String) -> String {
+    value
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+        .replacingOccurrences(of: ">", with: "&gt;")
+        .replacingOccurrences(of: "\"", with: "&quot;")
+}
+
 // Живые подписки на те же коллекции и с теми же фильтрами, что web-клиент:
 // проекты по organizationId, задачи по projectId, уведомления по uid+org.
 // Firestore rules — общие, iOS не получает ничего сверх web-доступа.
@@ -34,6 +42,49 @@ final class ProjectsStore: ObservableObject {
         listener = nil
         projects = []
         loaded = false
+    }
+
+    func create(
+        organizationId: String,
+        user: UserDoc,
+        name: String,
+        description: String,
+        deadline: String?
+    ) async throws {
+        guard user.orgRole == "owner" || user.orgRole == "admin" else {
+            throw ApiError.server("Недостаточно прав для создания проекта")
+        }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw ApiError.server("Введите название проекта")
+        }
+
+        #if DEBUG
+        if DemoData.isEnabled {
+            projects.append(Project(
+                id: UUID().uuidString,
+                name: trimmedName,
+                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                deadline: deadline
+            ))
+            projects.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            loaded = true
+            return
+        }
+        #endif
+
+        var data: [String: Any] = [
+            "name": trimmedName,
+            "description": description.trimmingCharacters(in: .whitespacesAndNewlines),
+            "organizationId": organizationId,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+        if let deadline {
+            data["deadline"] = deadline
+        }
+
+        _ = try await Firestore.firestore().collection("projects").addDocument(data: data)
     }
 
     #if DEBUG
@@ -83,6 +134,14 @@ final class TasksStore: ObservableObject {
         tasks
             .filter { $0.boardStatus == column }
             .sorted { ($0.deadline ?? "9999") < ($1.deadline ?? "9999") }
+    }
+
+    func replaceLocal(_ task: TaskItem) {
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[index] = task
+        } else {
+            tasks.append(task)
+        }
     }
 
     // «Взять в работу» — та же форма записи, что updateTaskSubStatus('in_work')
@@ -144,9 +203,9 @@ final class TasksStore: ObservableObject {
         let text = """
         📋 <b>Новая задача!</b>
 
-        <b>Задача:</b> \(title)
-        <b>Проект:</b> \(projectName)
-        <b>Срок:</b> \(deadline ?? "Не указан")
+        <b>Задача:</b> \(telegramHTML(title))
+        <b>Проект:</b> \(telegramHTML(projectName))
+        <b>Срок:</b> \(telegramHTML(DateFormatter.displayDay(deadline, fallback: "Не указан")))
         """
         for assignee in assignees {
             let uid = assignee.id
@@ -184,9 +243,9 @@ final class TasksStore: ObservableObject {
             let text = """
             📤 <b>Задача на проверке</b>
 
-            <b>Проект:</b> \(projectName)
-            <b>Задача:</b> \(task.title)
-            <b>Исполнитель:</b> \(byName)
+            <b>Проект:</b> \(telegramHTML(projectName))
+            <b>Задача:</b> \(telegramHTML(task.title))
+            <b>Исполнитель:</b> \(telegramHTML(byName))
 
             Пожалуйста, проверьте выполнение задачи.
             """
@@ -216,8 +275,8 @@ final class TasksStore: ObservableObject {
         let text = """
         ✅ <b>Задача принята!</b>
 
-        <b>Проект:</b> \(projectName)
-        <b>Задача:</b> \(task.title)
+        <b>Проект:</b> \(telegramHTML(projectName))
+        <b>Задача:</b> \(telegramHTML(task.title))
 
         Руководитель принял выполнение. Отличная работа!
         """
@@ -257,12 +316,12 @@ final class TasksStore: ObservableObject {
         let text = """
         🔄 <b>Задача возвращена на доработку</b>
 
-        <b>Задача:</b> \(task.title)
+        <b>Задача:</b> \(telegramHTML(task.title))
 
         <b>Причина:</b>
-        \(reason)
+        \(telegramHTML(reason))
 
-        <b>Вернул:</b> \(byName)
+        <b>Вернул:</b> \(telegramHTML(byName))
         """
         for uid in task.assigneeIds {
             Task {
@@ -272,6 +331,92 @@ final class TasksStore: ObservableObject {
                 )
             }
         }
+    }
+}
+
+// Сводная лента задач по доступным проектам. Читаем не по organizationId,
+// а чанками projectId, потому что Firestore rules проверяют доступ через проект.
+@MainActor
+final class ProjectTasksStore: ObservableObject {
+    @Published var tasks: [TaskItem] = []
+    @Published var loaded = false
+    private var listeners: [ListenerRegistration] = []
+    private var chunkResults: [Int: [TaskItem]] = [:]
+    private var expectedChunks = 0
+
+    func subscribe(projects: [Project]) {
+        stopListeners()
+        let projectIds = projects.map(\.id)
+        guard !projectIds.isEmpty else {
+            tasks = []
+            loaded = true
+            return
+        }
+
+        #if DEBUG
+        if DemoData.isEnabled {
+            tasks = DemoData.tasks
+                .filter { projectIds.contains($0.projectId) }
+                .sorted(by: Self.sortByDeadline)
+            loaded = true
+            return
+        }
+        #endif
+
+        loaded = false
+        tasks = []
+        let chunks = stride(from: 0, to: projectIds.count, by: 10).map {
+            Array(projectIds[$0..<min($0 + 10, projectIds.count)])
+        }
+        expectedChunks = chunks.count
+
+        for (index, chunk) in chunks.enumerated() {
+            let listener = Firestore.firestore().collection("tasks")
+                .whereField("projectId", in: chunk)
+                .addSnapshotListener { [weak self] snapshot, error in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if let error {
+                            print("project-tasks listener error (chunk \(index)):", error.localizedDescription)
+                            self.chunkResults[index] = []
+                            self.rebuild()
+                            return
+                        }
+                        guard let snapshot else { return }
+                        self.chunkResults[index] = snapshot.documents.map {
+                            TaskItem.from(id: $0.documentID, data: $0.data())
+                        }
+                        self.rebuild()
+                    }
+                }
+            listeners.append(listener)
+        }
+    }
+
+    private func rebuild() {
+        tasks = chunkResults.values.flatMap { $0 }
+            .sorted(by: Self.sortByDeadline)
+        loaded = chunkResults.count >= expectedChunks
+    }
+
+    private static func sortByDeadline(_ lhs: TaskItem, _ rhs: TaskItem) -> Bool {
+        let left = lhs.deadline ?? "9999-12-31"
+        let right = rhs.deadline ?? "9999-12-31"
+        if left != right { return left < right }
+        return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+
+    private func stopListeners() {
+        listeners.forEach { $0.remove() }
+        listeners = []
+        chunkResults = [:]
+        expectedChunks = 0
+    }
+
+    func stop() {
+        stopListeners()
+        tasks = []
+        loaded = false
     }
 }
 
@@ -365,6 +510,34 @@ final class MyTasksStore: ObservableObject {
             .sorted { ($0.deadline ?? "9999") < ($1.deadline ?? "9999") }
     }
 
+    func replaceLocal(_ task: TaskItem) {
+        for key in chunkResults.keys {
+            guard let index = chunkResults[key]?.firstIndex(where: { $0.id == task.id }) else { continue }
+            if task.assigneeIds.contains(currentUid), task.status != "done" {
+                chunkResults[key]?[index] = task
+            } else {
+                chunkResults[key]?.remove(at: index)
+            }
+            rebuild()
+            return
+        }
+
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            if task.assigneeIds.contains(currentUid), task.status != "done" {
+                tasks[index] = task
+            } else {
+                tasks.remove(at: index)
+            }
+            tasks.sort { ($0.deadline ?? "9999") < ($1.deadline ?? "9999") }
+            return
+        }
+
+        if task.assigneeIds.contains(currentUid), task.status != "done" {
+            tasks.append(task)
+            tasks.sort { ($0.deadline ?? "9999") < ($1.deadline ?? "9999") }
+        }
+    }
+
     private func stopListeners() {
         listeners.forEach { $0.remove() }
         listeners = []
@@ -424,6 +597,52 @@ final class NotificationsStore: ObservableObject {
         Firestore.firestore().collection("agentNotifications")
             .document(notification.id)
             .updateData(["readAt": FieldValue.serverTimestamp()])
+    }
+
+    func markAllRead() {
+        let unread = notifications.filter { $0.readAt == nil }
+        guard !unread.isEmpty else { return }
+
+        #if DEBUG
+        if DemoData.isEnabled {
+            let now = Date()
+            for index in notifications.indices where notifications[index].readAt == nil {
+                notifications[index].readAt = now
+            }
+            return
+        }
+        #endif
+
+        let now = Date()
+        for index in notifications.indices where notifications[index].readAt == nil {
+            notifications[index].readAt = now
+        }
+
+        let db = Firestore.firestore()
+        let batch = db.batch()
+        for notification in unread {
+            let ref = db.collection("agentNotifications").document(notification.id)
+            batch.updateData(["readAt": FieldValue.serverTimestamp()], forDocument: ref)
+        }
+        batch.commit { error in
+            if let error {
+                print("notifications mark all read failed:", error.localizedDescription)
+            }
+        }
+    }
+
+    func deleteAll() async throws {
+        let ids = notifications.map(\.id)
+        guard !ids.isEmpty else { return }
+
+        #if DEBUG
+        if DemoData.isEnabled {
+            notifications = []
+            return
+        }
+        #endif
+
+        try await ApiClient.deleteAgentNotifications(ids: ids)
     }
 
     #if DEBUG

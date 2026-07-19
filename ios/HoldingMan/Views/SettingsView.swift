@@ -22,6 +22,10 @@ struct SettingsView: View {
 
                     organizationCard
 
+                    if let user = appState.user {
+                        loginMethodCard(user)
+                    }
+
                     if appState.user?.orgRole == "owner" || appState.user?.orgRole == "admin" {
                         NavigationLink {
                             TeamView()
@@ -209,6 +213,40 @@ struct SettingsView: View {
         .sheet(isPresented: $showOrgScreen) {
             OrgSelectView(embedded: true)
         }
+    }
+
+    private func loginMethodCard(_ user: UserDoc) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Способ входа")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .textCase(.uppercase)
+
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Theme.primary.opacity(0.12))
+                    if user.authProvider == "google.com" {
+                        GoogleLogoView().frame(width: 20, height: 20)
+                    } else {
+                        Image(systemName: user.authProviderIcon)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.primary)
+                    }
+                }
+                .frame(width: 42, height: 42)
+
+                Text(user.authProviderTitle)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer(minLength: 0)
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(Theme.statusDone)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
     }
 
     private func settingsRow(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {

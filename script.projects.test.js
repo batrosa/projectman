@@ -109,3 +109,33 @@ describe("role permission helpers", () => {
     expect(getFn("getRoleName")("reader")).toBe("Исполнитель");
   });
 });
+
+describe("notification task navigation", () => {
+  it("opens the task card on its project/status board instead of the info modal", async () => {
+    ctx.document.body.innerHTML = '<div id="agent-notify-modal" class="modal active"></div>';
+    vm.runInContext(`
+      globalThis.__notificationNavigation = null;
+      navigateToTask = (...args) => { globalThis.__notificationNavigation = args; };
+      db = {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              id: 'task-42',
+              data: () => ({ projectId: 'p2', subStatus: 'in_work', title: 'Задача' })
+            })
+          })
+        })
+      };
+    `, ctx);
+
+    await getFn("openTaskFromNotification")("task-42");
+
+    expect(vm.runInContext("globalThis.__notificationNavigation", ctx)).toEqual([
+      "p2",
+      "task-42",
+      "in-progress",
+    ]);
+    expect(ctx.document.getElementById("agent-notify-modal").classList.contains("active")).toBe(false);
+  });
+});

@@ -1,83 +1,82 @@
 import SwiftUI
+import AuthenticationServices
 
 struct LoginView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var auth = AuthService()
-    @State private var email = ""
-    @State private var password = ""
-    @FocusState private var focusedField: Field?
-
-    private enum Field { case email, password }
 
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 28) {
-                    header
-                        .padding(.top, 64)
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 28) {
+                        Spacer(minLength: 28)
+
+                        header
 
                     VStack(spacing: 12) {
-                        inputField(
-                            icon: "envelope.fill",
-                            placeholder: "Email",
-                            text: $email,
-                            field: .email
-                        )
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .password }
-
-                        secureInputField
+                        SignInWithAppleButton(.signIn) { request in
+                            auth.prepareAppleRequest(request)
+                        } onCompletion: { result in
+                            Task { await auth.completeAppleSignIn(result) }
+                        }
+                        .environment(\.locale, Locale(identifier: "ru_RU"))
+                        .signInWithAppleButtonStyle(.whiteOutline)
+                        .frame(height: 54)
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .disabled(auth.isBusy)
+                        .accessibilityLabel("Войти через Apple")
 
                         Button {
-                            focusedField = nil
-                            Task { await auth.signIn(email: email, password: password) }
+                            Task { await auth.signInWithGoogle() }
                         } label: {
-                            if auth.isBusy {
-                                ProgressView().tint(.white)
-                            } else {
-                                Text("Войти")
+                            HStack(spacing: 10) {
+                                GoogleLogoView()
+                                    .frame(width: 22, height: 22)
+                                Text("Войти через Google")
                             }
+                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(auth.isBusy || email.isEmpty || password.isEmpty)
-                        .opacity(email.isEmpty || password.isEmpty ? 0.55 : 1)
-
-                        HStack(spacing: 12) {
-                            line
-                            Text("или")
-                                .font(.caption)
-                                .foregroundStyle(Theme.textSecondary)
-                            line
-                        }
-                        .padding(.vertical, 2)
+                        .buttonStyle(ProviderButtonStyle(tint: Color(hex: 0x4285F4)))
+                        .disabled(auth.isBusy)
 
                         Button {
-                            focusedField = nil
                             Task { await auth.startTelegramLogin() }
                         } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 10) {
                                 Image(systemName: "paperplane.fill")
+                                    .font(.system(size: 17, weight: .semibold))
                                 Text("Войти через Telegram")
                             }
+                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(SoftButtonStyle(tint: Color(hex: 0x0EA5E9)))
+                        .buttonStyle(ProviderButtonStyle(tint: Color(hex: 0x229ED9)))
                         .disabled(auth.isBusy)
                     }
                     .padding(.horizontal, 24)
 
-                    statusBanner
+                    if auth.isBusy {
+                        ProgressView()
+                            .tint(Theme.primary)
+                    }
 
-                    Spacer(minLength: 40)
+                    statusBanner
+                        Spacer(minLength: 28)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height)
                 }
             }
-            .scrollDismissesKeyboard(.interactively)
         }
         .animation(.spring(duration: 0.3), value: auth.statusMessage)
+        .onAppear { Task { await auth.resumeTelegramLoginIfNeeded() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await auth.resumeTelegramLoginIfNeeded() }
+            }
+        }
     }
 
     private var header: some View {
@@ -96,77 +95,19 @@ struct LoginView: View {
                 Text("HoldingMan")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
                     .foregroundStyle(Theme.textPrimary)
-                Text("Проекты, задачи и сроки холдинга\nпод контролем")
+                Text("Выберите один способ входа")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    private var line: some View {
-        Rectangle()
-            .fill(Theme.hairline)
-            .frame(height: 1)
-    }
-
-    private func inputField(icon: String, placeholder: String, text: Binding<String>, field: Field) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.subheadline)
-                .foregroundStyle(focusedField == field ? Theme.primary : Theme.textSecondary)
-                .frame(width: 20)
-            TextField(placeholder, text: text)
-                .foregroundStyle(Theme.textPrimary)
-                .focused($focusedField, equals: field)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 52)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(focusedField == field ? Theme.primary.opacity(0.55) : Theme.hairline, lineWidth: 1)
-        )
-        .animation(.easeInOut(duration: 0.15), value: focusedField)
-    }
-
-    private var secureInputField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "lock.fill")
-                .font(.subheadline)
-                .foregroundStyle(focusedField == .password ? Theme.primary : Theme.textSecondary)
-                .frame(width: 20)
-            SecureField("Пароль", text: $password)
-                .textContentType(.password)
-                .foregroundStyle(Theme.textPrimary)
-                .focused($focusedField, equals: .password)
-                .submitLabel(.go)
-                .onSubmit {
-                    guard !email.isEmpty, !password.isEmpty else { return }
-                    Task { await auth.signIn(email: email, password: password) }
-                }
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 52)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(focusedField == .password ? Theme.primary.opacity(0.55) : Theme.hairline, lineWidth: 1)
-        )
-        .animation(.easeInOut(duration: 0.15), value: focusedField)
     }
 
     @ViewBuilder
     private var statusBanner: some View {
         if let message = auth.statusMessage {
             HStack(spacing: 10) {
-                if auth.isBusy && !auth.statusIsSuccess {
-                    ProgressView().tint(Theme.primary)
-                } else {
-                    Image(systemName: auth.statusIsSuccess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                        .foregroundStyle(auth.statusIsSuccess ? Theme.statusDone : Theme.danger)
-                }
+                Image(systemName: auth.statusIsSuccess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(auth.statusIsSuccess ? Theme.statusDone : Theme.danger)
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(auth.statusIsSuccess ? Theme.statusDone : Theme.danger)
@@ -181,5 +122,44 @@ struct LoginView: View {
             .padding(.horizontal, 24)
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
+    }
+}
+
+private struct ProviderButtonStyle: ButtonStyle {
+    let tint: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(height: 54)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .stroke(tint.opacity(0.45), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+    }
+}
+
+struct GoogleLogoView: View {
+    var body: some View {
+        ZStack {
+            Circle().trim(from: 0.04, to: 0.28).stroke(Color(hex: 0x4285F4), style: stroke)
+            Circle().trim(from: 0.28, to: 0.50).stroke(Color(hex: 0x34A853), style: stroke)
+            Circle().trim(from: 0.50, to: 0.72).stroke(Color(hex: 0xFBBC05), style: stroke)
+            Circle().trim(from: 0.72, to: 0.96).stroke(Color(hex: 0xEA4335), style: stroke)
+            Rectangle()
+                .fill(Color(hex: 0x4285F4))
+                .frame(width: 9, height: 4)
+                .offset(x: 5, y: 1)
+        }
+        .rotationEffect(.degrees(-35))
+        .accessibilityHidden(true)
+    }
+
+    private var stroke: StrokeStyle {
+        StrokeStyle(lineWidth: 4.2, lineCap: .butt)
     }
 }

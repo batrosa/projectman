@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     enum Phase {
         case loading        // ждём восстановления сессии Firebase
         case signedOut
+        case needsProfile
         case needsOrganization
         case ready
     }
@@ -30,7 +31,16 @@ final class AppState: ObservableObject {
     func start() {
         #if DEBUG
         if DemoData.isEnabled {
-            user = DemoData.user
+            var demoUser = DemoData.user
+            if DemoData.screen == "profile-setup" {
+                demoUser.firstName = ""
+                demoUser.lastName = ""
+                demoUser.profileCompleted = false
+                user = demoUser
+                phase = .needsProfile
+                return
+            }
+            user = demoUser
             organizationName = "NF Group"
             phase = .ready
             return
@@ -42,6 +52,17 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 if let firebaseUser {
                     self.subscribeToOwnUserDoc(uid: firebaseUser.uid)
+                    Task {
+                        do {
+                            try await ApiClient.bootstrapAuthProfile()
+                        } catch ApiError.server(let message) where message.contains("другой способ входа") {
+                            try? Auth.auth().signOut()
+                        } catch {
+                            // Существующий локальный профиль продолжает работу;
+                            // bootstrap повторится при следующем восстановлении сессии.
+                            print("auth bootstrap failed —", error.localizedDescription)
+                        }
+                    }
                 } else {
                     self.userDocListener?.remove()
                     self.userDocListener = nil
@@ -61,14 +82,16 @@ final class AppState: ObservableObject {
                     guard let self else { return }
                     guard let snapshot else { return }
                     guard snapshot.exists, let data = snapshot.data() else {
-                        // Документа ещё нет (первый вход через Telegram создаёт
-                        // его на сервере) — ждём серверный снапшот.
-                        if !snapshot.metadata.isFromCache { self.phase = .needsOrganization }
+                        // Новый Google/Apple-пользователь: AuthService создаёт
+                        // профиль через API. До появления документа не открываем
+                        // экран организаций и не показываем ложную ошибку.
                         return
                     }
                     let doc = UserDoc.from(uid: uid, data: data)
                     self.user = doc
-                    if let orgId = doc.organizationId, !orgId.isEmpty {
+                    if !doc.profileCompleted {
+                        self.phase = .needsProfile
+                    } else if let orgId = doc.organizationId, !orgId.isEmpty {
                         let becameReady = self.phase != .ready
                         self.phase = .ready
                         self.loadOrganizationName(orgId: orgId)

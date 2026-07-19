@@ -3,32 +3,45 @@ import SwiftUI
 struct MyTasksView: View {
     @EnvironmentObject private var myTasksStore: MyTasksStore
     @EnvironmentObject private var projectsStore: ProjectsStore
+    @State private var selectedFilter: MyTasksFilter = .all
 
-    private var overdue: [TaskItem] { myTasksStore.tasks.filter(\.isOverdue) }
-    private var active: [TaskItem] { myTasksStore.tasks.filter { !$0.isOverdue } }
+    private var displayedTasks: [TaskItem] {
+        myTasksStore.tasks.filter { selectedFilter.matches($0.boardStatus) }
+    }
+
+    private var assigned: [TaskItem] { displayedTasks.filter { $0.boardStatus == .assigned } }
+    private var inProgress: [TaskItem] { displayedTasks.filter { $0.boardStatus == .inProgress } }
+    private var review: [TaskItem] { displayedTasks.filter { $0.boardStatus == .review } }
 
     var body: some View {
         NavigationStack {
             Group {
-                if myTasksStore.tasks.isEmpty {
+                if displayedTasks.isEmpty {
                     EmptyStateView(
-                        icon: "checkmark.circle",
-                        title: "Нет активных задач",
-                        message: "Задачи, где вы назначены исполнителем, появятся здесь."
+                        icon: selectedFilter.emptyIcon,
+                        title: selectedFilter.emptyTitle,
+                        message: selectedFilter.emptyMessage
                     )
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
-                            if !overdue.isEmpty {
-                                sectionHeader("Просроченные", count: overdue.count, color: Theme.danger)
-                                ForEach(overdue) { task in
+                            if !assigned.isEmpty {
+                                sectionHeader("Назначенные", count: assigned.count, color: Theme.statusAssigned)
+                                ForEach(assigned, id: \.statusRenderId) { task in
                                     taskLink(task)
                                 }
                             }
-                            if !active.isEmpty {
-                                sectionHeader("В плане", count: active.count, color: Theme.textSecondary)
-                                    .padding(.top, overdue.isEmpty ? 0 : 8)
-                                ForEach(active) { task in
+                            if !inProgress.isEmpty {
+                                sectionHeader("В работе", count: inProgress.count, color: Theme.statusInProgress)
+                                    .padding(.top, assigned.isEmpty ? 0 : 8)
+                                ForEach(inProgress, id: \.statusRenderId) { task in
+                                    taskLink(task)
+                                }
+                            }
+                            if !review.isEmpty {
+                                sectionHeader("На проверке", count: review.count, color: Theme.statusReview)
+                                    .padding(.top, (assigned.isEmpty && inProgress.isEmpty) ? 0 : 8)
+                                ForEach(review, id: \.statusRenderId) { task in
                                     taskLink(task)
                                 }
                             }
@@ -40,7 +53,33 @@ struct MyTasksView: View {
             }
             .screenBackground()
             .navigationTitle("Мои задачи")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    filterMenu
+                }
+            }
         }
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            ForEach(MyTasksFilter.allCases) { filter in
+                Button {
+                    selectedFilter = filter
+                } label: {
+                    Label(
+                        filter.title,
+                        systemImage: selectedFilter == filter ? "checkmark.circle.fill" : filter.icon
+                    )
+                }
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                .font(.title3)
+                .foregroundStyle(Theme.primary)
+        }
+        .accessibilityLabel("Фильтр задач")
+        .accessibilityValue(selectedFilter.title)
     }
 
     private func sectionHeader(_ title: String, count: Int, color: Color) -> some View {
@@ -66,7 +105,81 @@ struct MyTasksView: View {
         } label: {
             MyTaskCard(task: task, projectName: project?.name)
         }
+        .id(task.statusRenderId)
         .buttonStyle(PressableStyle())
+    }
+}
+
+private enum MyTasksFilter: String, CaseIterable, Identifiable {
+    case all
+    case assigned
+    case inProgress
+    case review
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Все"
+        case .assigned: return "Назначенные"
+        case .inProgress: return "В работе"
+        case .review: return "На проверке"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .all: return "list.bullet.rectangle"
+        case .assigned: return "exclamationmark.circle"
+        case .inProgress: return "briefcase.fill"
+        case .review: return "checkmark.circle"
+        }
+    }
+
+    var emptyIcon: String {
+        switch self {
+        case .all: return "checkmark.circle"
+        case .assigned: return "tray"
+        case .inProgress: return "briefcase"
+        case .review: return "checkmark.circle"
+        }
+    }
+
+    var emptyTitle: String {
+        switch self {
+        case .all: return "Нет активных задач"
+        case .assigned: return "Нет назначенных задач"
+        case .inProgress: return "Нет задач в работе"
+        case .review: return "Нет задач на проверке"
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .all:
+            return "Задачи, где вы назначены исполнителем, появятся здесь."
+        case .assigned:
+            return "Новые задачи, ожидающие принятия в работу, появятся здесь."
+        case .inProgress:
+            return "Принятые в работу задачи появятся здесь."
+        case .review:
+            return "Завершённые задачи, ожидающие проверки, появятся здесь."
+        }
+    }
+
+    func matches(_ status: BoardStatus) -> Bool {
+        switch self {
+        case .all: return status != .done
+        case .assigned: return status == .assigned
+        case .inProgress: return status == .inProgress
+        case .review: return status == .review
+        }
+    }
+}
+
+private extension TaskItem {
+    var statusRenderId: String {
+        "\(id)-\(status)-\(subStatus ?? "none")-\(assigneeCompleted)"
     }
 }
 
@@ -115,12 +228,14 @@ private struct MyTaskCard: View {
 private struct MyTaskDetailWrapper: View {
     let task: TaskItem
     let project: Project?
+    @EnvironmentObject private var myTasksStore: MyTasksStore
     @StateObject private var tasksStore = TasksStore()
 
     var body: some View {
         TaskDetailView(
             task: task,
-            project: project ?? Project(id: task.projectId, name: "Проект", description: "", deadline: nil)
+            project: project ?? Project(id: task.projectId, name: "Проект", description: "", deadline: nil),
+            onLocalTaskChange: { myTasksStore.replaceLocal($0) }
         )
         .environmentObject(tasksStore)
         .onAppear { tasksStore.subscribe(projectId: task.projectId) }

@@ -45,31 +45,38 @@ struct OrgSelectView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    header
-                        .padding(.top, 8)
+            ZStack {
+                Theme.background.ignoresSafeArea()
 
-                    if isLoading {
-                        ProgressView().tint(Theme.primary)
-                            .padding(.vertical, 30)
-                    } else {
-                        if !organizations.isEmpty {
-                            myOrganizations
+                ScrollView {
+                    VStack(spacing: 18) {
+                        header
+                            .padding(.top, 8)
+
+                        if isLoading {
+                            ProgressView().tint(Theme.primary)
+                                .padding(.vertical, 30)
+                        } else {
+                            if !organizations.isEmpty {
+                                myOrganizations
+                            }
+
+                            actionCard
                         }
 
-                        actionCard
+                        if let errorMessage {
+                            errorBanner(errorMessage)
+                        }
                     }
-
-                    if let errorMessage {
-                        errorBanner(errorMessage)
-                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .screenBackground()
-            .scrollDismissesKeyboard(.interactively)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.background.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if embedded {
@@ -84,6 +91,8 @@ struct OrgSelectView: View {
                 }
             }
         }
+        .presentationBackground(Theme.background)
+        .background(Theme.background.ignoresSafeArea())
         .animation(.spring(duration: 0.32), value: previewState)
         .animation(.spring(duration: 0.32), value: mode)
         .task { await load() }
@@ -514,7 +523,6 @@ struct OrgSelectView: View {
         case "owner": return "Владелец"
         case "admin": return "Администратор"
         case "moderator": return "Модератор"
-        case "reader": return "Наблюдатель"
         default: return "Исполнитель"
         }
     }

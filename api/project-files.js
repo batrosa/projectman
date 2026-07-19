@@ -8,6 +8,7 @@
 import { waitUntil } from "@vercel/functions";
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { extractMaterialText } from "../lib/material-parser.js";
+import { buildProjectKnowledgeIndex, PROJECT_KNOWLEDGE_VERSION } from "../lib/project-knowledge.js";
 
 export const ALLOWED_EXTENSIONS = ["md", "xlsx", "xlsm", "pdf", "docx"];
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -116,8 +117,9 @@ export default async function handler(request, response) {
   // reads and what the UI lists). We intentionally do not delete the underlying
   // Cloudinary raw asset: unsigned uploads give us no api_secret to sign a
   // destroy call, and the orphaned blob is unreferenced/harmless once its
-  // Firestore doc is gone. Same org-scope bar as upload — any member of the
-  // project's organization may remove a file (e.g. to fix a wrong upload).
+  // Firestore doc is gone. Same org-scope + manage-rights bar as upload —
+  // owner/admin (or a moderator with access to this project) may remove a
+  // file; employees/readers cannot (see callerCanManageProjectFiles below).
   if (request.method === "DELETE") {
     // Prefer the query string (mobile Safari / some proxies drop the body of a
     // fetch DELETE, which broke deletion on phones); fall back to the JSON body.
@@ -154,6 +156,14 @@ export default async function handler(request, response) {
     return response.status(200).json({ ok: true });
   }
 
+  // Retry a stuck/failed extraction for an EXISTING file doc: re-download
+  // from the stored URL and re-run the parser (a transient network error used
+  // to leave extractionStatus:"error" forever). Same org + manage-rights bar
+  // as upload/delete.
+  if (body && body.retry === true) {
+    return handleRetry({ response, callerOrgId, callerOrgRole, callerAllowedProjects, body });
+  }
+
   const { projectId, filename, url, mimeType, sizeBytes } = body;
 
   const validation = validateUpload({ projectId, filename, url, sizeBytes });
@@ -181,6 +191,29 @@ export default async function handler(request, response) {
     return response.status(403).json({ error: "Forbidden — no access to this project" });
   }
 
+  // Dedup: re-uploading the same file (same project + filename + size) returns
+  // the existing doc instead of creating a twin that would double the
+  // knowledge chunks the agent reads. Best-effort: a failed lookup must not
+  // block the upload.
+  try {
+    const dupSnap = await db.collection("projects").doc(projectId).collection("files")
+      .where("filename", "==", filename)
+      .where("sizeBytes", "==", sizeBytes || null)
+      .limit(1)
+      .get();
+    if (!dupSnap.empty) {
+      const existing = dupSnap.docs[0];
+      return response.status(200).json({
+        ok: true,
+        fileId: existing.id,
+        duplicate: true,
+        file: { id: existing.id, ...existing.data() },
+      });
+    }
+  } catch (error) {
+    console.error("project-files: dedup lookup failed, continuing with upload", error);
+  }
+
   let fileRef;
   try {
     fileRef = db.collection("projects").doc(projectId).collection("files").doc();
@@ -194,6 +227,11 @@ export default async function handler(request, response) {
       extractionStatus: "pending",
       extractedText: null,
       extractionWarnings: [],
+      knowledgeVersion: PROJECT_KNOWLEDGE_VERSION,
+      knowledgeStatus: "indexing",
+      knowledgeCharCount: 0,
+      knowledgeChunks: [],
+      knowledgeUpdatedAt: null,
     });
   } catch (error) {
     console.error("project-files: failed to create Firestore doc", error);
@@ -226,6 +264,74 @@ export default async function handler(request, response) {
   return response.status(200).json({ ok: true, fileId: fileRef.id });
 }
 
+// POST { projectId, fileId, retry: true } — re-run extraction for an existing
+// file doc using its stored Cloudinary URL. Used when a transient failure
+// (network, parser crash) left the doc on extractionStatus:"error"/"pending".
+async function handleRetry({ response, callerOrgId, callerOrgRole, callerAllowedProjects, body }) {
+  const projectId = typeof body.projectId === "string" ? body.projectId : "";
+  const fileId = typeof body.fileId === "string" ? body.fileId : "";
+  if (!projectId || !fileId) {
+    return response.status(400).json({ error: "projectId and fileId are required" });
+  }
+
+  let db;
+  let projectDoc;
+  try {
+    db = adminDb();
+    projectDoc = await db.collection("projects").doc(projectId).get();
+  } catch (error) {
+    console.error("project-files: failed to load project doc (retry)", error);
+    return response.status(500).json({ error: "Failed to verify project" });
+  }
+  if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
+    return response.status(403).json({ error: "Forbidden" });
+  }
+  if (!callerCanManageProjectFiles(callerOrgRole, callerAllowedProjects, projectId)) {
+    return response.status(403).json({ error: "Forbidden — no access to this project" });
+  }
+
+  const fileRef = db.collection("projects").doc(projectId).collection("files").doc(fileId);
+  let fileData;
+  try {
+    const fileDoc = await fileRef.get();
+    if (!fileDoc.exists) return response.status(404).json({ error: "File not found" });
+    fileData = fileDoc.data();
+  } catch (error) {
+    console.error("project-files: failed to load file doc (retry)", error);
+    return response.status(500).json({ error: "Failed to load file" });
+  }
+
+  try {
+    await fileRef.update({
+      extractionStatus: "pending",
+      extractionWarnings: [],
+      knowledgeStatus: "indexing",
+      knowledgeUpdatedAt: null,
+    });
+  } catch (error) {
+    console.error("project-files: failed to reset file doc (retry)", error);
+    return response.status(500).json({ error: "Failed to retry extraction" });
+  }
+
+  // extractInBackground re-checks isAllowedFileUrl() itself, so even an old
+  // doc with a bad stored URL fails safe instead of fetching it.
+  const extraction = extractInBackground(fileRef, {
+    filename: fileData.filename,
+    url: fileData.url,
+    mimeType: fileData.mimeType,
+  }).catch((error) => {
+    console.error("background extraction failed (retry)", error);
+  });
+  try {
+    waitUntil(extraction);
+  } catch (error) {
+    // waitUntil() no-ops safely outside a real Vercel invocation — see the
+    // upload path above for the full reasoning.
+  }
+
+  return response.status(200).json({ ok: true, fileId });
+}
+
 async function extractInBackground(fileRef, { filename, url, mimeType }) {
   try {
     // Defense in depth: extractInBackground is only ever invoked right after
@@ -243,10 +349,13 @@ async function extractInBackground(fileRef, { filename, url, mimeType }) {
     const base64 = buffer.toString("base64");
 
     const result = await extractMaterialText({ filename, contentType: mimeType || "", base64 });
+    const knowledge = buildProjectKnowledgeIndex(result.text || "");
     await fileRef.update({
       extractionStatus: result.text ? "done" : "error",
       extractedText: result.text || null,
       extractionWarnings: result.warnings || [],
+      ...knowledge,
+      knowledgeUpdatedAt: new Date().toISOString(),
     });
   } catch (error) {
     // Covers both a non-OK download response (thrown above) and fetch()
@@ -255,6 +364,11 @@ async function extractInBackground(fileRef, { filename, url, mimeType }) {
     await fileRef.update({
       extractionStatus: "error",
       extractionWarnings: [String(error.message || error)],
+      knowledgeVersion: PROJECT_KNOWLEDGE_VERSION,
+      knowledgeStatus: "error",
+      knowledgeCharCount: 0,
+      knowledgeChunks: [],
+      knowledgeUpdatedAt: new Date().toISOString(),
     });
   }
 }

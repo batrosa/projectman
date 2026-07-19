@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 // Чат с ИИ-агентом — тот же серверный протокол, что web: обычные ответы,
 // карточка создания задач и карточка удаления с подтверждением кнопкой.
@@ -11,6 +12,7 @@ struct AgentChatView: View {
     @State private var input = ""
     @State private var isSending = false
     @State private var targetProject: Project?
+    @State private var sessionGeneration = UUID()
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -46,6 +48,9 @@ struct AgentChatView: View {
                     }
                 }
             }
+        }
+        .onChange(of: appState.user?.organizationId) {
+            resetConversationForOrganizationChange()
         }
     }
 
@@ -117,9 +122,7 @@ struct AgentChatView: View {
                 .padding(.trailing, 12)
                 .transition(.scale(scale: 0.95, anchor: .bottomTrailing).combined(with: .opacity))
         case .assistant(_, let text):
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(Theme.textPrimary)
+            AgentMarkdownView(text: text)
                 .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
@@ -151,6 +154,11 @@ struct AgentChatView: View {
             .padding(.horizontal, 12)
         case .deleteProposal(_, let proposal):
             AgentDeleteProposalCard(proposal: proposal) { resultText in
+                appendAssistant(resultText)
+            }
+            .padding(.horizontal, 12)
+        case .actionProposal(_, let proposal):
+            AgentActionProposalCard(proposal: proposal) { resultText in
                 appendAssistant(resultText)
             }
             .padding(.horizontal, 12)
@@ -199,11 +207,14 @@ struct AgentChatView: View {
         inputFocused = false
         entries.append(.user(id: UUID(), text: message))
         let historyForRequest = history
+        let requestGeneration = sessionGeneration
         history.append(["role": "user", "content": message])
         isSending = true
 
         Task {
-            defer { isSending = false }
+            defer {
+                if requestGeneration == sessionGeneration { isSending = false }
+            }
             do {
                 let reply = try await ApiClient.agentChat(
                     message: message,
@@ -211,7 +222,15 @@ struct AgentChatView: View {
                     projectId: targetProject?.id ?? "",
                     projectName: targetProject?.name ?? ""
                 )
-                if let proposal = reply.createProposal {
+                guard requestGeneration == sessionGeneration else { return }
+                if let navigation = reply.navigation {
+                    performNavigation(navigation)
+                    appendAssistant(reply.answer ?? "Раздел открыт.")
+                } else if let proposal = reply.actionProposal {
+                    entries.append(.actionProposal(id: UUID(), proposal: proposal))
+                    history.append(["role": "assistant",
+                                    "content": "Подготовлено действие: \(proposal.title). Ожидается подтверждение."])
+                } else if let proposal = reply.createProposal {
                     entries.append(.createProposal(id: UUID(), proposal: proposal))
                     let ok = proposal.tasks.filter(\.ok).count
                     history.append(["role": "assistant",
@@ -226,10 +245,21 @@ struct AgentChatView: View {
                 }
                 trimHistory()
             } catch {
+                guard requestGeneration == sessionGeneration else { return }
                 entries.append(.error(id: UUID(),
                                       text: (error as? ApiError)?.errorDescription ?? "Ошибка сети. Попробуйте ещё раз."))
             }
         }
+    }
+
+    private func resetConversationForOrganizationChange() {
+        sessionGeneration = UUID()
+        entries.removeAll()
+        history.removeAll()
+        targetProject = nil
+        input = ""
+        isSending = false
+        inputFocused = false
     }
 
     private func appendAssistant(_ text: String) {
@@ -241,6 +271,264 @@ struct AgentChatView: View {
     private func trimHistory() {
         if history.count > 12 { history.removeFirst(history.count - 12) }
     }
+
+    private func performNavigation(_ navigation: AgentNavigation) {
+        NotificationCenter.default.post(
+            name: .hmAgentNavigate,
+            object: nil,
+            userInfo: [
+                "target": navigation.target,
+                "projectId": navigation.projectId ?? "",
+                "taskId": navigation.taskId ?? "",
+            ]
+        )
+    }
+}
+
+private struct AgentMarkdownView: View {
+    let text: String
+
+    private var blocks: [AgentMarkdownBlock] {
+        parseAgentMarkdown(DateFormatter.displayIsoDays(in: text))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(blocks) { block in
+                switch block.kind {
+                case .paragraph(let lines):
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            AgentInlineMarkdownText(line)
+                        }
+                    }
+                case .heading(let value):
+                    AgentInlineMarkdownText(value)
+                        .font(.headline.weight(.semibold))
+                        .padding(.top, 2)
+                case .list(let ordered, let items):
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(ordered ? "\(index + 1)." : "•")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .frame(width: ordered ? 24 : 12, alignment: .trailing)
+                                AgentInlineMarkdownText(item)
+                            }
+                        }
+                    }
+                case .code(let value):
+                    Text(value)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.background.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                case .table(let header, let rows):
+                    AgentMarkdownTable(header: header, rows: rows)
+                }
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(Theme.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct AgentInlineMarkdownText: View {
+    let raw: String
+
+    init(_ raw: String) {
+        self.raw = raw
+    }
+
+    var body: some View {
+        if let attributed = try? AttributedString(
+            markdown: raw,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            Text(attributed)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text(stripInlineMarkdown(raw))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct AgentMarkdownTable: View {
+    let header: [String]
+    let rows: [[String]]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
+                        AgentInlineMarkdownText(cell)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(minWidth: 120, alignment: .leading)
+                            .background(Theme.primary.opacity(0.12))
+                    }
+                }
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(0..<max(header.count, row.count), id: \.self) { index in
+                            AgentInlineMarkdownText(index < row.count ? row[index] : "")
+                                .font(.caption)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .frame(minWidth: 120, alignment: .leading)
+                                .background(Theme.background.opacity(0.35))
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Theme.hairline, lineWidth: 1)
+            )
+        }
+    }
+}
+
+private struct AgentMarkdownBlock: Identifiable {
+    let id = UUID()
+    let kind: Kind
+
+    enum Kind {
+        case paragraph([String])
+        case heading(String)
+        case list(ordered: Bool, items: [String])
+        case code(String)
+        case table(header: [String], rows: [[String]])
+    }
+}
+
+private func parseAgentMarkdown(_ text: String) -> [AgentMarkdownBlock] {
+    let lines = text.replacingOccurrences(of: "\r\n", with: "\n")
+        .components(separatedBy: "\n")
+    var blocks: [AgentMarkdownBlock] = []
+    var index = 0
+
+    while index < lines.count {
+        let line = lines[index]
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+        if trimmed.isEmpty {
+            index += 1
+            continue
+        }
+
+        if trimmed.hasPrefix("```") {
+            index += 1
+            var code: [String] = []
+            while index < lines.count && !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                code.append(lines[index])
+                index += 1
+            }
+            if index < lines.count { index += 1 }
+            blocks.append(.init(kind: .code(code.joined(separator: "\n"))))
+            continue
+        }
+
+        if line.contains("|"), index + 1 < lines.count, isMarkdownTableSeparator(lines[index + 1]) {
+            let header = splitMarkdownTableRow(line)
+            index += 2
+            var rows: [[String]] = []
+            while index < lines.count && lines[index].contains("|") && !lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
+                rows.append(splitMarkdownTableRow(lines[index]))
+                index += 1
+            }
+            blocks.append(.init(kind: .table(header: header, rows: rows)))
+            continue
+        }
+
+        if let heading = markdownHeading(line) {
+            blocks.append(.init(kind: .heading(heading)))
+            index += 1
+            continue
+        }
+
+        if isMarkdownListItem(line) {
+            let ordered = isOrderedMarkdownListItem(line)
+            var items: [String] = []
+            while index < lines.count, isMarkdownListItem(lines[index]), isOrderedMarkdownListItem(lines[index]) == ordered {
+                items.append(stripMarkdownListMarker(lines[index]))
+                index += 1
+            }
+            blocks.append(.init(kind: .list(ordered: ordered, items: items)))
+            continue
+        }
+
+        var paragraph: [String] = []
+        while index < lines.count {
+            let current = lines[index]
+            let currentTrimmed = current.trimmingCharacters(in: .whitespaces)
+            if currentTrimmed.isEmpty || isMarkdownBlockStart(lines, index) { break }
+            paragraph.append(current)
+            index += 1
+        }
+        if !paragraph.isEmpty {
+            blocks.append(.init(kind: .paragraph(paragraph)))
+        } else {
+            index += 1
+        }
+    }
+
+    return blocks.isEmpty ? [.init(kind: .paragraph([text]))] : blocks
+}
+
+private func isMarkdownBlockStart(_ lines: [String], _ index: Int) -> Bool {
+    let line = lines[index]
+    return line.trimmingCharacters(in: .whitespaces).hasPrefix("```")
+        || markdownHeading(line) != nil
+        || isMarkdownListItem(line)
+        || (line.contains("|") && index + 1 < lines.count && isMarkdownTableSeparator(lines[index + 1]))
+}
+
+private func markdownHeading(_ line: String) -> String? {
+    guard let range = line.range(of: #"^\s*#{1,6}\s+(.+)$"#, options: .regularExpression) else { return nil }
+    let matched = String(line[range])
+    return matched.replacingOccurrences(of: #"^\s*#{1,6}\s+"#, with: "", options: .regularExpression)
+}
+
+private func isMarkdownListItem(_ line: String) -> Bool {
+    line.range(of: #"^\s*([-*•]|\d+[.)])\s+\S"#, options: .regularExpression) != nil
+}
+
+private func isOrderedMarkdownListItem(_ line: String) -> Bool {
+    line.range(of: #"^\s*\d+[.)]\s+\S"#, options: .regularExpression) != nil
+}
+
+private func stripMarkdownListMarker(_ line: String) -> String {
+    line.replacingOccurrences(of: #"^\s*([-*•]|\d+[.)])\s+"#, with: "", options: .regularExpression)
+}
+
+private func isMarkdownTableSeparator(_ line: String) -> Bool {
+    line.range(of: #"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$"#, options: .regularExpression) != nil
+        || line.range(of: #"^\s*\|\s*:?-{2,}:?\s*\|\s*$"#, options: .regularExpression) != nil
+}
+
+private func splitMarkdownTableRow(_ line: String) -> [String] {
+    var value = line.trimmingCharacters(in: .whitespaces)
+    if value.hasPrefix("|") { value.removeFirst() }
+    if value.hasSuffix("|") { value.removeLast() }
+    return value.split(separator: "|", omittingEmptySubsequences: false)
+        .map { String($0).trimmingCharacters(in: .whitespaces) }
+}
+
+private func stripInlineMarkdown(_ value: String) -> String {
+    value
+        .replacingOccurrences(of: #"\*\*([^*]+)\*\*"#, with: "$1", options: .regularExpression)
+        .replacingOccurrences(of: #"__([^_]+)__"#, with: "$1", options: .regularExpression)
+        .replacingOccurrences(of: #"`([^`]+)`"#, with: "$1", options: .regularExpression)
+        .replacingOccurrences(of: #"\*([^*\n]+)\*"#, with: "$1", options: .regularExpression)
+        .replacingOccurrences(of: #"_([^_\n]+)_"#, with: "$1", options: .regularExpression)
 }
 
 // Анимированный индикатор «агент печатает» — три пульсирующие точки
@@ -351,7 +639,15 @@ struct AgentCreateProposalCard: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(task.deadline ?? "без срока") · \(task.assigneeDisplay)"
+                if !task.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(task.description)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 2)
+                }
+                Text((proposal.multiProject ? "\(task.projectName ?? "проект") · " : "")
+                     + "\(DateFormatter.displayDay(task.deadline)) · \(task.assigneeDisplay)"
                      + (task.ok ? "" : " · \(task.reason ?? "не будет создана")"))
                     .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
@@ -371,7 +667,10 @@ struct AgentCreateProposalCard: View {
             do {
                 let created = try await ApiClient.agentCreateTasks(proposal: proposal)
                 done = true
-                onResult("✅ Создано задач: \(created). Проект «\(proposal.projectName)», раздел «Назначенные».")
+                let scope = proposal.multiProject
+                    ? "Распределены по доступным проектам"
+                    : "Проект «\(proposal.projectName)»"
+                onResult("✅ Создано задач: \(created). \(scope), раздел «Назначенные».")
             } catch {
                 errorText = (error as? ApiError)?.errorDescription ?? "Не удалось создать задачи"
             }
@@ -419,7 +718,7 @@ struct AgentDeleteProposalCard: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Theme.textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text("\(task.statusLabel ?? "") · \(task.deadline ?? "без срока") · \(task.assigneeDisplay)")
+                            Text("\(task.statusLabel ?? "") · \(DateFormatter.displayDay(task.deadline)) · \(task.assigneeDisplay)")
                                 .font(.caption2)
                                 .foregroundStyle(Theme.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -478,6 +777,76 @@ struct AgentDeleteProposalCard: View {
                 onResult("🗑️ Удалено задач: \(deleted). Проект «\(proposal.projectName)».")
             } catch {
                 errorText = (error as? ApiError)?.errorDescription ?? "Не удалось удалить задачи"
+            }
+        }
+    }
+}
+
+struct AgentActionProposalCard: View {
+    let proposal: AgentActionProposal
+    let onResult: (String) -> Void
+    @State private var isBusy = false
+    @State private var done = false
+    @State private var errorText: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 9) {
+                Image(systemName: proposal.destructive ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                    .foregroundStyle(proposal.destructive ? Theme.danger : Theme.primary)
+                Text(proposal.title)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            Text(DateFormatter.displayIsoDays(in: proposal.summary))
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !done {
+                Button {
+                    confirm()
+                } label: {
+                    if isBusy {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text(proposal.confirmLabel)
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle(tint: proposal.destructive ? Theme.danger : Theme.primary))
+                .disabled(isBusy)
+            } else {
+                Label("Действие выполнено", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.statusDone)
+            }
+
+            if let errorText {
+                Text(errorText)
+                    .font(.caption)
+                    .foregroundStyle(Theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke((proposal.destructive ? Theme.danger : Theme.primary).opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func confirm() {
+        isBusy = true
+        errorText = nil
+        Task {
+            defer { isBusy = false }
+            do {
+                let result = try await ApiClient.executeAgentAction(proposal)
+                done = true
+                onResult("✅ \(result)")
+            } catch {
+                errorText = (error as? ApiError)?.errorDescription ?? "Не удалось выполнить действие"
             }
         }
     }

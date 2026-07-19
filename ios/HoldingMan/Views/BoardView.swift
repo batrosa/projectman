@@ -92,13 +92,14 @@ struct BoardView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    ForEach(tasks) { task in
+                    ForEach(tasks, id: \.statusRenderId) { task in
                         NavigationLink {
                             TaskDetailView(task: task, project: project)
                                 .environmentObject(tasksStore)
                         } label: {
                             TaskCardView(task: task)
                         }
+                        .id(task.statusRenderId)
                         .buttonStyle(PressableStyle())
                     }
                 }
@@ -125,6 +126,12 @@ struct BoardView: View {
         case .review: return "Задачи, отправленные на проверку, появятся здесь."
         case .done: return "Принятые задачи попадают в архив «Готово»."
         }
+    }
+}
+
+private extension TaskItem {
+    var statusRenderId: String {
+        "\(id)-\(status)-\(subStatus ?? "none")-\(assigneeCompleted)"
     }
 }
 

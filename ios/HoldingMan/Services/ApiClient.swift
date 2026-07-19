@@ -52,6 +52,20 @@ struct ApiClient {
 
     // ===== Организации (api/org — те же действия, что в web callOrgApi) =====
 
+    // Создаёт/обновляет users/{Firebase UID} после любого способа входа.
+    // Сервер не перезаписывает организацию, роль и подтверждённое имя.
+    static func bootstrapAuthProfile() async throws {
+        _ = try await post("api/org", body: ["action": "bootstrapAuth"])
+    }
+
+    static func completeAuthProfile(firstName: String, lastName: String) async throws {
+        _ = try await post("api/org", body: [
+            "action": "completeProfile",
+            "firstName": firstName,
+            "lastName": lastName,
+        ])
+    }
+
     static func listOrganizations() async throws -> [Organization] {
         let json = try await post("api/org", body: ["action": "list"])
         let raw = json["organizations"] as? [[String: Any]] ?? []
@@ -152,6 +166,8 @@ struct ApiClient {
         var answer: String?
         var createProposal: AgentTaskProposal?
         var deleteProposal: AgentDeleteProposal?
+        var navigation: AgentNavigation?
+        var actionProposal: AgentActionProposal?
     }
 
     static func agentChat(message: String, history: [[String: String]], projectId: String, projectName: String) async throws -> AgentReply {
@@ -161,12 +177,19 @@ struct ApiClient {
             "history": history,
             "projectId": projectId,
             "projectName": projectName,
+            "clientPlatform": "ios",
             "clientToday": today,
         ])
         guard json["ok"] as? Bool == true else {
             throw ApiError.server(json["error"] as? String ?? "Агент не ответил, попробуйте ещё раз.")
         }
         var reply = AgentReply()
+        if let dict = json["navigation"] as? [String: Any] {
+            reply.navigation = AgentNavigation.from(dict)
+        }
+        if let dict = json["actionProposal"] as? [String: Any] {
+            reply.actionProposal = AgentActionProposal.from(dict)
+        }
         if let dict = json["taskProposal"] as? [String: Any] {
             reply.createProposal = AgentTaskProposal.from(dict)
         } else if let dict = json["deleteProposal"] as? [String: Any] {
@@ -182,13 +205,16 @@ struct ApiClient {
         let okTasks = proposal.tasks.filter(\.ok)
         let json = try await post("api/agent-chat", body: [
             "action": "create_tasks",
+            "proposalId": proposal.proposalId ?? "",
             "projectId": proposal.projectId,
             "file": proposal.source == "text" ? "" : (proposal.file ?? ""),
             "tasks": okTasks.map { t in
                 [
                     "title": t.title,
+                    "description": t.description,
                     "deadline": t.deadline as Any,
                     "assigneeUid": t.assigneeUid as Any,
+                    "projectId": t.projectId as Any,
                 ] as [String: Any]
             },
         ])
@@ -203,6 +229,7 @@ struct ApiClient {
         let ids = proposal.tasks.compactMap(\.taskId)
         let json = try await post("api/agent-chat", body: [
             "action": "delete_tasks",
+            "proposalId": proposal.proposalId ?? "",
             "projectId": proposal.projectId,
             "taskIds": ids,
         ])
@@ -212,14 +239,56 @@ struct ApiClient {
         return deleted
     }
 
+    static func executeAgentAction(_ proposal: AgentActionProposal) async throws -> String {
+        let json = try await post("api/agent-chat", body: [
+            "action": "execute_agent_action",
+            "proposalId": proposal.proposalId ?? "",
+            "agentAction": proposal.action,
+            "payload": proposal.payload,
+        ])
+        guard json["ok"] as? Bool == true else {
+            throw ApiError.server(json["error"] as? String ?? "Не удалось выполнить действие")
+        }
+        return json["result"] as? String ?? "Действие выполнено."
+    }
+
     static func deleteAgentNotification(id: String) async throws {
         _ = try await post("api/agent-chat", body: ["action": "delete_notification", "id": id])
+    }
+
+    static func deleteAgentNotifications(ids: [String]) async throws {
+        let json = try await post("api/agent-chat", body: [
+            "action": "delete_notifications",
+            "ids": ids,
+        ])
+        guard json["ok"] as? Bool == true else {
+            throw ApiError.server(json["error"] as? String ?? "Не удалось удалить уведомления")
+        }
     }
 
     // XP начисляет сервер при принятии задачи в «Готово» (транзакционно,
     // идемпотентно) — тот же вызов, что в web updateTaskSubStatus('done').
     static func awardXp(taskId: String) async throws {
         _ = try await post("api/award-xp", body: ["taskId": taskId])
+    }
+
+    static func requestDeadlineChange(taskId: String, requestedDeadline: String, comment: String) async throws {
+        _ = try await post("api/notify-telegram", body: [
+            "operation": "deadline",
+            "action": "request",
+            "taskId": taskId,
+            "requestedDeadline": requestedDeadline,
+            "comment": comment,
+        ])
+    }
+
+    static func decideDeadlineChange(requestId: String, approve: Bool) async throws {
+        _ = try await post("api/notify-telegram", body: [
+            "operation": "deadline",
+            "action": "decide",
+            "requestId": requestId,
+            "decision": approve ? "approve" : "reject",
+        ])
     }
 
     // Событие задачи участнику ПО UID: сервер (api/notify-telegram) доставит

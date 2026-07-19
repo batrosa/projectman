@@ -196,7 +196,7 @@ section{padding:clamp(70px,10vw,120px) 0}
 .plat-card .soon{color:var(--review);font-weight:600}
 
 /* тарифы */
-.pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+.pricing{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;align-items:stretch}
 .price{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
   padding:32px 28px;display:flex;flex-direction:column;transition:transform .3s,border-color .3s}
 .price:hover{transform:translateY(-6px)}
@@ -301,7 +301,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 40px}
           <div class="card a"><div class="t">Заключить договор с подрядчиком</div><div class="m">21.07</div></div>
         </div>
         <div class="col">
-          <div class="col-h"><span class="pill" style="background:var(--progress)"></span>В процессе<span class="cnt">1</span></div>
+          <div class="col-h"><span class="pill" style="background:var(--progress)"></span>В работе<span class="cnt">1</span></div>
           <div class="card p"><div class="t">Закупка материалов</div><div class="m"><span class="av">ИП</span>И. Петров · 10.07</div></div>
         </div>
         <div class="col">
@@ -451,7 +451,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 40px}
     </div>
     <div class="pricing">
       <div class="price reveal">
-        <h3>Старт</h3>
+        <h3>Бесплатный</h3>
         <p class="desc">Для небольшой команды и первых проектов.</p>
         <div class="amount">0 ₽</div>
         <div class="per">навсегда</div>
@@ -459,35 +459,49 @@ footer{border-top:1px solid var(--line);padding:44px 0 40px}
           <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>До 5 пользователей</li>
           <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Проекты, задачи, канбан</li>
           <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Уведомления и Мои задачи</li>
-          <li class="off"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>Гант и ИИ-агент</li>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Диаграмма Ганта</li>
+          <li class="off"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>Без ИИ-агента</li>
         </ul>
         <a href="https://projectmanteko.vercel.app" class="btn btn-ghost">Начать бесплатно</a>
       </div>
       <div class="price hot reveal">
         <h3>Команда</h3>
-        <p class="desc">Полный контроль исполнения и ИИ-агент.</p>
-        <div class="amount">390 ₽</div>
-        <div class="per">за пользователя в месяц</div>
+        <p class="desc">Для растущей команды с единым контуром проектов.</p>
+        <div class="amount">4 990 ₽</div>
+        <div class="per">за организацию в месяц</div>
         <ul>
-          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Всё из «Старт»</li>
-          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Диаграмма Ганта</li>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>До 50 пользователей</li>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Все функции бесплатного тарифа</li>
           <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>ИИ-агент и файлы-база знаний</li>
           <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Роли, доступы, Telegram и push</li>
         </ul>
-        <a href="https://projectmanteko.vercel.app" class="btn btn-primary">Попробовать 14 дней</a>
+        <a href="mailto:hello@holdingman.ru?subject=Тариф%20Команда" class="btn btn-primary">Оставить заявку</a>
       </div>
       <div class="price reveal">
-        <h3>Холдинг</h3>
-        <p class="desc">Для группы компаний и крупных команд.</p>
-        <div class="amount">Инд.</div>
-        <div class="per">по запросу</div>
+        <h3>Бизнес</h3>
+        <p class="desc">Для крупных команд и нескольких направлений.</p>
+        <div class="amount">9 990 ₽</div>
+        <div class="per">за организацию в месяц</div>
         <ul>
           <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Всё из «Команда»</li>
-          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Несколько организаций</li>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>До 100 пользователей</li>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>ИИ-агент и база знаний</li>
           <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Приоритетная поддержка</li>
-          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Интеграция с 1С <span style="color:var(--review)">(скоро)</span></li>
         </ul>
-        <a href="mailto:hello@holdingman.ru" class="btn btn-ghost">Оставить заявку</a>
+        <a href="mailto:hello@holdingman.ru?subject=Тариф%20Бизнес" class="btn btn-ghost">Оставить заявку</a>
+      </div>
+      <div class="price reveal">
+        <h3>100+</h3>
+        <p class="desc">Индивидуальная конфигурация для холдинга.</p>
+        <div class="amount">Инд.</div>
+        <div class="per">тариф в разработке</div>
+        <ul>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Более 100 пользователей</li>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Индивидуальные лимиты и SLA</li>
+          <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Приоритетное сопровождение</li>
+          <li class="off"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>Пока недоступен для подключения</li>
+        </ul>
+        <a href="mailto:hello@holdingman.ru?subject=Тариф%20100%2B" class="btn btn-ghost">Обсудить условия</a>
       </div>
     </div>
   </div>

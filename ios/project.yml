@@ -10,6 +10,9 @@ packages:
     url: https://github.com/firebase/firebase-ios-sdk
     minVersion: 11.0.0
     maxVersion: 99.0.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 9.0.0
 
 targets:
   HoldingMan:
@@ -17,6 +20,23 @@ targets:
     platform: iOS
     sources:
       - path: HoldingMan
+    info:
+      path: HoldingMan/Info.plist
+      properties:
+        CFBundleDisplayName: HoldingMan
+        CFBundleDevelopmentRegion: ru
+        CFBundleLocalizations:
+          - ru
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationQueriesSchemes:
+          - tg
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: Google
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.52414300696-bh3sjm6mq4f2uc3jm5ojpefchmj2ad60
+        UILaunchScreen: {}
     dependencies:
       - package: Firebase
         product: FirebaseAuth
@@ -24,18 +44,15 @@ targets:
         product: FirebaseFirestore
       - package: Firebase
         product: FirebaseMessaging
+      - package: GoogleSignIn
+        product: GoogleSignIn
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.holdingman.ios
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        CURRENT_PROJECT_VERSION: "3"
         SWIFT_VERSION: "5.0"
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_CFBundleDisplayName: HoldingMan
-        # Telegram-бот открывается внешней ссылкой (tg:// или https://t.me)
-        INFOPLIST_KEY_LSApplicationQueriesSchemes: tg
         TARGETED_DEVICE_FAMILY: "1"
-        GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: CKVAJS5NS2

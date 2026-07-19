@@ -12,6 +12,8 @@ struct TaskRoute: Identifiable {
 
 extension Notification.Name {
     static let hmOpenTask = Notification.Name("hmOpenTask")
+    static let hmAgentNavigate = Notification.Name("hmAgentNavigate")
+    static let hmAgentOpenProject = Notification.Name("hmAgentOpenProject")
 }
 
 struct TaskRouteLoaderView: View {

@@ -8,7 +8,12 @@ struct MainTabView: View {
     @StateObject private var orgUsersStore = OrgUsersStore()
     @State private var selectedTab: String
     @State private var pushRoute: TaskRoute?
+    @State private var showAgentTeam = false
     @Environment(\.scenePhase) private var scenePhase
+
+    private var assignedMyTasksCount: Int {
+        myTasksStore.tasks.filter { $0.boardStatus == .assigned }.count
+    }
 
     init(initialTab: String = "projects") {
         _selectedTab = State(initialValue: initialTab)
@@ -22,6 +27,7 @@ struct MainTabView: View {
 
             MyTasksView()
                 .tabItem { Label("Мои задачи", systemImage: "checklist") }
+                .badge(assignedMyTasksCount)
                 .tag("mytasks")
 
             AgentChatView()
@@ -57,9 +63,42 @@ struct MainTabView: View {
                   let projectId = note.userInfo?["projectId"] as? String else { return }
             pushRoute = TaskRoute(taskId: taskId, projectId: projectId)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .hmAgentNavigate)) { note in
+            guard let target = note.userInfo?["target"] as? String else { return }
+            let projectId = note.userInfo?["projectId"] as? String ?? ""
+            let taskId = note.userInfo?["taskId"] as? String ?? ""
+            switch target {
+            case "my_tasks": selectedTab = "mytasks"
+            case "notifications": selectedTab = "notifications"
+            case "team": showAgentTeam = true
+            case "profile", "calendar": selectedTab = "settings"
+            case "task":
+                selectedTab = "projects"
+                if !projectId.isEmpty, !taskId.isEmpty {
+                    pushRoute = TaskRoute(taskId: taskId, projectId: projectId)
+                }
+            case "project":
+                selectedTab = "projects"
+                if !projectId.isEmpty {
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(
+                            name: .hmAgentOpenProject,
+                            object: nil,
+                            userInfo: ["projectId": projectId]
+                        )
+                    }
+                }
+            default: selectedTab = "projects"
+            }
+        }
         .sheet(item: $pushRoute) { route in
             TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId)
                 .environmentObject(appState)
+        }
+        .sheet(isPresented: $showAgentTeam) {
+            TeamView()
+                .environmentObject(appState)
+                .environmentObject(orgUsersStore)
         }
     }
 

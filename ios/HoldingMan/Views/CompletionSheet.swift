@@ -44,11 +44,13 @@ struct CompletionSheet: View {
                                 .lineLimit(1)
                             Spacer()
                             Button {
+                                guard !isUploading, !isSubmitting else { return }
                                 proofs.removeAll { $0.id == proof.id }
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(Theme.textSecondary)
                             }
+                            .disabled(isUploading || isSubmitting)
                         }
                         .listRowBackground(Theme.surface)
                     }
@@ -70,6 +72,7 @@ struct CompletionSheet: View {
                         .listRowBackground(Theme.surface)
 
                         Button {
+                            guard !isUploading, !isSubmitting else { return }
                             showFileImporter = true
                         } label: {
                             Label("Файл (PDF, документ…)", systemImage: "paperclip")
@@ -92,6 +95,7 @@ struct CompletionSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Отмена") { dismiss() }
+                        .disabled(isUploading || isSubmitting)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSubmitting {
@@ -118,11 +122,13 @@ struct CompletionSheet: View {
                     uploadFile(at: url)
                 }
             }
+            .interactiveDismissDisabled(isUploading || isSubmitting)
         }
     }
 
     private func uploadPickedPhoto() {
-        guard let item = photoItem else { return }
+        guard !isUploading, !isSubmitting, proofs.count < maxProofs,
+              let item = photoItem else { return }
         photoItem = nil
         isUploading = true
         errorMessage = nil
@@ -143,6 +149,7 @@ struct CompletionSheet: View {
     }
 
     private func uploadFile(at url: URL) {
+        guard !isUploading, !isSubmitting, proofs.count < maxProofs else { return }
         isUploading = true
         errorMessage = nil
         Task {
@@ -160,13 +167,15 @@ struct CompletionSheet: View {
     }
 
     private func submit() {
+        let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isSubmitting, !isUploading, !trimmed.isEmpty, !proofs.isEmpty else { return }
         commentFocused = false
         isSubmitting = true
         errorMessage = nil
         Task {
             defer { isSubmitting = false }
             do {
-                try await onSubmit(comment.trimmingCharacters(in: .whitespacesAndNewlines), proofs)
+                try await onSubmit(trimmed, proofs)
                 dismiss()
                 onFinished()
             } catch {

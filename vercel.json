@@ -12,10 +12,13 @@
     },
     "api/agent-monitor.js": {
       "maxDuration": 60
+    },
+    "api/notify-telegram.js": {
+      "maxDuration": 30
     }
   },
   "crons": [
-    { "path": "/api/agent-monitor", "schedule": "0 6 * * *" }
+    { "path": "/api/agent-monitor", "schedule": "0 15 * * *" }
   ],
   "headers": [
     {

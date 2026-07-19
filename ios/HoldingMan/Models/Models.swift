@@ -14,7 +14,7 @@ enum BoardStatus: String, CaseIterable, Identifiable {
     var titleRu: String {
         switch self {
         case .assigned: return "Назначенные"
-        case .inProgress: return "В процессе"
+        case .inProgress: return "В работе"
         case .review: return "На проверке"
         case .done: return "Готово"
         }
@@ -35,8 +35,10 @@ struct UserDoc {
     var email: String
     var firstName: String
     var lastName: String
+    var authProvider: String
+    var profileCompleted: Bool
     var organizationId: String?
-    var orgRole: String // owner / admin / moderator / employee / reader
+    var orgRole: String // owner / admin / moderator / employee
     var allowedProjects: [String]
     var level: Int
     var totalXP: Int
@@ -70,8 +72,24 @@ struct UserDoc {
         case "owner": return "Владелец"
         case "admin": return "Администратор"
         case "moderator": return "Модератор"
-        case "reader": return "Наблюдатель"
         default: return "Исполнитель"
+        }
+    }
+
+    var authProviderTitle: String {
+        switch authProvider {
+        case "apple.com": return "Apple"
+        case "google.com": return "Google"
+        case "telegram": return "Telegram"
+        default: return "HoldingMan"
+        }
+    }
+
+    var authProviderIcon: String {
+        switch authProvider {
+        case "apple.com": return "apple.logo"
+        case "telegram": return "paperplane.fill"
+        default: return "person.crop.circle.badge.checkmark"
         }
     }
 
@@ -81,6 +99,8 @@ struct UserDoc {
             email: data["email"] as? String ?? "",
             firstName: data["firstName"] as? String ?? "",
             lastName: data["lastName"] as? String ?? "",
+            authProvider: data["authProvider"] as? String ?? "",
+            profileCompleted: data["profileCompleted"] as? Bool ?? false,
             organizationId: data["organizationId"] as? String,
             orgRole: data["orgRole"] as? String ?? "employee",
             allowedProjects: data["allowedProjects"] as? [String] ?? [],
@@ -114,6 +134,31 @@ struct Project: Identifiable, Equatable {
     }
 }
 
+struct DeadlineChangeRequest: Equatable {
+    var id: String
+    var currentDeadline: String
+    var requestedDeadline: String
+    var comment: String
+    var requestedByUid: String
+    var requestedByName: String
+    var createdByUid: String
+
+    static func from(_ data: [String: Any]?) -> DeadlineChangeRequest? {
+        guard let data,
+              let id = data["id"] as? String, !id.isEmpty,
+              let requestedDeadline = data["requestedDeadline"] as? String else { return nil }
+        return DeadlineChangeRequest(
+            id: id,
+            currentDeadline: data["currentDeadline"] as? String ?? "",
+            requestedDeadline: requestedDeadline,
+            comment: data["comment"] as? String ?? "",
+            requestedByUid: data["requestedByUid"] as? String ?? "",
+            requestedByName: data["requestedByName"] as? String ?? "Исполнитель",
+            createdByUid: data["createdByUid"] as? String ?? ""
+        )
+    }
+}
+
 struct TaskItem: Identifiable, Equatable {
     var id: String
     var projectId: String
@@ -132,6 +177,7 @@ struct TaskItem: Identifiable, Equatable {
     var revisionReason: String?
     var attachments: [FileRef]
     var completionProofs: [FileRef]
+    var deadlineChangeRequest: DeadlineChangeRequest? = nil
 
     // Ровно boardViewForTask из web-клиента
     var boardStatus: BoardStatus {
@@ -170,7 +216,8 @@ struct TaskItem: Identifiable, Equatable {
             completionComment: data["completionComment"] as? String,
             revisionReason: data["revisionReason"] as? String,
             attachments: (data["attachments"] as? [[String: Any]] ?? []).compactMap(FileRef.from),
-            completionProofs: (data["completionProofs"] as? [[String: Any]] ?? []).compactMap(FileRef.from)
+            completionProofs: (data["completionProofs"] as? [[String: Any]] ?? []).compactMap(FileRef.from),
+            deadlineChangeRequest: DeadlineChangeRequest.from(data["deadlineChangeRequest"] as? [String: Any])
         )
     }
 }
@@ -244,11 +291,12 @@ enum AgentChatEntry: Identifiable {
     case error(id: UUID, text: String)
     case createProposal(id: UUID, proposal: AgentTaskProposal)
     case deleteProposal(id: UUID, proposal: AgentDeleteProposal)
+    case actionProposal(id: UUID, proposal: AgentActionProposal)
 
     var id: UUID {
         switch self {
         case .user(let id, _), .assistant(let id, _), .error(let id, _),
-             .createProposal(let id, _), .deleteProposal(let id, _):
+             .createProposal(let id, _), .deleteProposal(let id, _), .actionProposal(let id, _):
             return id
         }
     }
@@ -257,7 +305,10 @@ enum AgentChatEntry: Identifiable {
 struct AgentProposalTask: Identifiable {
     var id = UUID()
     var taskId: String?      // для карточки удаления
+    var projectId: String?
+    var projectName: String?
     var title: String
+    var description: String
     var deadline: String?
     var assigneeDisplay: String
     var assigneeUid: String?
@@ -268,7 +319,10 @@ struct AgentProposalTask: Identifiable {
     static func fromCreate(_ dict: [String: Any]) -> AgentProposalTask {
         AgentProposalTask(
             taskId: nil,
+            projectId: dict["projectId"] as? String,
+            projectName: dict["projectName"] as? String,
             title: dict["title"] as? String ?? "",
+            description: dict["description"] as? String ?? "",
             deadline: dict["deadline"] as? String,
             assigneeDisplay: dict["assigneeDisplay"] as? String
                 ?? dict["assigneeName"] as? String ?? "Не назначен",
@@ -282,7 +336,10 @@ struct AgentProposalTask: Identifiable {
     static func fromDelete(_ dict: [String: Any]) -> AgentProposalTask {
         AgentProposalTask(
             taskId: dict["id"] as? String,
+            projectId: dict["projectId"] as? String,
+            projectName: dict["projectName"] as? String,
             title: dict["title"] as? String ?? "",
+            description: "",
             deadline: dict["deadline"] as? String,
             assigneeDisplay: dict["assigneeDisplay"] as? String ?? "Не назначен",
             assigneeUid: nil,
@@ -294,30 +351,35 @@ struct AgentProposalTask: Identifiable {
 }
 
 struct AgentTaskProposal {
+    var proposalId: String?
     var projectId: String
     var projectName: String
     var source: String // "text" | имя файла
     var file: String?
     var truncated: Bool
     var canCreate: Bool
+    var multiProject: Bool
     var tasks: [AgentProposalTask]
 
     static func from(_ dict: [String: Any]) -> AgentTaskProposal? {
         guard let projectId = dict["projectId"] as? String,
               let rawTasks = dict["tasks"] as? [[String: Any]] else { return nil }
         return AgentTaskProposal(
+            proposalId: dict["proposalId"] as? String,
             projectId: projectId,
             projectName: dict["projectName"] as? String ?? "",
             source: dict["source"] as? String ?? "text",
             file: dict["file"] as? String,
             truncated: dict["truncated"] as? Bool ?? false,
             canCreate: dict["canCreate"] as? Bool ?? false,
+            multiProject: dict["multiProject"] as? Bool ?? false,
             tasks: rawTasks.map(AgentProposalTask.fromCreate)
         )
     }
 }
 
 struct AgentDeleteProposal {
+    var proposalId: String?
     var projectId: String
     var projectName: String
     var filterLabel: String
@@ -329,12 +391,52 @@ struct AgentDeleteProposal {
         guard let projectId = dict["projectId"] as? String,
               let rawTasks = dict["tasks"] as? [[String: Any]] else { return nil }
         return AgentDeleteProposal(
+            proposalId: dict["proposalId"] as? String,
             projectId: projectId,
             projectName: dict["projectName"] as? String ?? "",
             filterLabel: dict["filterLabel"] as? String ?? "",
             truncated: dict["truncated"] as? Bool ?? false,
             canDelete: dict["canDelete"] as? Bool ?? false,
             tasks: rawTasks.map(AgentProposalTask.fromDelete)
+        )
+    }
+}
+
+struct AgentNavigation {
+    var target: String
+    var projectId: String?
+    var taskId: String?
+
+    static func from(_ dict: [String: Any]) -> AgentNavigation? {
+        guard let target = dict["target"] as? String, !target.isEmpty else { return nil }
+        return AgentNavigation(
+            target: target,
+            projectId: dict["projectId"] as? String,
+            taskId: dict["taskId"] as? String
+        )
+    }
+}
+
+struct AgentActionProposal {
+    var proposalId: String?
+    var action: String
+    var title: String
+    var summary: String
+    var confirmLabel: String
+    var destructive: Bool
+    var payload: [String: Any]
+
+    static func from(_ dict: [String: Any]) -> AgentActionProposal? {
+        guard let action = dict["action"] as? String,
+              let payload = dict["payload"] as? [String: Any] else { return nil }
+        return AgentActionProposal(
+            proposalId: dict["proposalId"] as? String,
+            action: action,
+            title: dict["title"] as? String ?? "Подтверждение действия",
+            summary: dict["summary"] as? String ?? "",
+            confirmLabel: dict["confirmLabel"] as? String ?? "Подтвердить",
+            destructive: dict["destructive"] as? Bool ?? false,
+            payload: payload
         )
     }
 }
@@ -368,4 +470,25 @@ extension DateFormatter {
         f.locale = Locale(identifier: "ru_RU")
         return f
     }()
+
+    static func displayDay(_ value: String?, fallback: String = "без срока") -> String {
+        guard let value, let date = isoDay.date(from: String(value.prefix(10))) else { return fallback }
+        return dayMonthYear.string(from: date)
+    }
+
+    static func displayIsoDays(in text: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\b(\d{4})-(\d{2})-(\d{2})\b"#) else { return text }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        var result = text
+        for match in regex.matches(in: text, range: range).reversed() {
+            guard match.numberOfRanges == 4,
+                  let whole = Range(match.range(at: 0), in: result),
+                  let year = Range(match.range(at: 1), in: result),
+                  let month = Range(match.range(at: 2), in: result),
+                  let day = Range(match.range(at: 3), in: result) else { continue }
+            let replacement = "\(result[day]).\(result[month]).\(result[year])"
+            result.replaceSubrange(whole, with: replacement)
+        }
+        return result
+    }
 }

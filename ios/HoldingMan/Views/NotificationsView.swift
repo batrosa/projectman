@@ -3,6 +3,9 @@ import SwiftUI
 struct NotificationsView: View {
     @EnvironmentObject private var notificationsStore: NotificationsStore
     @State private var route: TaskRoute?
+    @State private var confirmDeleteAll = false
+    @State private var isDeletingAll = false
+    @State private var deleteError: String?
 
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -34,6 +37,46 @@ struct NotificationsView: View {
             }
             .screenBackground()
             .navigationTitle("Уведомления")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            notificationsStore.markAllRead()
+                        } label: {
+                            Label("Прочитать все", systemImage: "checkmark.circle")
+                        }
+                        .disabled(notificationsStore.unreadCount == 0)
+
+                        Button(role: .destructive) {
+                            confirmDeleteAll = true
+                        } label: {
+                            Label("Удалить все", systemImage: "trash")
+                        }
+                        .disabled(notificationsStore.notifications.isEmpty || isDeletingAll)
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(Theme.primary)
+                    }
+                    .accessibilityLabel("Действия с уведомлениями")
+                }
+            }
+            .confirmationDialog(
+                "Удалить все уведомления? Действие необратимо.",
+                isPresented: $confirmDeleteAll,
+                titleVisibility: .visible
+            ) {
+                Button("Удалить все", role: .destructive) { deleteAllNotifications() }
+                Button("Отмена", role: .cancel) {}
+            }
+            .alert("Не удалось удалить уведомления", isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )) {
+                Button("ОК", role: .cancel) { deleteError = nil }
+            } message: {
+                Text(deleteError ?? "Неизвестная ошибка")
+            }
             .sheet(item: $route) { route in
                 TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId)
             }
@@ -53,7 +96,7 @@ struct NotificationsView: View {
             .frame(width: 38, height: 38)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(note.text)
+                Text(DateFormatter.displayIsoDays(in: note.text))
                     .font(.subheadline)
                     .foregroundStyle(unread ? Theme.textPrimary : Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -104,7 +147,21 @@ struct NotificationsView: View {
         if text.contains("🔄") || text.lowercased().contains("доработ") { return "arrow.uturn.backward.circle.fill" }
         if text.lowercased().contains("просроч") { return "flame.fill" }
         if text.lowercased().contains("дедлайн") || text.lowercased().contains("срок") { return "clock.fill" }
+        if text.lowercased().contains("нет ответственного") { return "person.crop.circle.badge.exclamationmark" }
         if text.lowercased().contains("не взята") || text.lowercased().contains("не взял") { return "exclamationmark.circle.fill" }
         return "bell.fill"
+    }
+
+    private func deleteAllNotifications() {
+        guard !isDeletingAll else { return }
+        isDeletingAll = true
+        Task {
+            defer { isDeletingAll = false }
+            do {
+                try await notificationsStore.deleteAll()
+            } catch {
+                deleteError = error.localizedDescription
+            }
+        }
     }
 }

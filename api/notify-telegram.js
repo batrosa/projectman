@@ -11,6 +11,7 @@ import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 import { sendPushToUser } from "../lib/push-send.js";
+import deadlineChangeHandler from "../lib/deadline-change.js";
 
 // Типы событий задачи → заголовок системного push
 export const TASK_EVENT_TITLES = {
@@ -30,6 +31,12 @@ async function parseJsonBody(request) {
 }
 
 export default async function handler(request, response) {
+    // Reuse this existing serverless function for the deadline workflow so the
+    // Hobby deployment stays within Vercel's function-count limit. The helper
+    // performs its own auth, tenant and permission checks.
+    if (request.query?.operation === 'deadline' || request.body?.operation === 'deadline') {
+        return deadlineChangeHandler(request, response);
+    }
     if (request.method !== 'POST') {
         response.setHeader('Allow', 'POST');
         return response.status(405).json({ error: 'Method not allowed' });

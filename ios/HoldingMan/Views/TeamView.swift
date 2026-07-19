@@ -96,7 +96,6 @@ private struct MemberCardView: View {
         ("admin", "Администратор"),
         ("moderator", "Модератор"),
         ("employee", "Исполнитель"),
-        ("reader", "Наблюдатель"),
     ]
 
     // Зеркало серверных ограничений: владельца не трогаем; админ не управляет
@@ -189,7 +188,6 @@ private struct MemberCardView: View {
             case "owner": return ("Владелец", Theme.warning)
             case "admin": return ("Администратор", Theme.primary)
             case "moderator": return ("Модератор", Color(hex: 0x0EA5E9))
-            case "reader": return ("Наблюдатель", Theme.textSecondary)
             default: return ("Исполнитель", Theme.statusDone)
             }
         }()
