@@ -1869,7 +1869,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.11'; // Clean profile labels and notification task navigation
+    const CURRENT_VERSION = '6.12'; // Task info modal: status + lifecycle buttons
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -4132,6 +4132,46 @@ function openTaskDetailsModal(task) {
         ? assignees.map(name => `<span style="background: rgba(99, 102, 241, 0.1); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem;">${escapeHtml(name)}</span>`).join(' ')
         : '<span style="color: var(--text-secondary);">Не назначены</span>';
 
+    // Текущий статус + кнопки жизненного цикла по ролям (как в iOS):
+    // исполнитель — «Взять в работу»/«Завершить», постановщик (owner/admin/
+    // moderator) — «Принять»/«На доработку». Та же логика, что и в меню
+    // статуса на карточке Канбана.
+    let currentSubStatus = task.subStatus || (task.assigneeCompleted ? 'completed' : 'assigned');
+    if (task.status === 'done') currentSubStatus = 'done';
+    const statusMeta = ({
+        assigned: { label: 'Задача поставлена', icon: 'fa-circle-exclamation', cls: 'status-assigned' },
+        in_work: { label: 'В работе', icon: 'fa-person-digging', cls: 'status-in-work' },
+        completed: { label: 'На проверке', icon: 'fa-check', cls: 'status-completed' },
+        done: { label: 'Готово (Архив)', icon: 'fa-check-double', cls: 'status-completed' }
+    })[currentSubStatus] || { label: 'Задача поставлена', icon: 'fa-circle-exclamation', cls: 'status-assigned' };
+
+    const lifecycleButtons = [];
+    if (currentSubStatus !== 'done') {
+        if (isCurrentUserAssignee(task)) {
+            if (currentSubStatus === 'assigned') {
+                lifecycleButtons.push({ action: 'take', label: 'Взять в работу', icon: 'fa-play', primary: true });
+            } else if (currentSubStatus === 'in_work') {
+                lifecycleButtons.push({ action: 'complete', label: 'Завершить', icon: 'fa-check', primary: true });
+            }
+        }
+        if (canManageTasks() && currentSubStatus === 'completed') {
+            lifecycleButtons.push({ action: 'accept', label: 'Принять', icon: 'fa-check-double', primary: true });
+            lifecycleButtons.push({ action: 'revision', label: 'На доработку', icon: 'fa-rotate-left', primary: false });
+        }
+    }
+    const statusHTML = `
+        <div class="task-details-section">
+            <h3><i class="fa-solid fa-flag"></i> Статус</h3>
+            <div class="task-details-status-row">
+                <div class="status-badge ${statusMeta.cls}" style="cursor: default;"><i class="fa-solid ${statusMeta.icon}"></i> <span>${statusMeta.label}</span></div>
+                ${lifecycleButtons.map((btn) => `
+                    <button type="button" class="${btn.primary ? 'primary-btn' : 'secondary-btn'} task-details-status-btn" data-lifecycle-action="${btn.action}">
+                        <i class="fa-solid ${btn.icon}"></i> ${btn.label}
+                    </button>`).join('')}
+            </div>
+        </div>
+    `;
+
     content.innerHTML = `
         <div class="task-details-section">
             <div class="task-details-title">${escapeHtml(task.title)}</div>
@@ -4147,20 +4187,42 @@ function openTaskDetailsModal(task) {
                 </div>
             </div>
         </div>
-        
+
+        ${statusHTML}
+
         <div class="task-details-section">
             <h3><i class="fa-solid fa-clock-rotate-left"></i> История задачи</h3>
             <div class="task-timeline">
                 ${timelineHTML}
             </div>
         </div>
-        
+
         ${deadlineRequestHTML}
 
         ${revisionHTML}
-        
+
         ${proofHTML}
     `;
+
+    // Кнопки жизненного цикла: закрываем модалку и запускаем тот же поток,
+    // что и меню статуса на карточке (доказательства выполнения / причина
+    // доработки открываются своими модалками).
+    content.querySelectorAll('[data-lifecycle-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const action = button.dataset.lifecycleAction;
+            playClickSound();
+            modal.classList.remove('active');
+            if (action === 'take') {
+                updateTaskSubStatus(task.id, 'in_work');
+            } else if (action === 'complete') {
+                openCompletionProofModal(task.id);
+            } else if (action === 'accept') {
+                updateTaskSubStatus(task.id, 'done');
+            } else if (action === 'revision') {
+                openRevisionReasonModal(task.id);
+            }
+        });
+    });
 
     // Add click handler for proof files (supports multiple)
     const proofFileEls = content.querySelectorAll('.completion-proof-file');
