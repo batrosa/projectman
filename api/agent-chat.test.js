@@ -7,6 +7,7 @@ import {
   evaluateRateLimit,
   formatRecentDialogue,
   isCreateAffirmation,
+  getTextTaskCreationRequest,
   lastAssistantListContent,
   isLikelyTextTaskContinuation,
   isReadOnlyInformationRequest,
@@ -30,6 +31,33 @@ import {
   agentTaskBoardStatus,
   clearOrganizationContextCache,
 } from "./agent-chat.js";
+
+describe("getTextTaskCreationRequest (восстановление «ок» после обещания карточки)", () => {
+  it("«сформируй…» распознаётся как поручение на создание напрямую", () => {
+    const req = getTextTaskCreationRequest("сформируй одну из задач для ответственного указанного в базе знаний", []);
+    expect(req).toMatchObject({ fromHistory: false });
+    expect(req.message).toContain("сформируй");
+  });
+
+  it("«ок» после обещания карточки строит поручение даже при глаголе вне словаря", () => {
+    const history = [
+      { role: "user", content: "подбери одну из задач для ответственного указанного в базе знаний" },
+      { role: "assistant", content: "Я подготовил карточку задачи. Название: «Получить заключение кадастрового инженера». Ответственный: Чахиров Христос. Срок: 15 июля 2026 г. Если всё устраивает, напишите «ок» или «создай», и я покажу карточку предпросмотра." },
+    ];
+    const req = getTextTaskCreationRequest("ок", history);
+    expect(req).toMatchObject({ fromHistory: true });
+    expect(req.message).toContain("подбери одну из задач");
+    expect(req.message).toContain("кадастрового инженера");
+  });
+
+  it("«ок» без предложения карточки от агента поручение не строит", () => {
+    const history = [
+      { role: "user", content: "как дела с проектом?" },
+      { role: "assistant", content: "Все задачи в статусе «Не начато», просроченных нет." },
+    ];
+    expect(getTextTaskCreationRequest("ок", history)).toBe(null);
+  });
+});
 
 describe("isCreateAffirmation + lastAssistantListContent (создание из списка агента)", () => {
   it("короткие команды создания распознаются, болтовня — нет", () => {

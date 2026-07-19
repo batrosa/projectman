@@ -604,7 +604,7 @@ function looksLikeTextTaskCreationRequest(message) {
   const text = normalizeLookup(message);
   if (!text) return false;
   if (isReadOnlyInformationRequest(message)) return false;
-  const createVerb = /(создай|создать|создайте|дай|дать|дайте|поставь|поставить|поставьте|назначь|назначить|назначьте|добавь|добавить|добавьте|заведи|завести|оформи|оформить|поручи|поручить|озадачь|озадачить|озадачьте|загрузи|загрузить|импортируй|импортировать|перенеси|перенести)/u;
+  const createVerb = /(создай|создать|создайте|дай|дать|дайте|поставь|поставить|поставьте|назначь|назначить|назначьте|добавь|добавить|добавьте|заведи|завести|оформи|оформить|поручи|поручить|озадачь|озадачить|озадачьте|загрузи|загрузить|импортируй|импортировать|перенеси|перенести|сформируй|сформировать|сформируйте|сгенерируй|сгенерировать)/u;
   const taskHint = /(задач|поручени|исполнител|ответственн|срок|дедлайн|сегодня|завтра|послезавтра)/u;
   return createVerb.test(text) && taskHint.test(text);
 }
@@ -653,7 +653,7 @@ function lastAssistantListTurn(history) {
   return null;
 }
 
-function getTextTaskCreationRequest(message, history) {
+export function getTextTaskCreationRequest(message, history) {
   if (looksLikeTextTaskCreationRequest(message)) {
     return { message, fromHistory: false };
   }
@@ -694,9 +694,14 @@ function getTextTaskCreationRequest(message, history) {
 }
 
 // Recovery for a legacy/broken prose flow where the model promised a preview
-// (or even drew a text imitation of one) and asked for «ок». We only recover
-// when there is an actual earlier user mutation request; an arbitrary assistant
-// sentence containing «карточка» can never turn a confirmation into creation.
+// (or even drew a text imitation of one) and asked for «ок». The gate is the
+// assistant's own explicit creation offer in the LATEST turn; an arbitrary
+// assistant sentence containing «карточка» can never turn a confirmation into
+// creation. Source instruction: the earlier user mutation request when the
+// verb dictionary recognizes one, otherwise the nearest preceding user turn —
+// прод-кейс «сформируй…»/«подбери…» → «ок»: глагол поручения вне словаря
+// createVerb, но карточку явно предложил сам агент, и без fallback «ок»
+// упирался в «Без активной карточки подтверждения ничего не создано».
 function affirmationFromAssistantCreateOffer(message, history) {
   if (!isCreateAffirmation(message)) return null;
   const turns = Array.isArray(history) ? history : [];
@@ -704,13 +709,17 @@ function affirmationFromAssistantCreateOffer(message, history) {
   if (latest?.role !== "assistant" || !assistantListOffersTaskCreation(latest.content)) return null;
 
   let sourceUserTurn = null;
+  let nearestUserTurn = null;
   for (let index = turns.length - 2; index >= Math.max(0, turns.length - 10); index -= 1) {
     const turn = turns[index];
-    if (turn?.role === "user" && looksLikeTextTaskCreationRequest(turn.content)) {
+    if (turn?.role !== "user") continue;
+    if (!nearestUserTurn) nearestUserTurn = turn;
+    if (looksLikeTextTaskCreationRequest(turn.content)) {
       sourceUserTurn = turn;
       break;
     }
   }
+  if (!sourceUserTurn) sourceUserTurn = nearestUserTurn;
   if (!sourceUserTurn) return null;
 
   const projectHintText = turns
