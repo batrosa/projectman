@@ -648,6 +648,7 @@ struct AgentCreateProposalCard: View {
                 }
                 Text((proposal.multiProject ? "\(task.projectName ?? "проект") · " : "")
                      + "\(DateFormatter.displayDay(task.deadline)) · \(task.assigneeDisplay)"
+                     + (task.coCreatorDisplay.map { " · доп. постановщики: \($0)" } ?? "")
                      + (task.ok ? "" : " · \(task.reason ?? "не будет создана")"))
                     .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)

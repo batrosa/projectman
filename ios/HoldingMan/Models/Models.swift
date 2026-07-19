@@ -173,6 +173,9 @@ struct TaskItem: Identifiable, Equatable {
     var createdAt: Date?
     var createdBy: String
     var createdByUid: String?
+    // Доп. постановщики: уведомления постановщика + право принять/вернуть
+    var coCreatorIds: [String] = []
+    var coCreators: String = ""
     var completionComment: String?
     var revisionReason: String?
     var attachments: [FileRef]
@@ -213,6 +216,8 @@ struct TaskItem: Identifiable, Equatable {
             createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
             createdBy: data["createdBy"] as? String ?? "",
             createdByUid: (data["createdByUid"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            coCreatorIds: data["coCreatorIds"] as? [String] ?? [],
+            coCreators: data["coCreators"] as? String ?? "",
             completionComment: data["completionComment"] as? String,
             revisionReason: data["revisionReason"] as? String,
             attachments: (data["attachments"] as? [[String: Any]] ?? []).compactMap(FileRef.from),
@@ -312,6 +317,8 @@ struct AgentProposalTask: Identifiable {
     var deadline: String?
     var assigneeDisplay: String
     var assigneeUid: String?
+    var coCreatorUids: [String] = []
+    var coCreatorDisplay: String?
     var ok: Bool
     var reason: String?
     var statusLabel: String? // для карточки удаления
@@ -327,6 +334,8 @@ struct AgentProposalTask: Identifiable {
             assigneeDisplay: dict["assigneeDisplay"] as? String
                 ?? dict["assigneeName"] as? String ?? "Не назначен",
             assigneeUid: dict["assigneeUid"] as? String,
+            coCreatorUids: dict["coCreatorUids"] as? [String] ?? [],
+            coCreatorDisplay: (dict["coCreatorDisplay"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             ok: dict["ok"] as? Bool ?? false,
             reason: dict["reason"] as? String,
             statusLabel: nil

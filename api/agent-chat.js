@@ -60,6 +60,7 @@ const PROJECTMAN_CAPABILITY_GUIDE = [
   "Файлы: к задаче можно прикреплять до 2 файлов до 10 МБ. В «Файлы проекта» owner/admin/moderator могут загружать md/xlsx/xlsm/pdf/docx до 10 МБ; текст этих файлов извлекается и используется агентом как база знаний для ответов, но не как прямой источник создания задач.",
   "Планируемые месячные тарифы HoldingMan: «Бесплатный» — до 5 участников, без ИИ-агента, 0 ₽; «Команда» — до 50 участников, ИИ-агент включён, 4 990 ₽; «Бизнес» — до 100 участников, ИИ-агент включён, 9 990 ₽; «100+» — индивидуальные условия, тариф ещё в разработке. Оплата пока не подключена; тарифы представлены на лендинге как план запуска.",
   "Создание задач через ИИ-агента работает в два способа: из простого текстового поручения в чате или через кнопку прикрепления разового файла до 3 МБ. В обоих случаях owner/admin/moderator получает карточку предпросмотра и нажимает кнопку создания; исполнитель не может создавать задачи через агента. Агент никогда не должен писать «создал» без карточки и подтверждения.",
+  "У задачи, помимо основного постановщика (создателя), могут быть дополнительные постановщики: их выбирают при создании задачи (поле «Доп. постановщики») или называют агенту («добавь постановщиком Иванова»). Доп. постановщики получают уведомления постановщика (задача на проверке, запрос переноса срока, просрочки) и могут принимать задачу или возвращать её на доработку — независимо от их роли в организации.",
   "Удаление задач через ИИ-агента доступно owner/admin/moderator с доступом к проекту и только через карточку предпросмотра с явным подтверждением. Поддерживаются строгие фильтры: все задачи проекта, назначенные, в работе, на проверке, готовые, просроченные или задачи с явно процитированным названием. Агент никогда не должен писать «удалил» без карточки и подтверждения.",
   "Календарь показывает задачи по дедлайну, цветные статусы, список задач выбранного дня и переход к задаче. В календаре нет фильтров по блоку/ответственному и нет синхронизации с Outlook или Google Calendar.",
   "«Мои задачи» показывает активные задачи, где текущий пользователь назначен ответственным; клик открывает нужный проект и колонку задачи.",
@@ -106,8 +107,9 @@ const SYSTEM_PROMPT_RULES = [
 
 const TEXT_TASK_SYSTEM_PROMPT = [
   "Ты превращаешь текстовое поручение пользователя в предложение задач HoldingMan.",
-  "Верни РОВНО ОДИН JSON-блок без текста до и после: ```json {\"action\":\"propose_tasks\",\"file\":\"текстовый запрос\",\"tasks\":[{\"title\":\"...\",\"description\":\"что именно нужно сделать и какой результат ожидается\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"точное имя участника\"}],\"hasMore\":false} ```.",
+  "Верни РОВНО ОДИН JSON-блок без текста до и после: ```json {\"action\":\"propose_tasks\",\"file\":\"текстовый запрос\",\"tasks\":[{\"title\":\"...\",\"description\":\"что именно нужно сделать и какой результат ожидается\",\"deadline\":\"ГГГГ-ММ-ДД или null\",\"assigneeName\":\"точное имя участника\",\"coCreatorNames\":[]}],\"hasMore\":false} ```.",
   "Не больше 30 задач.",
+  "coCreatorNames — ДОПОЛНИТЕЛЬНЫЕ ПОСТАНОВЩИКИ задачи (не исполнители): они получают уведомления постановщика и могут принимать задачу или возвращать на доработку. Заполняй coCreatorNames ТОЛЬКО если пользователь явно просит добавить доп. постановщика/со-постановщика/наблюдающего руководителя (например: «добавь постановщиком Иванова», «пусть Петров тоже будет постановщиком»). Имена сопоставляй с участниками HoldingMan из списка, как и ответственных. Если не просили — верни пустой массив [].",
   "Название задачи делай кратким и предметным. Не добавляй слова «задача», «поставить», «создать», если они не часть сути работы.",
   "Для каждой задачи обязательно сформируй содержательное description. Если задача выводится из базы знаний проекта, описание составь только из относящихся к ней фактов этой базы: укажи объём/этап работы, важные условия и ожидаемый результат. Не называй файл, базу знаний или процесс чтения. Не выдумывай отсутствующие факты. Если данных мало, кратко переформулируй саму работу без домыслов.",
   "Если срок указан относительным словом, переведи его в дату по указанной текущей дате: сегодня, завтра, послезавтра, до конца недели.",
@@ -2037,6 +2039,23 @@ async function callModelForTextTaskProposal({ openRouterKey, userPrompt }) {
   return { ok: false };
 }
 
+// Разрешение имён доп. постановщиков предложения в участников с доступом к
+// проекту. Ошибка — имя, которое не удалось разрешить (для честного отказа).
+function resolveProposalCoCreators(users, t, projectId) {
+  const names = Array.isArray(t.coCreatorNames) ? t.coCreatorNames : [];
+  const resolved = [];
+  for (const name of names) {
+    const match = matchAssignee(users, name);
+    if (match.error) return { error: name };
+    const user = users.find((item) => item.id === match.uid);
+    if (!user || !userHasProjectAccessForAssignment(user, projectId)) return { error: name };
+    if (!resolved.some((item) => item.uid === match.uid)) {
+      resolved.push({ uid: match.uid, name: match.displayName });
+    }
+  }
+  return { list: resolved };
+}
+
 function buildTextTaskProposalFromRaw({ rawAnswer, users, projects, message = "", today = todayIsoDate() }) {
   const extracted = extractProposal(rawAnswer);
   if (!extracted.found || extracted.error) {
@@ -2087,14 +2106,25 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, projects, message = ""
     if (t.rowError) {
       return { ...projectFields, title: t.title || "-", deadline, assigneeName: t.assigneeName, ok: false, reason: REASON_TEXT[t.rowError] || t.rowError };
     }
+    // Доп. постановщики: каждое имя обязано разрешиться в участника с
+    // доступом к проекту — иначе строка честно падает (пользователь явно
+    // назвал человека, молча выкидывать его нельзя).
+    const coCreatorsResolved = resolveProposalCoCreators(users, t, project.id);
+    if (coCreatorsResolved.error) {
+      return { ...projectFields, title: t.title || "-", deadline, assigneeName: t.assigneeName, ok: false, reason: `доп. постановщик «${coCreatorsResolved.error}» не найден среди участников проекта` };
+    }
+    const coCreatorFields = {
+      coCreatorUids: coCreatorsResolved.list.map((item) => item.uid),
+      coCreatorDisplay: coCreatorsResolved.list.map((item) => item.name).join(", "),
+    };
     // Ответственный ОПЦИОНАЛЕН: «поставь задачи без ответственных» — легальный
     // запрос, задача создаётся как «Не назначен» (как и вручную).
     if (!t.assigneeName) {
-      return { ...t, ...projectFields, deadline, assigneeUid: null, assigneeDisplay: "Не назначен", ok: true };
+      return { ...t, ...projectFields, ...coCreatorFields, deadline, assigneeUid: null, assigneeDisplay: "Не назначен", ok: true };
     }
     const match = matchAssignee(users, t.assigneeName);
     if (match.error && t.assigneeFromSource) {
-      return { ...t, ...projectFields, deadline, assigneeUid: null, assigneeDisplay: "Не назначен", ok: true };
+      return { ...t, ...projectFields, ...coCreatorFields, deadline, assigneeUid: null, assigneeDisplay: "Не назначен", ok: true };
     }
     if (match.error) return { ...t, ...projectFields, deadline, ok: false, reason: REASON_TEXT[match.error] || match.error };
     const matchedUser = users.find((user) => user.id === match.uid);
@@ -2104,7 +2134,7 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, projects, message = ""
     // Срок ОПЦИОНАЛЕН: задача без дедлайна создаётся (deadline null) — как и
     // при ручном создании. Монитор такие задачи по срокам не пилит (нечего),
     // «не взял в работу за час» работает как обычно.
-    return { ...t, ...projectFields, deadline, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: true };
+    return { ...t, ...projectFields, ...coCreatorFields, deadline, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: true };
   });
 
   return {
@@ -2333,10 +2363,12 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     }
   }
 
-  // Every assignee must be a real member of the caller's org — reject the
-  // whole request otherwise (no partial creation surprises).
+  // Every assignee AND co-creator must be a real member of the caller's org —
+  // reject the whole request otherwise (no partial creation surprises).
   // null/пустой uid легален — задача «Не назначен»; проверяем только реальных.
-  const uniqueUids = [...new Set(payload.tasks.map((t) => t.assigneeUid).filter(Boolean))];
+  const uniqueUids = [...new Set(payload.tasks
+    .flatMap((t) => [t.assigneeUid, ...(Array.isArray(t.coCreatorUids) ? t.coCreatorUids : [])])
+    .filter(Boolean))];
   const usersByUid = new Map();
   try {
     const userRefs = uniqueUids.map((uid) => db.collection("users").doc(uid));
@@ -2344,13 +2376,13 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     for (let index = 0; index < uniqueUids.length; index += 1) {
       const data = userSnaps[index].exists ? userSnaps[index].data() : null;
       if (!data || data.organizationId !== organizationId) {
-        return response.status(400).json({ error: "Один из исполнителей не найден в вашей организации" });
+        return response.status(400).json({ error: "Один из участников задачи не найден в вашей организации" });
       }
       usersByUid.set(uniqueUids[index], data);
     }
   } catch (error) {
     console.error("agent-chat create_tasks: user load failed", error);
-    return response.status(500).json({ error: "Не удалось проверить исполнителей" });
+    return response.status(500).json({ error: "Не удалось проверить участников" });
   }
 
   const createdByName = callerData
@@ -2372,6 +2404,17 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     const assigneeDisplay = user
       ? (user.displayName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Исполнитель")
       : "Не назначен";
+    // Доп. постановщики: участники организации с доступом к проекту задачи.
+    const coCreatorEntries = (Array.isArray(t.coCreatorUids) ? t.coCreatorUids : [])
+      .map((uid) => ({ uid, data: usersByUid.get(uid) }))
+      .filter((entry) => entry.data);
+    for (const entry of coCreatorEntries) {
+      if (!userHasProjectAccessForAssignment(entry.data, taskProjectId)) {
+        return response.status(400).json({ error: `Доп. постановщик задачи «${t.title}» не имеет доступа к проекту «${projectName}»` });
+      }
+    }
+    const coCreatorNamesDisplay = coCreatorEntries.map((entry) =>
+      entry.data.displayName || `${entry.data.firstName || ""} ${entry.data.lastName || ""}`.trim() || entry.data.email || "Постановщик");
     const taskRef = db.collection("tasks").doc();
     // Field shape mirrors the client's createTask() exactly, so boards,
     // filters, the reader carve-out and the monitor treat these tasks like any
@@ -2398,6 +2441,26 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       createdBy: createdByName,
       createdByEmail: callerData?.email || "",
       createdByUid: decoded.uid,
+      coCreatorIds: coCreatorEntries.map((entry) => entry.uid),
+      coCreators: coCreatorNamesDisplay.join(", "),
+    });
+
+    // Уведомления доп. постановщикам: лента + Telegram + push.
+    coCreatorEntries.forEach((entry) => {
+      const ccText = `👤 Вы добавлены постановщиком задачи «${t.title}» (проект «${projectName}»). Вы получаете уведомления по задаче и можете принять её или вернуть на доработку.`;
+      const ccNoteRef = db.collection("agentNotifications").doc();
+      batch.set(ccNoteRef, {
+        uid: entry.uid,
+        organizationId,
+        taskId: taskRef.id,
+        projectId: taskProjectId,
+        type: "tasks_created",
+        text: ccText,
+        createdAt: FieldValue.serverTimestamp(),
+        readAt: null,
+      });
+      if (entry.data.telegramChatId) telegramQueue.push({ chatId: entry.data.telegramChatId, text: ccText });
+      pushQueue.push({ uid: entry.uid, text: ccText, taskId: taskRef.id, projectId: taskProjectId });
     });
 
     // Уведомление и Telegram — только реальному исполнителю; у задачи «Не

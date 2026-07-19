@@ -1869,7 +1869,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.12'; // Task info modal: status + lifecycle buttons
+    const CURRENT_VERSION = '6.13'; // Co-creators (доп. постановщики)
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2635,9 +2635,11 @@ function openEditTaskModal(task) {
 
     // Populate assignees picker and load existing assignees
     populateAssigneeDropdown();
+    populateCoCreatorDropdown();
 
     // Set selected assignees from task (rebuilds from assigneeIds — see helper)
     setSelectedAssignees(task);
+    setSelectedCoCreators(task);
 
     // Load existing attachments
     pendingAttachments = task.attachments ? [...task.attachments] : [];
@@ -3013,7 +3015,8 @@ function openStatusMenu(event, task, currentSubStatus) {
 
     globalStatusMenu.innerHTML = '';
 
-    const canManage = canManageTasks();
+    // Постановщик = менеджер проекта ИЛИ доп. постановщик этой задачи
+    const canManage = canActAsTaskCreator(task);
     const isMobile = window.innerWidth <= 768;
 
     // Check if user is assignee
@@ -3627,9 +3630,14 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
 
 Пожалуйста, проверьте выполнение задачи.`;
                     const completionEvent = { type: 'task_completed', taskId, projectId: taskData.projectId || null };
-                    if (taskData.createdByUid) {
+                    // Все постановщики: создатель + доп. постановщики (дедуп по uid)
+                    const creatorUids = [...new Set([
+                        taskData.createdByUid,
+                        ...(Array.isArray(taskData.coCreatorIds) ? taskData.coCreatorIds : [])
+                    ].filter(Boolean))];
+                    if (creatorUids.length > 0) {
                         // uid-путь: Telegram (если привязан) + push + лента
-                        await sendTaskEventToUid(taskData.createdByUid, message, completionEvent);
+                        await Promise.all(creatorUids.map(uid => sendTaskEventToUid(uid, message, completionEvent)));
                     } else {
                         // Легаси-задача без createdByUid: старый путь по chatId
                         const chatId = resolveAssigneeChatId({ email: taskData.createdByEmail });
@@ -4110,7 +4118,7 @@ function openTaskDetailsModal(task) {
     let deadlineRequestHTML = '';
     const deadlineRequest = task.deadlineChangeRequest;
     if (deadlineRequest?.id) {
-        const isCreator = deadlineRequest.createdByUid === state.currentUser?.uid;
+        const isCreator = deadlineRequest.createdByUid === state.currentUser?.uid || isCurrentUserCoCreator(task);
         deadlineRequestHTML = `
             <div class="task-details-section">
                 <h3><i class="fa-regular fa-calendar-plus"></i> Запрос переноса срока</h3>
@@ -4154,7 +4162,7 @@ function openTaskDetailsModal(task) {
                 lifecycleButtons.push({ action: 'complete', label: 'Завершить', icon: 'fa-check', primary: true });
             }
         }
-        if (canManageTasks() && currentSubStatus === 'completed') {
+        if (canActAsTaskCreator(task) && currentSubStatus === 'completed') {
             lifecycleButtons.push({ action: 'accept', label: 'Принять', icon: 'fa-check-double', primary: true });
             lifecycleButtons.push({ action: 'revision', label: 'На доработку', icon: 'fa-rotate-left', primary: false });
         }
@@ -4184,6 +4192,13 @@ function openTaskDetailsModal(task) {
                 <div>
                     <span style="color: var(--text-secondary); font-size: 0.85rem;">Срок:</span><br>
                     <span><i class="fa-regular fa-calendar"></i> ${deadline}</span>
+                </div>
+                <div>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Постановщики:</span><br>
+                    ${[task.createdBy, ...(task.coCreators || '').split(',').map(n => n.trim()).filter(Boolean)]
+                        .filter(Boolean)
+                        .map(name => `<span style="background: rgba(34, 197, 94, 0.1); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem;">${escapeHtml(name)}</span>`)
+                        .join(' ') || '<span style="color: var(--text-secondary);">—</span>'}
                 </div>
             </div>
         </div>
@@ -5033,6 +5048,7 @@ function setupEventListeners() {
             // Set default date to today
             if (taskDeadlineInput) taskDeadlineInput.valueAsDate = new Date();
             populateAssigneeDropdown();
+            populateCoCreatorDropdown();
 
             // Reset attachments
             pendingAttachments = [];
@@ -5283,7 +5299,11 @@ function setupEventListeners() {
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 createdBy: createdBy,
                 createdByEmail: state.currentUser?.email || '',
-                createdByUid: state.currentUser?.uid || null
+                createdByUid: state.currentUser?.uid || null,
+                // Доп. постановщики: получают уведомления постановщика и могут
+                // принимать / возвращать задачу (см. canActAsTaskCreator)
+                coCreatorIds: selectedCoCreators.map(c => c.id).filter(Boolean),
+                coCreators: selectedCoCreators.map(c => c.name).join(', ')
             });
 
             // Уведомление каждому исполнителю ПО UID: сервер доставит Telegram
@@ -5301,6 +5321,19 @@ function setupEventListeners() {
 
 Откройте HoldingMan для подробностей.`;
                 sendTaskEventToUid(a.id, message, newTaskEvent);
+            });
+
+            // Доп. постановщикам — отдельное уведомление о назначении
+            selectedCoCreators.forEach(c => {
+                if (!c.id) return;
+                const message = `👤 <b>Вы добавлены постановщиком задачи</b>
+
+<b>Задача:</b> ${escapeHtmlForTelegram(title)}
+<b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
+<b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
+
+Вы будете получать уведомления по задаче и сможете принять её или вернуть на доработку.`;
+                sendTaskEventToUid(c.id, message, newTaskEvent);
             });
 
             console.log("✅ Задача успешно создана!");
@@ -5351,7 +5384,9 @@ function setupEventListeners() {
                     assigneeEmail,
                     assigneeIds: nextAssigneeIds,
                     deadline,
-                    attachments // Include attachments when updating
+                    attachments, // Include attachments when updating
+                    coCreatorIds: selectedCoCreators.map(c => c.id).filter(Boolean),
+                    coCreators: selectedCoCreators.map(c => c.name).join(', ')
                 };
                 if (previousTask && String(previousTask.deadline || '') !== String(deadline || '')) {
                     taskUpdates.notifiedDeadlineSoonAt = firebase.firestore.FieldValue.delete();
@@ -6901,6 +6936,222 @@ function getSelectedAssignees() {
         // assigneeIds; assigneeEmail is only a legacy convenience field.
         emails: selectedAssignees.map(a => a.email).filter(Boolean).join(',')
     };
+}
+
+// ========== CO-CREATOR PICKER (доп. постановщики) ==========
+// Зеркало пикера ответственных: те же классы/поведение, свой стор и свои
+// element id. Доп. постановщик получает уведомления постановщика и право
+// принять / вернуть на доработку (см. canActAsTaskCreator + firestore.rules).
+let selectedCoCreators = [];
+
+function populateCoCreatorDropdown() {
+    const searchInput = document.getElementById('cocreator-search');
+    const dropdown = document.getElementById('cocreator-dropdown');
+    const selectedContainer = document.getElementById('selected-cocreators');
+    if (!searchInput || !dropdown || !selectedContainer) return;
+
+    selectedCoCreators = [];
+    selectedContainer.innerHTML = '';
+    searchInput.value = '';
+
+    searchInput.removeEventListener('input', handleCoCreatorSearch);
+    searchInput.removeEventListener('focus', handleCoCreatorSearch);
+    searchInput.removeEventListener('blur', handleCoCreatorBlur);
+    searchInput.addEventListener('input', handleCoCreatorSearch);
+    searchInput.addEventListener('focus', handleCoCreatorSearch);
+    searchInput.addEventListener('blur', handleCoCreatorBlur);
+
+    document.removeEventListener('click', handleCoCreatorClickOutside);
+    document.addEventListener('click', handleCoCreatorClickOutside);
+}
+
+function handleCoCreatorBlur() {
+    setTimeout(() => {
+        const dropdown = document.getElementById('cocreator-dropdown');
+        if (dropdown) dropdown.classList.remove('active');
+    }, 200);
+}
+
+function handleCoCreatorClickOutside(e) {
+    const dropdown = document.getElementById('cocreator-dropdown');
+    const searchWrapper = document.querySelector('.cocreator-search-wrapper');
+    if (dropdown && searchWrapper && !searchWrapper.contains(e.target)) {
+        dropdown.classList.remove('active');
+    }
+}
+
+function handleCoCreatorSearch() {
+    const searchInput = document.getElementById('cocreator-search');
+    const dropdown = document.getElementById('cocreator-dropdown');
+    if (!searchInput || !dropdown) return;
+
+    if (dropdown.dataset.touchmoveBound !== '1') {
+        dropdown.addEventListener('touchmove', (e) => { e.stopPropagation(); }, { passive: true });
+        dropdown.dataset.touchmoveBound = '1';
+    }
+
+    const query = searchInput.value.toLowerCase().trim();
+    const filteredUsers = state.users.filter(user => {
+        if (state.activeProjectId && !userHasProjectAccess(user, state.activeProjectId)) return false;
+        // Основной постановщик — текущий пользователь; в доп. не предлагаем.
+        if (user.id === state.currentUser?.uid) return false;
+        if (selectedCoCreators.some(c => c.id === user.id)) return false;
+
+        let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (!fullName && user.displayName) fullName = user.displayName;
+        if (!fullName && user.email) fullName = user.email.split('@')[0];
+        fullName = fullName.toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        if (!query) return true;
+        return fullName.includes(query) || email.includes(query);
+    });
+
+    dropdown.innerHTML = '';
+    if (filteredUsers.length === 0) {
+        dropdown.innerHTML = '<div class="assignee-dropdown-empty">Не найдено</div>';
+    } else {
+        filteredUsers.forEach(user => {
+            let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+            if (!fullName && user.displayName) fullName = user.displayName;
+            if (!fullName) fullName = user.email || 'Без имени';
+            const nameParts = fullName.split(' ').filter(Boolean);
+            const initials = (nameParts.length >= 2
+                ? (nameParts[0][0] || '') + (nameParts[1][0] || '')
+                : (fullName[0] || 'U')).toUpperCase().substring(0, 2);
+            const avatarHtml = user.profilePhotoUrl
+                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+                : `<div class="assignee-dropdown-avatar">${initials}</div>`;
+
+            const item = document.createElement('div');
+            item.className = 'assignee-dropdown-item';
+            item.innerHTML = `
+                ${avatarHtml}
+                <div class="assignee-dropdown-info">
+                    <div class="assignee-dropdown-name">${escapeHtml(fullName)}</div>
+                    <div class="assignee-dropdown-email">${escapeHtml(user.email || '')}</div>
+                </div>
+            `;
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                addCoCreator(user);
+                searchInput.value = '';
+                dropdown.classList.remove('active');
+            });
+
+            let touchStartY = 0;
+            let isScrolling = false;
+            item.addEventListener('touchstart', (e) => {
+                touchStartY = e.touches[0].clientY;
+                isScrolling = false;
+            }, { passive: true });
+            item.addEventListener('touchmove', (e) => {
+                if (Math.abs(e.touches[0].clientY - touchStartY) > 10) isScrolling = true;
+            }, { passive: true });
+            item.addEventListener('touchend', (e) => {
+                if (!isScrolling) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    addCoCreator(user);
+                    searchInput.value = '';
+                    dropdown.classList.remove('active');
+                }
+            });
+
+            dropdown.appendChild(item);
+        });
+    }
+    dropdown.classList.add('active');
+}
+
+function addCoCreator(user) {
+    let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!fullName && user.displayName) fullName = user.displayName;
+    if (!fullName) fullName = user.email || 'Без имени';
+    if (selectedCoCreators.some(c => c.id === user.id)) return;
+    selectedCoCreators.push({ id: user.id, email: user.email || null, name: fullName });
+    renderSelectedCoCreators();
+}
+
+function removeCoCreatorAt(index) {
+    selectedCoCreators.splice(index, 1);
+    renderSelectedCoCreators();
+    const dropdown = document.getElementById('cocreator-dropdown');
+    if (dropdown && dropdown.classList.contains('active')) handleCoCreatorSearch();
+}
+
+function renderSelectedCoCreators() {
+    const container = document.getElementById('selected-cocreators');
+    if (!container) return;
+    container.innerHTML = '';
+    selectedCoCreators.forEach((coCreator, index) => {
+        const initials = (coCreator.name || '?').split(' ').map(n => n[0] || '').join('').toUpperCase().substring(0, 2);
+        const user = state.users.find(u => coCreator.id && u.id === coCreator.id);
+
+        const chip = document.createElement('div');
+        chip.className = 'assignee-chip';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'assignee-chip-avatar';
+        if (user?.profilePhotoUrl) {
+            avatar.style.overflow = 'hidden';
+            const img = document.createElement('img');
+            img.src = sanitizeAttachmentUrl(user.profilePhotoUrl);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
+            avatar.appendChild(img);
+        } else {
+            avatar.textContent = initials;
+        }
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = coCreator.name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'assignee-chip-remove';
+        removeBtn.setAttribute('aria-label', 'Убрать постановщика');
+        const xIcon = document.createElement('i');
+        xIcon.className = 'fa-solid fa-xmark';
+        removeBtn.appendChild(xIcon);
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeCoCreatorAt(index);
+        });
+
+        chip.appendChild(avatar);
+        chip.appendChild(nameSpan);
+        chip.appendChild(removeBtn);
+        container.appendChild(chip);
+    });
+}
+
+// Восстановление доп. постановщиков при редактировании (uid-first, как и у
+// исполнителей: у Telegram-пользователей нет email).
+function setSelectedCoCreators(task) {
+    selectedCoCreators = [];
+    if (!task) { renderSelectedCoCreators(); return; }
+    const ids = Array.isArray(task.coCreatorIds) ? task.coCreatorIds.filter(Boolean) : [];
+    const nameList = (task.coCreators || '').split(',').map(n => n.trim()).filter(Boolean);
+    ids.forEach((uid, index) => {
+        const user = state.users.find(u => u.id === uid);
+        const name = user
+            ? (`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.displayName || user.email || nameList[index] || 'Постановщик')
+            : (nameList[index] || 'Постановщик');
+        selectedCoCreators.push({ id: uid, email: user?.email || null, name });
+    });
+    renderSelectedCoCreators();
+}
+
+// Является ли текущий пользователь доп. постановщиком задачи
+function isCurrentUserCoCreator(task) {
+    const uid = state.currentUser?.uid;
+    return !!uid && Array.isArray(task?.coCreatorIds) && task.coCreatorIds.includes(uid);
+}
+
+// Право действовать как постановщик задачи: менеджер проекта (owner/admin/
+// moderator) ИЛИ доп. постановщик этой задачи (независимо от орг-роли).
+function canActAsTaskCreator(task) {
+    return canManageTasks() || isCurrentUserCoCreator(task);
 }
 
 // ========== XP AND LEVEL SYSTEM ==========
@@ -9663,16 +9914,20 @@ function appendAgentTaskProposal(proposal) {
             taskDescription.textContent = t.description.trim();
             taskCell.appendChild(taskDescription);
         }
+        // Доп. постановщики (если агенту их назвали) — приписываем к
+        // ответственному, чтобы не раздувать таблицу отдельной колонкой.
+        const assigneeCellText = (t.assigneeDisplay || t.assigneeName || 'Не назначен')
+            + (t.coCreatorDisplay ? ` (доп. постановщики: ${t.coCreatorDisplay})` : '');
         const cells = proposal.multiProject
             ? [
                 t.projectName || '—',
                 t.deadline ? formatDate(t.deadline) : '—',
-                t.assigneeDisplay || t.assigneeName || 'Не назначен',
+                assigneeCellText,
                 t.ok ? '✅ будет создана' : `⚠️ ${t.reason || 'не будет создана'}`
             ]
             : [
                 t.deadline ? formatDate(t.deadline) : '—',
-                t.assigneeDisplay || t.assigneeName || 'Не назначен',
+                assigneeCellText,
                 t.ok ? '✅ будет создана' : `⚠️ ${t.reason || 'не будет создана'}`
             ];
         tr.appendChild(taskCell);
@@ -9751,6 +10006,7 @@ async function confirmAgentTaskProposal(proposal, okTasks, btn, actions) {
                     description: t.description || '',
                     deadline: t.deadline || null,
                     assigneeUid: t.assigneeUid || null,
+                    coCreatorUids: Array.isArray(t.coCreatorUids) ? t.coCreatorUids : [],
                     projectId: t.projectId || null,
                 }))
             })

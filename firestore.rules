@@ -322,7 +322,38 @@ service cloud.firestore {
               'revisionReturnedAt',
               'archivedAt',
               'archivedBy'
-            ]));
+            ]))
+        // Доп. постановщик (uid в coCreatorIds) — независимо от орг-роли —
+        // может ТОЛЬКО принять задачу с проверки (completed → done/архив) или
+        // вернуть её на доработку (completed → in_work + причина). Наборы
+        // полей зафиксированы под updateTaskSubStatus('done'/'in_work'), так
+        // что переписать содержание задачи или чужие поля этот carve-out не
+        // позволяет. coCreatorIds сам защищён: его нет ни в одном hasOnly.
+        || (request.auth != null
+            && resource.data.coCreatorIds is list
+            && request.auth.uid in resource.data.coCreatorIds
+            && request.resource.data.projectId == resource.data.projectId
+            && resource.data.status == 'in-progress'
+            && resource.data.subStatus == 'completed'
+            && (
+              // Принять: completed → done (архив)
+              (request.resource.data.status == 'done'
+                && request.resource.data.subStatus == 'completed'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status', 'subStatus', 'archivedAt', 'archivedBy',
+                  'completedOnTime', 'xpAwarded', 'assigneeCompleted'
+                ]))
+              // На доработку: completed → in_work + причина возврата
+              || (request.resource.data.status == 'in-progress'
+                && request.resource.data.subStatus == 'in_work'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status', 'subStatus', 'takenToWorkAt', 'takenToWorkBy',
+                  'completedAt', 'completionComment', 'completionProof',
+                  'completionProofs', 'completedBy', 'archivedAt', 'archivedBy',
+                  'revisionReason', 'revisionReturnedBy', 'revisionReturnedAt',
+                  'wasReturned', 'assigneeCompleted'
+                ]))
+            ));
     }
 
     // Коллекция Project Files (подколлекция файлов проекта)

@@ -175,7 +175,7 @@ final class TasksStore: ObservableObject {
     // (Telegram при наличии + push + лента «Уведомления»).
     func create(projectId: String, projectName: String, organizationId: String, title: String,
                 descriptionText: String, deadline: String?, creator: UserDoc,
-                assignees: [OrgUser]) async throws {
+                assignees: [OrgUser], coCreators: [OrgUser] = []) async throws {
         let assigneeDisplay = assignees.isEmpty
             ? "Не назначен"
             : assignees.map(\.displayName).joined(separator: ", ")
@@ -197,6 +197,9 @@ final class TasksStore: ObservableObject {
             "createdBy": creator.displayName,
             "createdByEmail": creator.email,
             "createdByUid": creator.uid,
+            // Доп. постановщики: уведомления постановщика + право принять/вернуть
+            "coCreatorIds": coCreators.map(\.id),
+            "coCreators": coCreators.map(\.displayName).joined(separator: ", "),
         ]
         let ref = try await Firestore.firestore().collection("tasks").addDocument(data: data)
 
@@ -212,6 +215,24 @@ final class TasksStore: ObservableObject {
             Task {
                 try? await ApiClient.sendTaskEvent(
                     recipientUid: uid, text: text,
+                    type: "task_created", taskId: ref.documentID, projectId: projectId
+                )
+            }
+        }
+
+        // Доп. постановщикам — отдельное уведомление о назначении
+        let coCreatorText = """
+        👤 <b>Вы добавлены постановщиком задачи</b>
+
+        <b>Задача:</b> \(telegramHTML(title))
+        <b>Проект:</b> \(telegramHTML(projectName))
+        <b>Срок:</b> \(telegramHTML(DateFormatter.displayDay(deadline, fallback: "Не указан")))
+        """
+        for coCreator in coCreators {
+            let uid = coCreator.id
+            Task {
+                try? await ApiClient.sendTaskEvent(
+                    recipientUid: uid, text: coCreatorText,
                     type: "task_created", taskId: ref.documentID, projectId: projectId
                 )
             }
@@ -239,7 +260,9 @@ final class TasksStore: ObservableObject {
         ]
         try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
 
-        if let creatorUid = task.createdByUid {
+        // Все постановщики: создатель + доп. постановщики (дедуп по uid)
+        let creatorUids = Array(Set(([task.createdByUid].compactMap { $0 }) + task.coCreatorIds))
+        if !creatorUids.isEmpty {
             let text = """
             📤 <b>Задача на проверке</b>
 
@@ -249,11 +272,13 @@ final class TasksStore: ObservableObject {
 
             Пожалуйста, проверьте выполнение задачи.
             """
-            Task {
-                try? await ApiClient.sendTaskEvent(
-                    recipientUid: creatorUid, text: text,
-                    type: "task_completed", taskId: task.id, projectId: task.projectId
-                )
+            for creatorUid in creatorUids {
+                Task {
+                    try? await ApiClient.sendTaskEvent(
+                        recipientUid: creatorUid, text: text,
+                        type: "task_completed", taskId: task.id, projectId: task.projectId
+                    )
+                }
             }
         }
     }

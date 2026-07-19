@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=79.0" defer></script>
+    <script src="script.js?v=80.0" defer></script>
 </head>
 
 <body>
@@ -1439,6 +1439,22 @@
                         <div class="form-group">
                             <label for="t-deadline">Срок</label>
                             <input type="date" id="t-deadline" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Доп. постановщики</label>
+                        <div id="t-cocreator-container" class="assignee-picker">
+                            <div id="selected-cocreators" class="selected-assignees">
+                                <!-- Selected co-creator chips will appear here -->
+                            </div>
+                            <div class="assignee-search-wrapper cocreator-search-wrapper">
+                                <input type="text" id="cocreator-search" class="assignee-search-input"
+                                    placeholder="Введите имя..." autocomplete="off">
+                                <div id="cocreator-dropdown" class="assignee-dropdown">
+                                    <!-- Search results will appear here -->
+                                </div>
+                            </div>
                         </div>
                     </div>
 

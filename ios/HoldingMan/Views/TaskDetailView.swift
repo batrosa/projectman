@@ -49,8 +49,21 @@ struct TaskDetailView: View {
         appState.user?.canManage(projectId: project.id) == true
     }
 
+    // Доп. постановщик задачи: получает уведомления постановщика и может
+    // принять / вернуть на доработку независимо от орг-роли (как в web).
+    private var isCoCreator: Bool {
+        guard let uid = appState.user?.uid else { return false }
+        return current.coCreatorIds.contains(uid)
+    }
+
+    // Право действовать как постановщик: менеджер проекта ИЛИ доп. постановщик
+    private var canActAsCreator: Bool {
+        canManage || isCoCreator
+    }
+
     private var hasActions: Bool {
         canManage
+        || (isCoCreator && current.boardStatus == .review)
         || (isAssignee && current.boardStatus == .assigned)
         || (isAssignee && current.boardStatus == .inProgress)
     }
@@ -196,7 +209,7 @@ struct TaskDetailView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if request.createdByUid == appState.user?.uid {
+            if request.createdByUid == appState.user?.uid || isCoCreator {
                 HStack(spacing: 10) {
                     Button("Отказать") { decideDeadline(request, approve: false) }
                         .buttonStyle(.bordered)
@@ -277,6 +290,10 @@ struct TaskDetailView: View {
                 divider
                 detailRow("Постановщик", current.createdBy)
             }
+            if !current.coCreators.isEmpty {
+                divider
+                detailRow("Доп. постановщики", current.coCreators)
+            }
         }
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
     }
@@ -334,7 +351,7 @@ struct TaskDetailView: View {
                     }
                 }
 
-                if canManage && current.boardStatus == .review {
+                if canActAsCreator && current.boardStatus == .review {
                     actionCircleButton(
                         "Вернуть",
                         icon: "arrow.uturn.backward",

@@ -15,11 +15,18 @@ struct NewTaskView: View {
     @State private var hasDeadline = false
     @State private var deadline = Date()
     @State private var selectedAssignees: [OrgUser] = []
+    @State private var selectedCoCreators: [OrgUser] = []
     @State private var isBusy = false
     @State private var errorMessage: String?
 
     private var assignableUsers: [OrgUser] {
         orgUsersStore.assignable(projectId: project.id)
+    }
+
+    // Кандидаты в доп. постановщики: те же участники с доступом к проекту,
+    // кроме самого создателя (он основной постановщик).
+    private var coCreatorCandidates: [OrgUser] {
+        assignableUsers.filter { $0.id != appState.user?.uid }
     }
 
     var body: some View {
@@ -49,6 +56,36 @@ struct NewTaskView: View {
                                 selectedAssignees.removeAll { $0.id == user.id }
                             } else {
                                 selectedAssignees.append(user)
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                AvatarView(name: user.displayName, size: 30)
+                                Text(user.displayName)
+                                    .foregroundStyle(Theme.textPrimary)
+                                Spacer()
+                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(isSelected ? Theme.primary : Theme.textSecondary.opacity(0.5))
+                            }
+                        }
+                        .listRowBackground(Theme.surface)
+                    }
+                }
+
+                Section("Доп. постановщики") {
+                    if coCreatorCandidates.isEmpty {
+                        Text("Нет участников с доступом к проекту")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.textSecondary)
+                            .listRowBackground(Theme.surface)
+                    }
+                    ForEach(coCreatorCandidates) { user in
+                        let isSelected = selectedCoCreators.contains { $0.id == user.id }
+                        Button {
+                            if isSelected {
+                                selectedCoCreators.removeAll { $0.id == user.id }
+                            } else {
+                                selectedCoCreators.append(user)
                             }
                         } label: {
                             HStack(spacing: 10) {
@@ -121,7 +158,8 @@ struct NewTaskView: View {
                     descriptionText: descriptionText.trimmingCharacters(in: .whitespaces),
                     deadline: deadlineString,
                     creator: user,
-                    assignees: assignees
+                    assignees: assignees,
+                    coCreators: selectedCoCreators
                 )
                 dismiss()
             } catch {

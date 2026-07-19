@@ -214,6 +214,7 @@ struct ApiClient {
                     "description": t.description,
                     "deadline": t.deadline as Any,
                     "assigneeUid": t.assigneeUid as Any,
+                    "coCreatorUids": t.coCreatorUids,
                     "projectId": t.projectId as Any,
                 ] as [String: Any]
             },

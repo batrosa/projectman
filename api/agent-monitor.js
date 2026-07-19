@@ -228,6 +228,8 @@ export default async function handler(request, response) {
         }
       }
       if (task.createdByUid) uids.push(task.createdByUid);
+      // Доп. постановщики получают те же события, что и создатель задачи
+      if (Array.isArray(task.coCreatorIds)) uids.push(...task.coCreatorIds.filter(Boolean));
       uids = [...new Set(uids)];
       if (uids.length === 0) continue;
       const assigneeNames = await getTaskAssigneeNames(task, taskOrgId);

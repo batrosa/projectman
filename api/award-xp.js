@@ -163,7 +163,11 @@ export default async function handler(request, response) {
     return response.status(500).json({ error: "Failed to verify project" });
   }
 
-  if (!callerCanManageProject(callerOrgRole, callerAllowedProjects, projectId)) {
+  // Принять задачу (и тем самым запустить начисление XP) может менеджер
+  // проекта ИЛИ доп. постановщик задачи (uid в coCreatorIds) — зеркало
+  // carve-out'а в firestore.rules.
+  const callerIsCoCreator = Array.isArray(task.coCreatorIds) && task.coCreatorIds.includes(decoded.uid);
+  if (!callerCanManageProject(callerOrgRole, callerAllowedProjects, projectId) && !callerIsCoCreator) {
     return response.status(403).json({ error: "Forbidden — not a manager of this project" });
   }
 
