@@ -120,6 +120,34 @@ describe("buildTableFallbackProposalFromText", () => {
     expect(proposal.tasks[2].deadline).toBe("2026-09-01");
   });
 
+  it("recovery-сообщение не превращает служебную фразу в ответственного", () => {
+    const recoveryMessage = [
+      "Исходное поручение: все задачи где правообладатели указан ответственным",
+      "",
+      "Пользователь подтвердил, что нужно сформировать настоящую карточку предпросмотра.",
+      "",
+      "Предыдущий ответ агента: Вот список всех пунктов из базы знаний, где в поле Ответственный указан Правообладатели: - Разработать ППТ и ПМТ - Получить заключение",
+    ].join("\n");
+    const proposal = buildTableFallbackProposalFromText(text, { userMessage: recoveryMessage });
+    expect(proposal.tasks.every((task) => task.assigneeName !== "Пользователь подтвердил")).toBe(true);
+    expect(proposal.tasks.every((task) => task.assigneeFromSource)).toBe(true);
+  });
+
+  it("«задачи, где ответственный X» оставляет только строки этого ответственного", () => {
+    const proposal = buildTableFallbackProposalFromText(text, {
+      userMessage: "Исходное поручение: все задачи где правообладатели указан ответственным",
+    });
+    expect(proposal.tasks).toHaveLength(2);
+    expect(proposal.tasks.every((task) => task.assigneeName === "Правообладатели")).toBe(true);
+  });
+
+  it("поручение про ответственных без имён из плана не режет список", () => {
+    const proposal = buildTableFallbackProposalFromText(text, {
+      userMessage: "создай задачи из файла, ответственных возьми из плана",
+    });
+    expect(proposal.tasks).toHaveLength(3);
+  });
+
   it("supports the simple template headers: наименование / ответственный / срок", () => {
     const proposal = buildTableFallbackProposalFromText([
       "Лист: Задачи",

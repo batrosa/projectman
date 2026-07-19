@@ -522,13 +522,27 @@ export function buildTableFallbackProposalFromText(fileText, {
     });
   }
 
-  if (found.length === 0) return null;
+  // «все задачи, где ответственный — Чахиров»: поручение явно про
+  // ответственного и называет конкретных людей из плана — оставляем только их
+  // строки. Без фильтра карточка тащила весь план целиком (прод-кейс: запрос
+  // про задачи одного человека собрал карточку на ~70 строк из базы знаний).
+  let visible = found;
+  if (!override.assigneeName && /ответственн/iu.test(String(userMessage || ""))) {
+    const messageText = normalizeLookup(userMessage);
+    const matched = found.filter((task) => {
+      const words = normalizeLookup(task.assigneeName).split(" ").filter((word) => word.length >= 3);
+      return words.length > 0 && words.every((word) => messageText.includes(word));
+    });
+    if (matched.length > 0) visible = matched;
+  }
+
+  if (visible.length === 0) return null;
   const safeLimit = Math.max(1, Math.min(100, Number(maxTasks) || 100));
   return {
     action: "propose_tasks",
     file: fileName,
-    tasks: found.slice(0, safeLimit),
-    hasMore: found.length > safeLimit,
+    tasks: visible.slice(0, safeLimit),
+    hasMore: visible.length > safeLimit,
   };
 }
 
@@ -629,16 +643,34 @@ function parseUserOverrides(message) {
   const text = String(message || "").trim();
   const deadlineMatch = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   let assigneeName = "";
-  const assigneeMatch = text.match(/назнач(?:ь|ить)?(?:\s+все)?\s+на\s+(.+?)(?:\s+со\s+сроком|\s+срок|\s+до\s+20\d{2}-\d{2}-\d{2}|$)/i);
-  if (assigneeMatch) assigneeName = assigneeMatch[1].trim();
+  // [^\S\n] вместо \s: захват имени не должен перешагивать перенос строки.
+  // Recovery-поручения склеиваются из нескольких строк, и «…указан
+  // ответственным\nПользователь подтвердил…» превращал служебную фразу
+  // следующей строки в «имя» — оно переопределяло ответственного во ВСЕХ
+  // строках карточки, и ни одна не проходила проверку (прод-кейс).
+  const assigneeMatch = text.match(/назнач(?:ь|ить)?(?:[^\S\n]+все)?[^\S\n]+на[^\S\n]+(.+?)(?:[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|[^\S\n]+до[^\S\n]+20\d{2}-\d{2}-\d{2}|$)/im);
+  if (assigneeMatch) assigneeName = cleanAssigneeOverride(assigneeMatch[1]);
   if (!assigneeName) {
-    const explicit = text.match(/ответственн(?:ый|ого|ым)?\s*[:—-]?\s+(.+?)(?:,|\s+со\s+сроком|\s+срок|$)/i);
-    if (explicit) assigneeName = explicit[1].trim();
+    const explicit = text.match(/ответственн(?:ый|ого|ым)?[^\S\n]*[:—-]?[^\S\n]+(.+?)(?:,|[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|$)/im);
+    if (explicit) assigneeName = cleanAssigneeOverride(explicit[1]);
   }
   return {
     assigneeName,
     deadline: deadlineMatch ? deadlineMatch[1] : null,
   };
+}
+
+// Захват после «ответственный …» — свободный текст. Всё, что не похоже на
+// имя (кавычки/двоеточия, длинные фразы, служебное первое слово), отбрасываем:
+// лучше оставить ответственного из плана, чем сорвать карточку мусорным
+// «именем».
+function cleanAssigneeOverride(raw) {
+  const value = String(raw || "").trim();
+  if (!value || /[:|«»"]/u.test(value) || value.length > 40) return "";
+  const words = value.split(/\s+/);
+  if (words.length > 3) return "";
+  if (/^(указан|указана|указанный|найден|подтвердил|подтвердила|нужно|надо|будет|есть|нет|все|всё|его|её|их)$/iu.test(words[0])) return "";
+  return value;
 }
 
 function filterAccessibleProjects(projects, callerData) {
