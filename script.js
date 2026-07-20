@@ -1869,7 +1869,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.13'; // Co-creators (доп. постановщики)
+    const CURRENT_VERSION = '6.14'; // Agent project scope selector + list anaphora
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -9497,7 +9497,44 @@ function readFileAsBase64(file) {
     });
 }
 
+// Селектор области в шапке чата агента: «Все проекты» или конкретный проект.
+// Выбор пользователя главнее открытого проекта; 'all' — пустой projectId,
+// сервер отвечает по всем доступным проектам организации.
+function populateAgentProjectSelect() {
+    const select = document.getElementById('agent-project-select');
+    if (!select) return;
+    const previous = select.value;
+    select.innerHTML = '';
+    const allOption = document.createElement('option');
+    allOption.value = 'all';
+    allOption.textContent = 'Все проекты';
+    select.appendChild(allOption);
+    getFilteredProjects().forEach(project => {
+        if (!project?.id) return;
+        const option = document.createElement('option');
+        option.value = project.id;
+        option.textContent = project.name || 'Без названия';
+        select.appendChild(option);
+    });
+    // Сохраняем прежний выбор, если проект ещё доступен; иначе — открытый
+    // проект; иначе — «Все проекты».
+    const values = Array.from(select.options).map(o => o.value);
+    if (previous && values.includes(previous)) {
+        select.value = previous;
+    } else if (state.activeProjectId && values.includes(state.activeProjectId)) {
+        select.value = state.activeProjectId;
+    } else {
+        select.value = 'all';
+    }
+}
+
 function getAgentTaskTargetProject() {
+    const select = document.getElementById('agent-project-select');
+    if (select && select.value) {
+        if (select.value === 'all') return { id: '', name: '' };
+        const selected = state.projects.find(p => p.id === select.value);
+        if (selected) return selected;
+    }
     if (state.activeProjectId) {
         const project = state.projects.find(p => p.id === state.activeProjectId);
         if (project) return project;
@@ -10268,6 +10305,11 @@ async function sendAgentMessage(message, history) {
                 history,
                 projectId: targetProject.id || '',
                 projectName: targetProject.name || '',
+                // Явный выбор проекта в селекторе чата — жёсткая область:
+                // агент отвечает только в рамках этого проекта.
+                projectScope: document.getElementById('agent-project-select')?.value
+                    && document.getElementById('agent-project-select').value !== 'all'
+                    ? 'only' : '',
                 clientPlatform: 'web',
                 clientToday: localDateStr(new Date())
             }),
@@ -10590,6 +10632,7 @@ function initAgentChat() {
     elements.agentChatBtn.addEventListener('click', () => {
         playClickSound();
         closeSidebarOnMobile(); // otherwise the chat opens behind the open mobile sidebar
+        populateAgentProjectSelect();
         elements.agentChatModal.classList.add('active');
         elements.agentChatInput?.focus();
     });

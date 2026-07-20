@@ -2214,6 +2214,40 @@ body.read-only .status-option {
     background: var(--card-bg);
     padding: 1.5rem 2rem;
     margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.agent-chat-modal-content .modal-header h2 {
+    margin-right: auto;
+}
+
+/* Селектор области ответов агента («Все проекты» / конкретный проект) */
+.agent-project-select {
+    max-width: 200px;
+    padding: 0.45rem 0.75rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.agent-project-select:hover,
+.agent-project-select:focus {
+    border-color: var(--primary);
+}
+
+@media (max-width: 768px) {
+    .agent-project-select {
+        max-width: 130px;
+        font-size: 0.8rem;
+    }
 }
 
 .agent-chat-messages {

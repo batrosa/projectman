@@ -8,6 +8,7 @@ import {
   formatRecentDialogue,
   isCreateAffirmation,
   getTextTaskCreationRequest,
+  referencesShownTaskList,
   resolveProjectFromHistory,
   requestedTaskCount,
   extractAssigneeFilterWords,
@@ -35,6 +36,42 @@ import {
   agentTaskBoardStatus,
   clearOrganizationContextCache,
 } from "./agent-chat.js";
+
+describe("анафора на показанный список («поставь ему все эти задачи»)", () => {
+  const listHistory = [
+    { role: "user", content: "можешь ему набросать задачи из базы знаний где он указан ответственным?" },
+    {
+      role: "assistant",
+      content: [
+        "| Задачи, где Христос Чахиров указан как ответственный (из базы знаний проекта «Абрау-Дюрсо») | № | Задача |",
+        "| --- | --- | --- |",
+        "| | 38 | Выкуп земельного участка под строительство отеля |",
+        "| | 39 | Формирование земельного участка под выкуп |",
+        "Если нужно создать карточки этих задач в проекте «Абрау-Дюрсо», напишите «ок» или «создай».",
+      ].join("\n"),
+    },
+  ];
+
+  it("распознаёт анафору на список", () => {
+    expect(referencesShownTaskList("поставь ему все эти задачи")).toBe(true);
+    expect(referencesShownTaskList("создай задачи из списка")).toBe(true);
+    expect(referencesShownTaskList("поставь задачу Ивану: проверить договор")).toBe(false);
+    expect(referencesShownTaskList("")).toBe(false);
+  });
+
+  it("строит поручение из списка агента, а не новое прямое поручение", () => {
+    const req = getTextTaskCreationRequest("поставь ему все эти задачи", listHistory);
+    expect(req).toMatchObject({ fromHistory: true });
+    expect(req.message).toContain("Выкуп земельного участка");
+    expect(req.message).toContain("Абрау-Дюрсо");
+    expect(req.message).toContain("поставь ему все эти задачи");
+  });
+
+  it("прямое поручение без анафоры не трогает список", () => {
+    const req = getTextTaskCreationRequest("поставь задачу Ивану: проверить договор", listHistory);
+    expect(req).toMatchObject({ fromHistory: false });
+  });
+});
 
 describe("getTextTaskCreationRequest (восстановление «ок» после обещания карточки)", () => {
   it("«сформируй…» распознаётся как поручение на создание напрямую", () => {

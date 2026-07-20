@@ -17,8 +17,8 @@
     <title>HoldingMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=63.0" as="style">
-    <link rel="stylesheet" href="style.css?v=63.0">
+    <link rel="preload" href="style.css?v=64.0" as="style">
+    <link rel="stylesheet" href="style.css?v=64.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=80.0" defer></script>
+    <script src="script.js?v=81.0" defer></script>
 </head>
 
 <body>
@@ -1693,6 +1693,10 @@
         <div class="modal-content agent-chat-modal-content">
             <div class="modal-header">
                 <h2><i class="fa-solid fa-robot"></i> ИИ-агент</h2>
+                <select id="agent-project-select" class="agent-project-select"
+                    title="Область ответов агента" aria-label="Область ответов агента">
+                    <option value="all">Все проекты</option>
+                </select>
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div id="agent-chat-messages" class="agent-chat-messages" aria-live="polite">

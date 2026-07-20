@@ -490,8 +490,14 @@ export default async function handler(request, response) {
   const selectedProject = selectedProjectId
     ? context.projects.find((project) => project?.id === selectedProjectId)
     : null;
+  // projectScope 'only' — пользователь явно выбрал проект в селекторе чата:
+  // отвечаем строго в рамках этого проекта; данные других проектов можно
+  // упоминать только если пользователь сам назвал другой проект в сообщении.
+  const strictProjectScope = body.projectScope === "only" && selectedProject;
   const selectedProjectLine = selectedProject
-    ? `\nТекущий выбранный проект: «${sanitizeUntrustedText(String(selectedProject.name || "Без названия").slice(0, 300))}».`
+    ? (strictProjectScope
+      ? `\nПользователь ограничил область чата проектом «${sanitizeUntrustedText(String(selectedProject.name || "Без названия").slice(0, 300))}». Отвечай ТОЛЬКО по данным этого проекта (его задачи, файлы, база знаний, участники с доступом). Данные других проектов не используй и не упоминай, кроме случая, когда пользователь явно называет другой проект в своём сообщении.`
+      : `\nТекущий выбранный проект: «${sanitizeUntrustedText(String(selectedProject.name || "Без названия").slice(0, 300))}».`)
     : "";
   const projectKnowledgeLine = buildProjectKnowledgeInstruction(projectKnowledge);
   const currentDateLine = `\nТекущая дата: ${chatToday} (${weekdayRu(chatToday)}). Считай эту дату словом «сегодня»: вопросы о сроках, просрочке, «этой неделе», «сегодня» и «завтра» разрешай относительно неё, а не даты твоего обучения.`;
@@ -678,6 +684,15 @@ function lastAssistantListTurn(history) {
 }
 
 export function getTextTaskCreationRequest(message, history) {
+  // Анафора на ПОКАЗАННЫЙ агентом список («поставь ему все эти задачи»)
+  // приоритетнее прямого поручения: слово «поставь…задачи» матчится и как
+  // новое поручение, но «эти» указывает на список из предыдущего ответа —
+  // прямой путь терял и список, и проект из него (прод-кейс: вместо задач
+  // Чахирова из «Абрау-Дюрсо» карточка собрала весь план открытого проекта).
+  if (referencesShownTaskList(message)) {
+    const fromList = affirmationFromAssistantList(message, history);
+    if (fromList) return fromList;
+  }
   if (looksLikeTextTaskCreationRequest(message)) {
     return { message, fromHistory: false };
   }
@@ -807,6 +822,17 @@ function projectHintTextForAssistantList(history, listTurn) {
     .split(/\n\s*(?:\d+[.)]\s+|[-•]\s+|\|)/u)[0]
     .slice(0, 1000);
   return [...previousUserTexts.reverse(), assistantLead].filter(Boolean).join("\n");
+}
+
+// «эти задачи», «задачи из списка», «их все» — команда ссылается на список,
+// который агент показал в предыдущем ответе, а не описывает новые задачи.
+export function referencesShownTaskList(message) {
+  const text = normalizeLookup(message);
+  if (!text) return false;
+  return /(эти|этих|все эти|показанн[а-я]*|перечисленн[а-я]*)\s+задач/u.test(text)
+    || /задач[а-я]*\s+из\s+(?:этого\s+)?списка/u.test(text)
+    || /(их|все)\s+все(?:$|\s)/u.test(text)
+    || /задачи\s+выше/u.test(text);
 }
 
 function assistantListOffersTaskCreation(content) {
