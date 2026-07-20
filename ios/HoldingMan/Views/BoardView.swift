@@ -114,8 +114,8 @@ struct BoardView: View {
         switch status {
         case .assigned: return "tray"
         case .inProgress: return "hammer"
-        case .review: return "eye"
-        case .done: return "checkmark.seal"
+        case .review: return "clock"
+        case .done: return "checkmark"
         }
     }
 

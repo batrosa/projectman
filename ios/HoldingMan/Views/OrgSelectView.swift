@@ -114,15 +114,7 @@ struct OrgSelectView: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 19, style: .continuous)
-                    .fill(Theme.primaryGradient)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: Theme.primary.opacity(0.32), radius: 16, y: 7)
-                Image(systemName: "building.2.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
+            BrandLogoView(size: 72)
 
             VStack(spacing: 4) {
                 Text("Привет, \(appState.user?.displayName.components(separatedBy: " ").first ?? "коллега")!")

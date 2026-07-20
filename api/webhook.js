@@ -53,16 +53,16 @@ export default async function handler(req, res) {
                     ? await confirmBotLoginSession(botLoginMatch[1], message)
                     : { ok: false, reason: 'webhook_secret_missing' };
                 if (loginResult.ok) {
-                    replyText = `✅ Вход подтвержден.\n\nВернитесь в HoldingMan — окно входа завершится автоматически.`;
+                    replyText = `✅ Вход подтвержден.\n\nВернитесь в ProjectMan — окно входа завершится автоматически.`;
                 } else {
                     replyText = loginResult.reason === 'server'
                         ? `❌ Не удалось подтвердить вход: сервер временно недоступен. Попробуйте ещё раз.`
                         : loginResult.reason === 'webhook_secret_missing'
                             ? `❌ Вход через бота ещё не настроен на сервере. Сообщите администратору: нужен Telegram webhook secret.`
-                        : `❌ Ссылка для входа устарела или уже использована.\n\nВернитесь в HoldingMan и нажмите «Войти через бота» ещё раз.`;
+                        : `❌ Ссылка для входа устарела или уже использована.\n\nВернитесь в ProjectMan и нажмите «Войти через бота» ещё раз.`;
                 }
             } else if (text === '/START') {
-                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений HoldingMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте HoldingMan. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
+                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectMan. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
             } else {
                 // NOTE: the old 6-char "connect by code" linking flow was removed —
                 // it linked a Telegram chat to a user by a world-readable/guessable
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
                 // hijack vector). Login + notification linking now happen only via
                 // the bot deep-link flow (botLoginMatch above), which requires the
                 // verified webhook secret.
-                replyText = `📋 Для входа откройте HoldingMan и нажмите «Войти через Telegram».\n\nЕсли вы видите ошибку домена на сайте, напишите администратору.`;
+                replyText = `📋 Для входа откройте ProjectMan и нажмите «Войти через Telegram».\n\nЕсли вы видите ошибку домена на сайте, напишите администратору.`;
             }
 
             // Send reply

@@ -398,7 +398,7 @@ export default async function handler(request, response) {
       return {
         uid: first.uid,
         payload: {
-          title: PUSH_TITLES[first.type] || "HoldingMan",
+          title: PUSH_TITLES[first.type] || "ProjectMan",
           body: first.text,
           data: { taskId: first.taskId, projectId: first.projectId },
         },

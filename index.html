@@ -14,11 +14,13 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
 
-    <title>HoldingMan</title>
+    <title>ProjectMan</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
+    <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=72.0" as="style">
-    <link rel="stylesheet" href="style.css?v=72.0">
+    <link rel="preload" href="style.css?v=73.0" as="style">
+    <link rel="stylesheet" href="style.css?v=73.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -110,11 +112,10 @@
             justify-content: center;
         }
 
-        .loading-logo-bg {
-            position: absolute;
+        .loading-logo img {
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+            object-fit: cover;
             border-radius: 28px;
             animation: logoFloat 3s ease-in-out infinite;
             box-shadow:
@@ -133,14 +134,6 @@
             50% {
                 transform: translateY(-8px) rotate(2deg);
             }
-        }
-
-        .loading-logo i {
-            position: relative;
-            z-index: 2;
-            font-size: 2.8rem;
-            color: white;
-            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
         }
 
         .loading-brand {
@@ -444,12 +437,8 @@
                 height: 80px;
             }
 
-            .loading-logo-bg {
+            .loading-logo img {
                 border-radius: 22px;
-            }
-
-            .loading-logo i {
-                font-size: 2.2rem;
             }
 
             .loading-brand {
@@ -574,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=88.0" defer></script>
+    <script src="script.js?v=89.0" defer></script>
 </head>
 
 <body>
@@ -600,12 +589,11 @@
         <div class="loading-screen-content">
             <div class="loading-logo-container">
                 <div class="loading-logo">
-                    <div class="loading-logo-bg"></div>
-                    <i class="fa-solid fa-layer-group"></i>
+                    <img src="projectman-icon-180.png?v=2" alt="ProjectMan">
                 </div>
             </div>
 
-            <div class="loading-brand">HoldingMan</div>
+            <div class="loading-brand">ProjectMan</div>
             <div class="loading-tagline">Управление задачами нового поколения</div>
 
             <div class="loading-spinner-modern">
@@ -635,10 +623,9 @@
         <!-- Registration/Login Screen -->
         <div id="auth-screen" class="auth-card">
             <div class="auth-logo">
-                <div class="auth-logo-bg"></div>
-                <i class="fa-solid fa-layer-group"></i>
+                <img src="projectman-icon-180.png?v=2" alt="ProjectMan">
             </div>
-            <h1 class="auth-brand">HoldingMan</h1>
+            <h1 class="auth-brand">ProjectMan</h1>
             <h2 id="auth-title" class="auth-title">Вход в систему</h2>
             <p id="auth-subtitle" class="auth-subtitle">Один аккаунт в веб-версии и приложении</p>
 
@@ -717,7 +704,7 @@
     <div id="name-setup-overlay" class="login-overlay" style="display: none;">
         <div id="name-setup-screen" class="login-card" style="max-width: 450px;">
             <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
-                <i class="fa-solid fa-layer-group"></i> HoldingMan
+                <img class="brand-logo-image" src="projectman-icon-180.png?v=2" alt=""> <span>ProjectMan</span>
             </div>
             <h2 style="text-align: center;">Как вас зовут?</h2>
             <p style="color: var(--text-secondary); margin-bottom: 2rem; text-align: center;">
@@ -751,7 +738,7 @@
         <!-- Choose: Create or Join -->
         <div id="org-choice-screen" class="login-card org-menu-card">
             <div class="brand" style="justify-content: center; margin-bottom: 1.5rem;">
-                <i class="fa-solid fa-layer-group"></i> HoldingMan
+                <img class="brand-logo-image" src="projectman-icon-180.png?v=2" alt=""> <span>ProjectMan</span>
             </div>
             <h2 style="text-align: center;">Организации</h2>
             <p id="org-welcome-name" style="color: var(--text-secondary); margin-bottom: 1.5rem; text-align: center;"></p>
@@ -925,7 +912,7 @@
             </div>
 
             <div class="brand" id="brand-logo">
-                <i class="fa-solid fa-layer-group"></i> HoldingMan
+                <img class="brand-logo-image" src="projectman-icon-180.png?v=2" alt=""> <span>ProjectMan</span>
             </div>
 
             <div class="projects-header">
@@ -1292,7 +1279,7 @@
                     </div>
                     <div class="profile-auth-current" id="profile-auth-current">
                         <i id="profile-auth-icon" class="fa-solid fa-user-shield" aria-hidden="true"></i>
-                        <strong id="profile-auth-provider">HoldingMan</strong>
+                        <strong id="profile-auth-provider">ProjectMan</strong>
                         <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
                     </div>
                 </section>
@@ -1320,7 +1307,7 @@
                     </div>
                     <div class="profile-stat">
                         <div class="stat-icon completed">
-                            <i class="fa-solid fa-check-double"></i>
+                            <i class="fa-solid fa-check"></i>
                         </div>
                         <div class="stat-info">
                             <span class="stat-value" id="profile-completed-tasks">0</span>
@@ -1527,7 +1514,7 @@
             <div class="help-content">
                 <div class="help-section">
                     <h3><i class="fa-solid fa-rocket"></i> О приложении</h3>
-                    <p>HoldingMan — система управления проектами и задачами с двойным контролем выполнения. Внутри:
+                    <p>ProjectMan — система управления проектами и задачами с двойным контролем выполнения. Внутри:
                         проекты с тремя видами (Канбан, Гант, Календарь), жизненный цикл задач с подтверждениями,
                         ИИ-агент, уведомления (в приложении, по email для Google и подтверждённых email-аккаунтов, Telegram и push в iOS), XP-рейтинг сотрудников и
                         файлы проекта как база знаний.</p>
@@ -1648,13 +1635,13 @@
                                 работает над ней</span>
                         </li>
                         <li style="margin-bottom: 0.75rem;">
-                            <span style="color: #2ecc71; font-weight: 600;"><i class="fa-solid fa-check"></i>
-                                Завершена</span><br>
+                            <span style="color: #eab308; font-weight: 600;"><i class="fa-solid fa-clock"></i>
+                                На проверке</span><br>
                             <span style="color: var(--text-secondary); font-size: 0.9rem;">Исполнитель выполнил, ожидает
                                 проверки руководителем</span>
                         </li>
                         <li>
-                            <span style="color: #10b981; font-weight: 600;"><i class="fa-solid fa-check-double"></i>
+                            <span style="color: #10b981; font-weight: 600;"><i class="fa-solid fa-check"></i>
                                 Готово</span><br>
                             <span style="color: var(--text-secondary); font-size: 0.9rem;">Руководитель подтвердил
                                 выполнение, задача в архиве</span>
@@ -1703,7 +1690,7 @@
                         <li>Полное описание, прикреплённые файлы, исполнители и постановщики</li>
                         <li><strong>Статус и кнопки действий:</strong> исполнитель — «Взять в работу» / «Завершить»;
                             постановщик — «Принять» / «На доработку» (прямо из этого окна)</li>
-                        <li>История задачи: создана, взята в работу, завершена, в архиве</li>
+                            <li>История задачи: создана, взята в работу, отправлена на проверку, принята в архив</li>
                         <li>Отчёт исполнителя с файлами подтверждения и причина доработки</li>
                         <li>Запрос переноса срока — с кнопками решения для постановщика</li>
                     </ul>
@@ -2015,10 +2002,8 @@
             </div>
             <div class="my-tasks-content">
                 <div id="my-tasks-list" class="my-tasks-list">
-                    <!-- User's tasks will be loaded here -->
-                    <div class="my-tasks-empty">
-                        <i class="fa-solid fa-clipboard-check"></i>
-                        <p>У вас нет назначенных задач</p>
+                    <div class="my-tasks-loading" role="status" aria-label="Загрузка задач">
+                        <div class="my-tasks-spinner" aria-hidden="true"></div>
                     </div>
                 </div>
             </div>
@@ -2168,7 +2153,7 @@
             </button>
             <button type="button" data-view="review"
                 style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
-                <i class="fa-solid fa-magnifying-glass" style="color:#eab308;width:20px;"></i>
+                <i class="fa-solid fa-clock" style="color:#eab308;width:20px;"></i>
                 <span>На проверке</span>
             </button>
             <button type="button" data-view="done"

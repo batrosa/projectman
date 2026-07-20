@@ -1434,20 +1434,21 @@ body.light-mode .login-overlay {
     justify-content: center;
 }
 
-.auth-logo-bg {
-    position: absolute;
+.auth-logo img {
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+    object-fit: cover;
     border-radius: 20px;
     box-shadow: 0 10px 40px rgba(99, 102, 241, 0.4);
 }
 
-.auth-logo i {
-    position: relative;
-    z-index: 2;
-    font-size: 2rem;
-    color: white;
+.brand-logo-image {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    object-fit: cover;
+    border-radius: 7px;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.28);
 }
 
 .auth-brand {
@@ -1931,12 +1932,8 @@ body.light-mode .auth-form-group input:focus {
         margin-bottom: 0.75rem;
     }
 
-    .auth-logo-bg {
+    .auth-logo img {
         border-radius: 18px;
-    }
-
-    .auth-logo i {
-        font-size: 1.8rem;
     }
 
     .auth-brand {
@@ -3571,7 +3568,8 @@ body.light-mode .project-checkbox-item:hover {
 :root {
     --status-assigned: #e67e22;  /* orange */
     --status-in-work: #3b82f6;   /* blue   */
-    --status-completed: #16a34a; /* green  */
+    --status-review: #eab308;     /* yellow */
+    --status-done: #16a34a;       /* green  */
 }
 
 .status-badge {
@@ -3612,8 +3610,13 @@ body.light-mode .project-checkbox-item:hover {
     color: #fff;
 }
 
-.status-completed {
-    background: var(--status-completed);
+.status-review {
+    background: var(--status-review);
+    color: #fff;
+}
+
+.status-done {
+    background: var(--status-done);
     color: #fff;
 }
 
@@ -4535,6 +4538,28 @@ body.light-mode .file-preview-container {
     background: rgba(255, 255, 255, 0.3);
 }
 
+/* Loading state fills the modal body, keeping one clear indicator in its centre. */
+.my-tasks-loading {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+}
+
+.my-tasks-spinner {
+    width: 44px;
+    height: 44px;
+    border: 3px solid rgba(148, 163, 184, 0.22);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: my-tasks-spin 0.75s linear infinite;
+}
+
+@keyframes my-tasks-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* Empty State */
 .my-tasks-empty {
     display: flex;
@@ -4621,14 +4646,15 @@ body.light-mode .file-preview-container {
     color: #f39c12;
 }
 
+.my-task-status.status-review,
 .my-task-status.status-completed {
-    background: rgba(46, 204, 113, 0.15);
-    color: #2ecc71;
+    background: rgba(234, 179, 8, 0.15);
+    color: #eab308;
 }
 
 .my-task-status.status-done {
-    background: rgba(108, 117, 125, 0.15);
-    color: #6c757d;
+    background: rgba(22, 163, 74, 0.15);
+    color: #16a34a;
 }
 
 .my-task-title {

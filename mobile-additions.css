@@ -349,7 +349,13 @@
         border-color: transparent !important;
     }
 
-    .status-completed {
+    .status-review {
+        background: #eab308 !important;
+        color: #fff !important;
+        border-color: transparent !important;
+    }
+
+    .status-done {
         background: #16a34a !important;
         color: #fff !important;
         border-color: transparent !important;

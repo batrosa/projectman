@@ -277,7 +277,7 @@ final class AuthService: ObservableObject {
                 try await bootstrapOrSignOut()
                 return
             } catch ApiError.network {
-                // Во время перехода Telegram -> HoldingMan iOS может отменить
+                // Во время перехода Telegram -> ProjectMan iOS может отменить
                 // один polling-запрос. Не показываем ложную ошибку, продолжаем
                 // проверку до истечения кода.
                 continue

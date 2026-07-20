@@ -1214,8 +1214,8 @@ function setupOrgEventListeners() {
             const name = state.organization?.name || 'организации';
             const inviteUrl = `${window.location.origin}?invite=${code}`;
             const shareData = {
-                title: 'Приглашение в HoldingMan',
-                text: `Присоединяйтесь к "${name}" в HoldingMan!\nКод: ${code}`,
+                title: 'Приглашение в ProjectMan',
+                text: `Присоединяйтесь к "${name}" в ProjectMan!\nКод: ${code}`,
                 url: inviteUrl
             };
 
@@ -3102,7 +3102,7 @@ function openStatusMenu(event, task, currentSubStatus) {
         }
 
         if (canManage && currentSubStatus === 'completed') {
-            addOption('Подтвердить', 'Отправить в архив', 'fa-check-double', 'done', 'done');
+            addOption('Подтвердить', 'Отправить в архив', 'fa-check', 'done', 'done');
             addOption('На доработку', 'Вернуть исполнителю', 'fa-rotate-left', 'revision', 'in_work', false, true);
         }
     }
@@ -3226,14 +3226,14 @@ function createTaskCard(task) {
             badgeClass = 'status-in-work';
             break;
         case 'completed':
-            badgeText = 'Задача завершена';
-            badgeIcon = '<i class="fa-solid fa-check"></i>';
-            badgeClass = 'status-completed';
+            badgeText = 'На проверке';
+            badgeIcon = '<i class="fa-solid fa-clock"></i>';
+            badgeClass = 'status-review';
             break;
         case 'done':
             badgeText = 'Готово (Архив)';
-            badgeIcon = '<i class="fa-solid fa-check-double"></i>';
-            badgeClass = 'status-completed'; // Keep green
+            badgeIcon = '<i class="fa-solid fa-check"></i>';
+            badgeClass = 'status-done';
             break;
         default:
             badgeText = 'Задача поставлена';
@@ -4034,9 +4034,9 @@ function openTaskDetailsModal(task) {
     if (completedAt) {
         timelineHTML += `
             <div class="timeline-item">
-                <div class="timeline-icon completed"><i class="fa-solid fa-check"></i></div>
+                <div class="timeline-icon completed"><i class="fa-solid fa-clock"></i></div>
                 <div class="timeline-content">
-                    <div class="timeline-label">Завершена${task.completedBy ? ' <span class="timeline-user">| ' + escapeHtml(task.completedBy) + '</span>' : ''}</div>
+                    <div class="timeline-label">Отправлена на проверку${task.completedBy ? ' <span class="timeline-user">| ' + escapeHtml(task.completedBy) + '</span>' : ''}</div>
                     <div class="timeline-date">${completedAt}</div>
                 </div>
             </div>
@@ -4044,7 +4044,7 @@ function openTaskDetailsModal(task) {
     } else if (task.subStatus === 'in_work') {
         timelineHTML += `
             <div class="timeline-item pending">
-                <div class="timeline-icon completed"><i class="fa-solid fa-check"></i></div>
+                <div class="timeline-icon completed"><i class="fa-solid fa-clock"></i></div>
                 <div class="timeline-content">
                     <div class="timeline-label">Ожидает завершения</div>
                     <div class="timeline-date">—</div>
@@ -4056,7 +4056,7 @@ function openTaskDetailsModal(task) {
     if (archivedAt) {
         timelineHTML += `
             <div class="timeline-item">
-                <div class="timeline-icon archived"><i class="fa-solid fa-check-double"></i></div>
+                <div class="timeline-icon archived"><i class="fa-solid fa-check"></i></div>
                 <div class="timeline-content">
                     <div class="timeline-label">В архиве${task.archivedBy ? ' <span class="timeline-user">| ' + escapeHtml(task.archivedBy) + '</span>' : ''}</div>
                     <div class="timeline-date">${archivedAt}</div>
@@ -4168,8 +4168,8 @@ function openTaskDetailsModal(task) {
     const statusMeta = ({
         assigned: { label: 'Задача поставлена', icon: 'fa-circle-exclamation', cls: 'status-assigned' },
         in_work: { label: 'В работе', icon: 'fa-person-digging', cls: 'status-in-work' },
-        completed: { label: 'На проверке', icon: 'fa-check', cls: 'status-completed' },
-        done: { label: 'Готово (Архив)', icon: 'fa-check-double', cls: 'status-completed' }
+        completed: { label: 'На проверке', icon: 'fa-clock', cls: 'status-review' },
+        done: { label: 'Готово (Архив)', icon: 'fa-check', cls: 'status-done' }
     })[currentSubStatus] || { label: 'Задача поставлена', icon: 'fa-circle-exclamation', cls: 'status-assigned' };
 
     const lifecycleButtons = [];
@@ -4178,11 +4178,11 @@ function openTaskDetailsModal(task) {
             if (currentSubStatus === 'assigned') {
                 lifecycleButtons.push({ action: 'take', label: 'Взять в работу', icon: 'fa-play', primary: true });
             } else if (currentSubStatus === 'in_work') {
-                lifecycleButtons.push({ action: 'complete', label: 'Завершить', icon: 'fa-check', primary: true });
+                lifecycleButtons.push({ action: 'complete', label: 'Завершить', icon: 'fa-clock', primary: true });
             }
         }
         if (canActAsTaskCreator(task) && currentSubStatus === 'completed') {
-            lifecycleButtons.push({ action: 'accept', label: 'Принять', icon: 'fa-check-double', primary: true });
+            lifecycleButtons.push({ action: 'accept', label: 'Принять', icon: 'fa-check', primary: true });
             lifecycleButtons.push({ action: 'revision', label: 'На доработку', icon: 'fa-rotate-left', primary: false });
         }
     }
@@ -5369,7 +5369,7 @@ function setupEventListeners() {
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
-Откройте HoldingMan для подробностей.`;
+Откройте ProjectMan для подробностей.`;
                 sendTaskEventToUid(a.id, message, newTaskEvent);
             });
 
@@ -5980,7 +5980,7 @@ window.startTelegramBotLogin = async function startTelegramBotLogin() {
         botWindow = window.open('', '_blank');
         if (botWindow) {
             botWindow.opener = null;
-            botWindow.document.title = 'HoldingMan Telegram';
+            botWindow.document.title = 'ProjectMan Telegram';
         }
 
         const res = await fetch('/api/telegram-bot-login-start', { method: 'POST' });
@@ -6182,7 +6182,7 @@ function renderAuthProvider() {
     const title = provider === 'apple.com' ? 'Apple'
         : provider === 'google.com' ? 'Google'
             : provider === 'password' ? 'Email'
-            : provider === 'telegram' ? 'Telegram' : 'HoldingMan';
+            : provider === 'telegram' ? 'Telegram' : 'ProjectMan';
     const icon = document.getElementById('profile-auth-icon');
     const label = document.getElementById('profile-auth-provider');
     if (label) label.textContent = title;
@@ -6868,7 +6868,7 @@ function renderAdminUsersStatsPanel() {
             </div>
             <div class="user-actions" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
                 <span class="role-badge employee" style="border-color: rgba(148,163,184,0.25); background: rgba(148,163,184,0.08); color: var(--text);">
-                    <i class="fa-solid fa-check-double"></i> ${completed}
+                    <i class="fa-solid fa-check"></i> ${completed}
                 </span>
                 <span class="role-badge employee" style="border-color: rgba(34,197,94,0.25); background: rgba(34,197,94,0.10); color: var(--text);">
                     <i class="fa-solid fa-clock"></i> ${onTimePercent}%
@@ -7563,7 +7563,7 @@ async function sendNewTaskNotificationToAssignee(assignee, taskTitle, projectNam
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
-Откройте HoldingMan для подробностей.`;
+Откройте ProjectMan для подробностей.`;
 
     await sendTelegramNotification(chatId, message);
 }
@@ -7938,10 +7938,10 @@ async function fetchMyTasks() {
 // Open My Tasks modal and load tasks
 async function openMyTasksModal() {
     elements.myTasksModal.classList.add('active');
+    elements.myTasksList.classList.remove('my-tasks-board');
     elements.myTasksList.innerHTML = `
-        <div class="my-tasks-empty">
-            <div class="spinner"></div>
-            <p>Загрузка задач...</p>
+        <div class="my-tasks-loading" role="status" aria-label="Загрузка задач">
+            <div class="my-tasks-spinner" aria-hidden="true"></div>
         </div>
     `;
 
@@ -7956,7 +7956,7 @@ async function openMyTasksModal() {
 const MY_TASKS_COLUMNS = [
     { key: 'assigned', title: 'Назначенные', icon: 'fa-circle-exclamation', cls: 'col-assigned' },
     { key: 'in-progress', title: 'В работе', icon: 'fa-person-digging', cls: 'col-in-progress' },
-    { key: 'review', title: 'На проверке', icon: 'fa-check', cls: 'col-review' },
+    { key: 'review', title: 'На проверке', icon: 'fa-clock', cls: 'col-review' },
 ];
 
 let myTasksModalTasks = [];

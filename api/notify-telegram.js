@@ -146,7 +146,7 @@ export default async function handler(request, response) {
     }
 
     // Мобильный push + email для подходящего подтверждённого аккаунта. Оба канала fail-open.
-    const notificationTitle = eventType ? TASK_EVENT_TITLES[eventType] : 'HoldingMan';
+    const notificationTitle = eventType ? TASK_EVENT_TITLES[eventType] : 'ProjectMan';
     const [pushResult, emailResult] = await Promise.allSettled([
         sendPushToUser(recipientDoc.id, {
             title: notificationTitle,

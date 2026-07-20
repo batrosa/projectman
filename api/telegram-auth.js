@@ -59,7 +59,7 @@ async function sendLoginConfirmation(botToken, telegramId) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: telegramId,
-        text: "✅ Вход в HoldingMan выполнен. Telegram-уведомления подключены.",
+        text: "✅ Вход в ProjectMan выполнен. Telegram-уведомления подключены.",
       }),
     });
 

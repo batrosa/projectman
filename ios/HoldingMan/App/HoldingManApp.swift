@@ -58,7 +58,7 @@ private struct KeyboardDismissInstaller: UIViewRepresentable {
 }
 
 @main
-struct HoldingManApp: App {
+struct ProjectManApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var appState = AppState()
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
@@ -87,10 +87,8 @@ struct RootView: View {
                 ZStack {
                     Theme.background.ignoresSafeArea()
                     VStack(spacing: 14) {
-                        Image(systemName: "building.2.fill")
-                            .font(.system(size: 42))
-                            .foregroundStyle(Theme.primary)
-                        Text("HoldingMan")
+                        BrandLogoView(size: 76)
+                        Text("ProjectMan")
                             .font(.title2.bold())
                             .foregroundStyle(Theme.textPrimary)
                         ProgressView()

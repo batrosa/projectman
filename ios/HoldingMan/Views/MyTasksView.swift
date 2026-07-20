@@ -26,20 +26,20 @@ struct MyTasksView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
                             if !assigned.isEmpty {
-                                sectionHeader("Назначенные", count: assigned.count, color: Theme.statusAssigned)
+                                sectionHeader("Назначенные", count: assigned.count, color: Theme.statusAssigned, icon: BoardStatus.assigned.icon)
                                 ForEach(assigned, id: \.statusRenderId) { task in
                                     taskLink(task)
                                 }
                             }
                             if !inProgress.isEmpty {
-                                sectionHeader("В работе", count: inProgress.count, color: Theme.statusInProgress)
+                                sectionHeader("В работе", count: inProgress.count, color: Theme.statusInProgress, icon: BoardStatus.inProgress.icon)
                                     .padding(.top, assigned.isEmpty ? 0 : 8)
                                 ForEach(inProgress, id: \.statusRenderId) { task in
                                     taskLink(task)
                                 }
                             }
                             if !review.isEmpty {
-                                sectionHeader("На проверке", count: review.count, color: Theme.statusReview)
+                                sectionHeader("На проверке", count: review.count, color: Theme.statusReview, icon: BoardStatus.review.icon)
                                     .padding(.top, (assigned.isEmpty && inProgress.isEmpty) ? 0 : 8)
                                 ForEach(review, id: \.statusRenderId) { task in
                                     taskLink(task)
@@ -69,7 +69,7 @@ struct MyTasksView: View {
                 } label: {
                     Label(
                         filter.title,
-                        systemImage: selectedFilter == filter ? "checkmark.circle.fill" : filter.icon
+                        systemImage: filter.icon
                     )
                 }
             }
@@ -82,8 +82,11 @@ struct MyTasksView: View {
         .accessibilityValue(selectedFilter.title)
     }
 
-    private func sectionHeader(_ title: String, count: Int, color: Color) -> some View {
+    private func sectionHeader(_ title: String, count: Int, color: Color, icon: String) -> some View {
         HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(color)
             Text(title)
                 .font(.footnote.weight(.bold))
                 .foregroundStyle(color)
@@ -132,7 +135,7 @@ private enum MyTasksFilter: String, CaseIterable, Identifiable {
         case .all: return "list.bullet.rectangle"
         case .assigned: return "exclamationmark.circle"
         case .inProgress: return "briefcase.fill"
-        case .review: return "checkmark.circle"
+        case .review: return "clock.fill"
         }
     }
 
@@ -141,7 +144,7 @@ private enum MyTasksFilter: String, CaseIterable, Identifiable {
         case .all: return "checkmark.circle"
         case .assigned: return "tray"
         case .inProgress: return "briefcase"
-        case .review: return "checkmark.circle"
+        case .review: return "clock"
         }
     }
 
@@ -163,7 +166,7 @@ private enum MyTasksFilter: String, CaseIterable, Identifiable {
         case .inProgress:
             return "Принятые в работу задачи появятся здесь."
         case .review:
-            return "Завершённые задачи, ожидающие проверки, появятся здесь."
+            return "Задачи, отправленные на проверку, появятся здесь."
         }
     }
 

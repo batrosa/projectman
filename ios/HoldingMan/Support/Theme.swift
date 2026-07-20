@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// ===== Дизайн-система HoldingMan (iOS, минимализм-2026) =====
+// ===== Дизайн-система ProjectMan (iOS, минимализм-2026) =====
 // Адаптивные цвета: одна палитра для светлой и тёмной темы. Бренд — индиго
 // web-версии (#6366F1); тёмная тема повторяет web (#0F172A), светлая —
 // спокойный серо-голубой.
@@ -136,6 +136,20 @@ struct CardStyle: ViewModifier {
     }
 }
 
+struct BrandLogoView: View {
+    var size: CGFloat = 72
+
+    var body: some View {
+        Image("BrandLogo")
+            .resizable()
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
+            .shadow(color: Theme.primary.opacity(0.28), radius: size * 0.2, y: size * 0.08)
+            .accessibilityHidden(true)
+    }
+}
+
 extension View {
     func screenBackground() -> some View { modifier(ScreenBackground()) }
     func card(cornerRadius: CGFloat = 16) -> some View { modifier(CardStyle(cornerRadius: cornerRadius)) }
@@ -200,9 +214,8 @@ struct StatusChip: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Circle()
-                .fill(Theme.color(for: status))
-                .frame(width: 7, height: 7)
+            Image(systemName: status.icon)
+                .font(.system(size: compact ? 9 : 10, weight: .bold))
             Text(status.singleRu)
                 .font(.caption.weight(.semibold))
         }

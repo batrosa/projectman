@@ -23,7 +23,7 @@ targets:
     info:
       path: HoldingMan/Info.plist
       properties:
-        CFBundleDisplayName: HoldingMan
+        CFBundleDisplayName: ProjectMan
         CFBundleDevelopmentRegion: ru
         CFBundleLocalizations:
           - ru

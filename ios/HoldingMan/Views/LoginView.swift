@@ -68,18 +68,10 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 21, style: .continuous)
-                    .fill(Theme.primaryGradient)
-                    .frame(width: 78, height: 78)
-                    .shadow(color: Theme.primary.opacity(0.28), radius: 18, y: 8)
-                Image(systemName: "building.2.fill")
-                    .font(.system(size: 33, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
+            BrandLogoView(size: 78)
 
             VStack(spacing: 5) {
-                Text("HoldingMan")
+                Text("ProjectMan")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
                     .foregroundStyle(Theme.textPrimary)
                 Text(auth.pendingVerificationEmail == nil

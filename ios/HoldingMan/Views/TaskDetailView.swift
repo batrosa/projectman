@@ -346,7 +346,7 @@ struct TaskDetailView: View {
                 }
 
                 if isAssignee && current.boardStatus == .inProgress {
-                    actionCircleButton("Завершить", icon: "checkmark.seal.fill", tint: Theme.statusDone, kind: .complete) {
+                    actionCircleButton("Завершить", icon: "clock.fill", tint: Theme.statusReview, kind: .complete) {
                         showCompletionSheet = true
                     }
                 }
@@ -363,7 +363,7 @@ struct TaskDetailView: View {
                         showRevisionPrompt = true
                     }
 
-                    actionCircleButton("Принять", icon: "checkmark.circle.fill", tint: Theme.statusDone, kind: .accept) {
+                    actionCircleButton("Принять", icon: "checkmark", tint: Theme.statusDone, kind: .accept) {
                         confirmAccept = true
                     }
                     .confirmationDialog(
@@ -534,9 +534,8 @@ struct TaskDetailView: View {
 
     private func statusPill(_ status: BoardStatus) -> some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(Theme.color(for: status))
-                .frame(width: 8, height: 8)
+            Image(systemName: status.icon)
+                .font(.system(size: 10, weight: .bold))
             Text(status.singleRu)
                 .font(.caption.weight(.semibold))
         }

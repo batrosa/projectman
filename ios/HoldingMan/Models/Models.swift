@@ -28,6 +28,15 @@ enum BoardStatus: String, CaseIterable, Identifiable {
         case .done: return "Готово"
         }
     }
+
+    var icon: String {
+        switch self {
+        case .assigned: return "exclamationmark.circle.fill"
+        case .inProgress: return "hammer.fill"
+        case .review: return "clock.fill"
+        case .done: return "checkmark"
+        }
+    }
 }
 
 struct UserDoc {
@@ -82,7 +91,7 @@ struct UserDoc {
         case "google.com": return "Google"
         case "password": return "Email"
         case "telegram": return "Telegram"
-        default: return "HoldingMan"
+        default: return "ProjectMan"
         }
     }
 
