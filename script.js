@@ -1879,7 +1879,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.18'; // Agent restricted to moderator+
+    const CURRENT_VERSION = '6.19'; // My Tasks fullscreen mini-board
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -7944,10 +7944,22 @@ async function openMyTasksModal() {
     renderMyTasks(tasks);
 }
 
-// Render tasks in the My Tasks modal
+// Render tasks in the My Tasks modal — полноэкранная мини-доска: три колонки
+// по статусам (Назначенные / В работе / На проверке), карточки — ровно те же,
+// что на канбан-доске (createTaskCard), с чипом проекта сверху. Клик по
+// карточке ведёт к задаче на её доске; внутренние кнопки карточки отключены
+// (pointer-events: none в CSS), чтобы клик был единым «перейти к задаче».
+const MY_TASKS_COLUMNS = [
+    { key: 'assigned', title: 'Назначенные', icon: 'fa-circle-exclamation', cls: 'col-assigned' },
+    { key: 'in-progress', title: 'В работе', icon: 'fa-person-digging', cls: 'col-in-progress' },
+    { key: 'review', title: 'На проверке', icon: 'fa-check', cls: 'col-review' },
+];
+
 function renderMyTasks(tasks) {
+    const container = elements.myTasksList;
+    container.classList.remove('my-tasks-board');
     if (tasks.length === 0) {
-        elements.myTasksList.innerHTML = `
+        container.innerHTML = `
             <div class="my-tasks-empty">
                 <i class="fa-solid fa-clipboard-check"></i>
                 <p>У вас нет назначенных задач</p>
@@ -7956,125 +7968,66 @@ function renderMyTasks(tasks) {
         return;
     }
 
-    elements.myTasksList.innerHTML = '';
+    container.innerHTML = '';
+    container.classList.add('my-tasks-board');
 
-    tasks.forEach(task => {
-        const taskEl = document.createElement('div');
-        taskEl.className = 'my-task-item';
-        taskEl.dataset.projectId = task.projectId;
-        taskEl.dataset.taskId = task.id;
+    MY_TASKS_COLUMNS.forEach(col => {
+        const colTasks = tasks.filter(task => boardViewForTask(task) === col.key);
 
-        // Determine actual status (same logic as in createTaskCard)
-        let currentSubStatus = task.subStatus || 'assigned';
+        const colEl = document.createElement('div');
+        colEl.className = `my-tasks-col ${col.cls}`;
 
-        // Migration logic for old tasks without subStatus
-        if (!task.subStatus) {
-            if (task.assigneeCompleted) currentSubStatus = 'completed';
-            else currentSubStatus = 'assigned';
+        const header = document.createElement('div');
+        header.className = `my-tasks-col-header ${col.cls}`;
+        header.innerHTML = `<i class="fa-solid ${col.icon}"></i> <span>${col.title}</span>`;
+        const count = document.createElement('span');
+        count.className = 'my-tasks-col-count';
+        count.textContent = String(colTasks.length);
+        header.appendChild(count);
+        colEl.appendChild(header);
+
+        const list = document.createElement('div');
+        list.className = 'my-tasks-col-list';
+
+        if (colTasks.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'my-tasks-col-empty';
+            empty.textContent = 'Нет задач';
+            list.appendChild(empty);
         }
 
-        // Override if global status is done
-        if (task.status === 'done') {
-            currentSubStatus = 'done';
-        }
+        colTasks.forEach(task => {
+            const wrap = document.createElement('div');
+            wrap.className = 'my-kanban-card-wrap';
+            wrap.dataset.projectId = task.projectId;
+            wrap.dataset.taskId = task.id;
 
-        // Status info
-        let statusText = '';
-        let statusClass = '';
-        let statusIcon = '';
+            const projectChip = document.createElement('div');
+            projectChip.className = 'my-task-project-chip';
+            const folderIcon = document.createElement('i');
+            folderIcon.className = 'fa-solid fa-folder';
+            projectChip.appendChild(folderIcon);
+            projectChip.appendChild(document.createTextNode(' ' + (task.projectName || 'Проект')));
+            const goHint = document.createElement('span');
+            goHint.className = 'my-task-go-hint';
+            goHint.innerHTML = 'Перейти <i class="fa-solid fa-arrow-right"></i>';
+            projectChip.appendChild(goHint);
+            wrap.appendChild(projectChip);
 
-        switch (currentSubStatus) {
-            case 'assigned':
-                statusText = 'Поставлена';
-                statusClass = 'status-assigned';
-                statusIcon = 'fa-circle-exclamation';
-                break;
-            case 'in_work':
-                statusText = 'В работе';
-                statusClass = 'status-in-work';
-                statusIcon = 'fa-person-digging';
-                break;
-            case 'completed':
-                statusText = 'Завершена';
-                statusClass = 'status-completed';
-                statusIcon = 'fa-check';
-                break;
-            case 'done':
-                statusText = 'В архиве';
-                statusClass = 'status-done';
-                statusIcon = 'fa-check-double';
-                break;
-            default:
-                statusText = 'Поставлена';
-                statusClass = 'status-assigned';
-                statusIcon = 'fa-circle-exclamation';
-        }
+            const card = createTaskCard(task);
+            card.classList.add('my-tasks-kanban-card');
+            wrap.appendChild(card);
 
-        // Deadline info
-        let deadlineHtml = '';
-        let deadlineClass = '';
-        if (task.deadline) {
-            const deadline = new Date(task.deadline);
-            const now = new Date();
-            const daysLeft = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
+            wrap.addEventListener('click', () => {
+                playClickSound();
+                navigateToTask(task.projectId, task.id, col.key);
+            });
 
-            const formattedDate = formatDate(task.deadline);
-
-            // Badges (same semantics as task card): "На проверке" + ("В срок" OR "Просрочено")
-            let tags = [];
-            if (currentSubStatus === 'completed') {
-                tags.push(`<span class="deadline-tag tag-review">На проверке</span>`);
-                const wasOnTime = getTaskWasCompletedOnTime(task);
-                if (wasOnTime === true) tags.push(`<span class="deadline-tag tag-ontime">В срок</span>`);
-                else if (wasOnTime === false) tags.push(`<span class="deadline-tag tag-overdue">Просрочено</span>`);
-            } else {
-                if (daysLeft < 0) {
-                    deadlineClass = 'overdue';
-                    tags.push(`<span class="deadline-tag tag-overdue">Просрочено</span>`);
-                } else if (daysLeft === 0) {
-                    tags.push(`<span class="deadline-tag tag-today">Сегодня</span>`);
-                } else if (daysLeft > 0) {
-                    tags.push(`<span class="deadline-tag tag-days">${daysLeft} дн.</span>`);
-                }
-            }
-
-            deadlineHtml = `
-                <span class="my-task-deadline ${deadlineClass}">
-                    <i class="fa-regular fa-calendar"></i> ${formattedDate}
-                </span>
-                ${tags.length ? `<span class="deadline-tags-inline">${tags.join('')}</span>` : ''}
-            `;
-        }
-
-        taskEl.innerHTML = `
-            <div class="my-task-header">
-                <span class="my-task-project">
-                    <i class="fa-solid fa-folder"></i> ${escapeHtml(task.projectName)}
-                </span>
-                <span class="my-task-status ${statusClass}">
-                    <i class="fa-solid ${statusIcon}"></i> ${statusText}
-                </span>
-            </div>
-            <div class="my-task-title">${escapeHtml(task.title)}</div>
-            <div class="my-task-meta">
-                ${deadlineHtml}
-                <span class="my-task-go">
-                    Перейти к задаче <i class="fa-solid fa-arrow-right"></i>
-                </span>
-            </div>
-        `;
-
-        // Click handler — navigate to the project AND open the exact status
-        // column the task sits in (works on desktop and mobile, where only the
-        // active column is shown).
-        const viewMap = { assigned: 'assigned', in_work: 'in-progress', completed: 'review', done: 'done' };
-        const boardView = viewMap[currentSubStatus] || 'assigned';
-        taskEl.addEventListener('click', () => {
-            playClickSound();
-            navigateToTask(task.projectId, task.id, boardView);
+            list.appendChild(wrap);
         });
 
-        elements.myTasksList.appendChild(taskEl);
+        colEl.appendChild(list);
+        container.appendChild(colEl);
     });
 }
 
