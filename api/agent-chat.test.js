@@ -1750,7 +1750,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("returns a graceful HTTP 200 fallback when loadOrganizationContext's queries reject", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       queryError: new Error("UNAVAILABLE: deadline exceeded"),
     });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -1765,9 +1765,24 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     consoleErrorSpy.mockRestore();
   });
 
+  it("исполнителю (employee/reader) агент закрыт целиком — 403 без вызова модели", async () => {
+    for (const orgRole of ["employee", "reader"]) {
+      state.db = makeFakeDb({
+        userDoc: { organizationId: "org-1", orgRole },
+        projects: [{ id: "p1", name: "Project One", organizationId: "org-1" }],
+      });
+      fetchJsonWithTimeout.mockClear();
+      const res = mockResponse();
+      await handler(makeRequest({ message: "привет" }), res);
+      expect(res.statusCode).toBe(403);
+      expect(res.body.error).toContain("от модератора и выше");
+      expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+    }
+  });
+
   it("still returns a normal AI answer when Firestore reads succeed", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [{ id: "p1", name: "Project One", organizationId: "org-1" }],
       tasks: [{ id: "t1", projectId: "p1", title: "Task", organizationId: "org-1" }],
       filesByProject: { p1: [{ filename: "a.txt", extractedText: "hello", extractionStatus: "done" }] },
@@ -1781,7 +1796,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("passes project knowledge availability to the model without exposing source filenames", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [{ id: "p-laz", name: "Лазурный берег", organizationId: "org-1" }],
       tasks: [],
       filesByProject: {
@@ -1808,7 +1823,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("forces project-file-first context for schedule questions even when the board has no tasks", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [
         { id: "p-el", name: "Елисеевский парк", organizationId: "org-1" },
         { id: "p-other", name: "Другой проект", organizationId: "org-1" },
@@ -1844,7 +1859,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("repairs a model draft that concludes from an empty board without reading the project file", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [{ id: "p-kasp", name: "Каспийский Кластер", organizationId: "org-1" }],
       tasks: [],
       filesByProject: {
@@ -1877,7 +1892,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("delete_notification action deletes only caller-owned agent notification without calling the LLM", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       agentNotifications: {
         "n-mine": { uid: "user-1", organizationId: "org-1", text: "mine" },
         "n-other": { uid: "user-2", organizationId: "org-1", text: "other" },
@@ -1895,7 +1910,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("delete_notification action rejects another user's notification", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       agentNotifications: { "n-other": { uid: "user-2", organizationId: "org-1", text: "other" } },
     });
     const res = mockResponse();
@@ -1908,7 +1923,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("delete_notification action rejects caller-owned notification from a previous organization", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-new" },
+      userDoc: { organizationId: "org-new", orgRole: "owner" },
       agentNotifications: { "n-old": { uid: "user-1", organizationId: "org-old", text: "old org" } },
     });
     const res = mockResponse();
@@ -1921,7 +1936,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("delete_notifications action deletes the caller's selected notifications in one batch", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       agentNotifications: {
         "n-one": { uid: "user-1", organizationId: "org-1", text: "one" },
         "n-two": { uid: "user-1", organizationId: "org-1", text: "two" },
@@ -1941,7 +1956,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("delete_notifications action is atomic when any selected notification crosses the user boundary", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       agentNotifications: {
         "n-mine": { uid: "user-1", organizationId: "org-1", text: "mine" },
         "n-other": { uid: "user-2", organizationId: "org-1", text: "other" },
@@ -1958,7 +1973,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("sends the real HoldingMan capability map to the model before answering control-workflow questions", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       orgUsers: [
         { id: "u-eldar", organizationId: "org-1", firstName: "Эльдар", lastName: "Исаев", displayName: "Эльдар Исаев", orgRole: "employee" },
       ],
@@ -2876,9 +2891,9 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     const res = mockResponse();
     await handler(makeRequest({ message: "поставь задачу Ивану Иванову в проекте Абрау срок сегодня" }), res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body.ok).toBe(true);
-    expect(res.body.answer).toContain("У исполнителя нет прав");
+    // Агент теперь закрыт исполнителям целиком (экономия OpenRouter-кредитов)
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toContain("от модератора и выше");
     expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
   });
 
@@ -3054,9 +3069,9 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     const res = mockResponse();
     await handler(makeRequest({ message: "удали все задачи из проекта елисеевский парк" }), res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body.ok).toBe(true);
-    expect(res.body.answer).toContain("У исполнителя нет прав");
+    // Агент теперь закрыт исполнителям целиком (экономия OpenRouter-кредитов)
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toContain("от модератора и выше");
     expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
   });
 
@@ -3248,7 +3263,9 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     const makeRevokedDb = () => makeFakeDb({
       userDoc: {
         organizationId: "org-1",
-        orgRole: "employee",
+        // Модератор с урезанным списком проектов: агент доступен по роли, но
+        // recheck доступа к конкретному проекту обязан вернуть 403.
+        orgRole: "moderator",
         allowedProjects: ["p-other"],
       },
       projects: [{ id: "p-revoked", name: "Закрытый", organizationId: "org-1" }],
@@ -3287,7 +3304,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
   it("queries each project's files subcollection (parallelized via Promise.all, not sequentially awaited per-project)", async () => {
     const projects = Array.from({ length: 5 }, (_, i) => ({ id: `p${i}`, name: `P${i}`, organizationId: "org-1" }));
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects,
       tasks: [],
       filesByProject: {},
@@ -3315,7 +3332,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
       },
     };
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [{ id: "p1", name: "Project One", organizationId: "org-1" }],
       tasks: [
         { id: "t1", projectId: "p1", title: "Task", organizationId: "org-1", createdAt: throwingCreatedAt },
@@ -3343,7 +3360,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
   it("survives a corrupted non-string project name without crashing the request", async () => {
     const throwingToJSON = { toJSON() { throw new Error("corrupted field: cannot serialize"); } };
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [{ id: "p1", name: throwingToJSON, organizationId: "org-1" }],
       tasks: [],
       filesByProject: {},
@@ -3361,7 +3378,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
   });
 
   it("pins the model to the client-provided date (clientToday) with the Russian weekday", async () => {
-    state.db = makeFakeDb({ userDoc: { organizationId: "org-1" } });
+    state.db = makeFakeDb({ userDoc: { organizationId: "org-1", orgRole: "owner" } });
     const res = mockResponse();
     await handler(makeRequest({ message: "привет", clientToday: "2026-07-17" }), res);
 
@@ -3371,7 +3388,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
   });
 
   it("ignores a malformed clientToday and falls back to the server date", async () => {
-    state.db = makeFakeDb({ userDoc: { organizationId: "org-1" } });
+    state.db = makeFakeDb({ userDoc: { organizationId: "org-1", orgRole: "owner" } });
     const res = mockResponse();
     await handler(makeRequest({ message: "привет", clientToday: "17.07.2026" }), res);
 
@@ -3387,7 +3404,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
       fetchJsonWithTimeout.mockClear();
       clearOrganizationContextCache();
       state.db = makeFakeDb({
-        userDoc: { organizationId: "org-1" },
+        userDoc: { organizationId: "org-1", orgRole: "owner" },
         projects: [{ id: "p1", name: "Проект Один", organizationId: "org-1" }],
         tasks: [{ id: "t1", projectId: "p1", title: "Задача", organizationId: "org-1" }],
       });
@@ -3403,7 +3420,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("does not run the knowledge-repair pass when the question has no overlap with the knowledge base", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [{ id: "p-kasp", name: "Каспийский Кластер", organizationId: "org-1" }],
       tasks: [],
       filesByProject: {
@@ -3432,7 +3449,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("ranks knowledge chunks by the current message only, not by words from the dialogue history", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1" },
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
       projects: [{ id: "p1", name: "Проект Один", organizationId: "org-1" }],
       tasks: [],
       filesByProject: {
@@ -3470,7 +3487,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     for (let i = 1; i <= 21; i += 1) {
       agentNotifications[`n-${i}`] = { uid: "user-1", organizationId: "org-1", text: `note ${i}` };
     }
-    state.db = makeFakeDb({ userDoc: { organizationId: "org-1" }, agentNotifications });
+    state.db = makeFakeDb({ userDoc: { organizationId: "org-1", orgRole: "owner" }, agentNotifications });
 
     for (let i = 1; i <= 20; i += 1) {
       const res = mockResponse();
@@ -3488,7 +3505,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("take_task confirmation is idempotent by proposalId: a retry replays the stored response, not a 409", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1", orgRole: "employee", firstName: "Тэко", lastName: "Исаев" },
+      userDoc: { organizationId: "org-1", orgRole: "moderator", firstName: "Тэко", lastName: "Исаев" },
       projects: [{ id: "p1", name: "Проект", organizationId: "org-1" }],
       tasks: [{ id: "t1", projectId: "p1", organizationId: "org-1", title: "Позвонить заказчику", assigneeIds: ["user-1"], status: "open" }],
     });

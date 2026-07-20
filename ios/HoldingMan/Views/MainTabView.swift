@@ -19,6 +19,24 @@ struct MainTabView: View {
         _selectedTab = State(initialValue: initialTab)
     }
 
+    private var agentLockedView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(Theme.textSecondary)
+            Text("ИИ-агент недоступен")
+                .font(.headline)
+                .foregroundStyle(Theme.textPrimary)
+            Text("Доступен ролям от модератора и выше.\nОбратитесь к владельцу или администратору организации.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .screenBackground()
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             ProjectsView()
@@ -30,9 +48,18 @@ struct MainTabView: View {
                 .badge(assignedMyTasksCount)
                 .tag("mytasks")
 
-            AgentChatView()
-                .tabItem { Label("ИИ-агент", systemImage: "sparkles") }
-                .tag("chat")
+            // ИИ-агент — только от модератора и выше (экономия OpenRouter-
+            // кредитов); сервер дублирует запрет 403-ом. Исполнителю вместо
+            // чата показывается заглушка.
+            Group {
+                if ["owner", "admin", "moderator"].contains(appState.user?.orgRole ?? "") {
+                    AgentChatView()
+                } else {
+                    agentLockedView
+                }
+            }
+            .tabItem { Label("ИИ-агент", systemImage: "sparkles") }
+            .tag("chat")
 
             NotificationsView()
                 .tabItem { Label("Уведомления", systemImage: "bell.fill") }

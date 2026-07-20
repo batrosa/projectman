@@ -1531,6 +1531,16 @@ function applyRoleRestrictions() {
         document.body.classList.add('read-only');
     }
 
+    // ИИ-агент — только от модератора и выше (экономия OpenRouter-кредитов).
+    // Кнопка остаётся видимой, но не кликабельной; сервер дублирует запрет.
+    const agentBtn = elements.agentChatBtn || document.getElementById('agent-chat-btn');
+    if (agentBtn) {
+        const agentAllowed = canManageTasks();
+        agentBtn.classList.toggle('agent-btn-locked', !agentAllowed);
+        agentBtn.title = agentAllowed ? '' : 'ИИ-агент доступен ролям от модератора и выше';
+        agentBtn.setAttribute('aria-disabled', agentAllowed ? 'false' : 'true');
+    }
+
     // Admin panel button - visible for all, but disabled for non-admins
     const adminPanelBtn = document.getElementById('admin-panel-btn');
     const adminPanelDesc = document.getElementById('admin-panel-desc');
@@ -1869,7 +1879,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.17'; // Help button restyle, agent calendar knowledge
+    const CURRENT_VERSION = '6.18'; // Agent restricted to moderator+
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -10596,6 +10606,9 @@ function initAgentChat() {
     updateAgentChatAttachVisibility();
 
     elements.agentChatBtn.addEventListener('click', () => {
+        // Исполнителям агент недоступен (см. applyRoleRestrictions) — клик
+        // игнорируется; сервер в любом случае ответит 403.
+        if (!canManageTasks()) return;
         playClickSound();
         closeSidebarOnMobile(); // otherwise the chat opens behind the open mobile sidebar
         populateAgentProjectSelect();

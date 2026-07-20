@@ -2477,6 +2477,19 @@ body:not(.light-mode) .agent-md-pre { background: rgba(0, 0, 0, 0.28); }
     border-color: rgba(99, 102, 241, 0.35);
 }
 
+/* ИИ-агент залочен для исполнителей: видна, но не кликабельна */
+#agent-chat-btn.agent-btn-locked {
+    opacity: 0.45;
+    cursor: not-allowed !important;
+    filter: grayscale(0.5);
+}
+
+#agent-chat-btn.agent-btn-locked:hover {
+    background: transparent;
+    border-color: var(--border);
+    transform: none;
+}
+
 /* Основная кнопка справки «?» над доской — заметная, в фирменном цвете */
 #help-btn {
     color: var(--primary);

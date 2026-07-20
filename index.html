@@ -17,8 +17,8 @@
     <title>HoldingMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=68.0" as="style">
-    <link rel="stylesheet" href="style.css?v=68.0">
+    <link rel="preload" href="style.css?v=69.0" as="style">
+    <link rel="stylesheet" href="style.css?v=69.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=84.0" defer></script>
+    <script src="script.js?v=85.0" defer></script>
 </head>
 
 <body>
@@ -908,11 +908,11 @@
                     <i class="fa-solid fa-bell"></i> <span>Уведомления</span>
                     <span id="agent-notify-count" class="my-tasks-count" style="display: none;">0</span>
                 </button>
-                <!-- Global AI agent entry point: available to EVERY role incl.
-                     Исполнитель (read-only). NB: `.secondary-btn` is hidden in
-                     read-only mode by CSS, so #agent-chat-btn MUST stay in the
-                     `body.read-only` exceptions list in style.css or readers lose
-                     the agent (that was a real bug). -->
+                <!-- Global AI agent entry point. VISIBLE to every role (stays in
+                     the body.read-only CSS exceptions list), but CLICKABLE only
+                     for owner/admin/moderator — исполнителям кнопка залочена
+                     (.agent-btn-locked, applyRoleRestrictions), а сервер
+                     дублирует запрет 403-ом (экономия OpenRouter-кредитов). -->
                 <button id="agent-chat-btn" class="secondary-btn" style="width: 100%; justify-content: center;">
                     <i class="fa-solid fa-robot"></i> <span>ИИ-агент</span>
                 </button>
