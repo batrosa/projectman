@@ -3652,7 +3652,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                         ...(Array.isArray(taskData.coCreatorIds) ? taskData.coCreatorIds : [])
                     ].filter(Boolean))];
                     if (creatorUids.length > 0) {
-                        // uid-путь: Telegram (если привязан) + push + лента
+                        // uid-путь: Telegram (если привязан) + push + email Google + лента
                         await Promise.all(creatorUids.map(uid => sendTaskEventToUid(uid, message, completionEvent)));
                     } else {
                         // Легаси-задача без createdByUid: старый путь по chatId
@@ -3698,7 +3698,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
             }
 
             // Уведомление исполнителям: задача принята в «Готово» (Telegram
-            // при наличии + push + лента — сервер решает доставку по uid)
+            // при наличии + push + email Google + лента — сервер решает доставку по uid)
             try {
                 const doneTask = state.tasks.find(t => t.id === taskId);
                 if (doneTask && Array.isArray(doneTask.assigneeIds) && doneTask.assigneeIds.length > 0) {
@@ -3896,7 +3896,7 @@ function submitRevisionReason(e) {
     };
 
     // Уведомление исполнителям о возврате — по uid (Telegram при наличии +
-    // push + лента); для легаси-задач без assigneeIds — старый путь по chatId.
+    // push + email Google + лента); для легаси-задач без assigneeIds — старый путь по chatId.
     const task = state.tasks.find(t => t.id === taskId);
     if (task) {
         const revisionEvent = { type: 'task_revision', taskId, projectId: task.projectId || null };
@@ -5316,7 +5316,7 @@ function setupEventListeners() {
             });
 
             // Уведомление каждому исполнителю ПО UID: сервер доставит Telegram
-            // (если привязан) + push + запись в ленту «Уведомления» с
+            // (если привязан) + push + email Google + запись в ленту «Уведомления» с
             // deep-link на задачу. Работает и для участников без Telegram.
             const projectName = document.getElementById('project-title')?.textContent || 'Проект';
             const newTaskEvent = { type: 'task_created', taskId: newTaskRef.id, projectId: state.activeProjectId };
@@ -7229,7 +7229,7 @@ function calculateXPProgress(currentXP) {
 
 // Send Telegram notification via server-side endpoint (bot token stays server-only)
 // Событие задачи участнику ПО UID: сервер (api/notify-telegram) сам решает
-// доставку — Telegram (если чат привязан) + мобильный push + запись в ленту
+// доставку — Telegram (если чат привязан) + мобильный push + email Google + запись в ленту
 // agentNotifications с типом события (task_created / task_completed /
 // task_revision / task_done) и taskId/projectId для перехода к задаче.
 async function sendTaskEventToUid(recipientUid, text, event) {

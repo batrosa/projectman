@@ -11,6 +11,7 @@ import { buildOpenRouterModels, openRouterModelBody, fetchJsonWithTimeout } from
 import { extractProposal, validateProposal, matchAssignee, validateCreateTasksPayload } from "../lib/task-proposal.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 import { sendPushToUser } from "../lib/push-send.js";
+import { sendEmailNotification } from "../lib/email-send.js";
 import { formatIsoDayRu } from "../lib/date-display.js";
 import { fileHasProjectKnowledge, knowledgeChunksFromFile } from "../lib/project-knowledge.js";
 // Same manage bar as the rules/award flow: owner/admin manage any project in
@@ -68,7 +69,7 @@ const PROJECTMAN_CAPABILITY_GUIDE = [
   "Удаление задач через ИИ-агента доступно owner/admin/moderator с доступом к проекту и только через карточку предпросмотра с явным подтверждением. Поддерживаются строгие фильтры: все задачи проекта, назначенные, в работе, на проверке, готовые, просроченные или задачи с явно процитированным названием. Агент никогда не должен писать «удалил» без карточки и подтверждения.",
   "Календарь — третий вид рабочей области проекта: переключатель «Канбан / Гант / Календарь» находится под активным проектом в списке слева (раньше календарь был в «Панели управления», теперь его там нет). Календарь показывает задачи АКТИВНОГО проекта по дедлайнам, цветные статусы, список задач выбранного дня и переход к задаче. В календаре нет фильтров по блоку/ответственному и нет синхронизации с Outlook или Google Calendar.",
   "«Мои задачи» показывает активные задачи, где текущий пользователь назначен ответственным; клик открывает нужный проект и колонку задачи.",
-  "Уведомления: есть in-app «Уведомления агента» с прочтением/удалением уведомлений. Telegram-уведомления работают при подключенном Telegram. Мобильные push-уведомления на iPhone работают через FCM/APNs, если пользователь вошёл в iOS-приложение, разрешил уведомления и устройство сохранило FCM-токен. События: новые задачи, задача на проверке, возврат на доработку, задача принята, напоминания/просрочки от server-side monitor. Email-уведомлений в текущей реализации нет. Нет подписок, ежедневных дайджестов и пользовательских правил уведомлений.",
+  "Уведомления: есть in-app «Уведомления агента» с прочтением/удалением уведомлений. Пользователи, зарегистрированные через Google, дополнительно получают уведомления на email своего Google-аккаунта. Telegram-уведомления работают при подключенном Telegram. Мобильные push-уведомления на iPhone работают через FCM/APNs, если пользователь вошёл в iOS-приложение, разрешил уведомления и устройство сохранило FCM-токен. События: новые задачи, задача на проверке, возврат на доработку, задача принята, напоминания/просрочки от server-side monitor. Нет подписок и пользовательских правил уведомлений.",
   "Telegram: можно войти через Telegram-бота/Telegram auth; связанный telegramChatId используется для уведомлений. Если Telegram не подключён, пользователь всё равно получает in-app уведомления, но Telegram-сообщение не уйдёт.",
   "ИИ-агент: отвечает только по HoldingMan и данным доступных проектов/участников/задач/файлов. Плюсик в чате для файлов виден только тем, кто может создавать задачи. Файл в чате разовый, не сохраняется в «Файлы проекта».",
   "В HoldingMan НЕТ: автоматической группировки задач по блокам, drag-and-drop смены статуса, отдельной плановой даты начала задачи, зависимостей/связей между задачами на Ганте, конструктора отчётов/отчёта «статус по блокам», чек-листов/подзадач, общего комментарного чата под задачей, подписок, daily digest, custom notification rules, Outlook/Google Calendar sync, планирования совещаний/стендапов внутри приложения.",
@@ -2509,7 +2510,7 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     : "ИИ-агент";
   const batch = db.batch();
   const telegramQueue = [];
-  const pushQueue = []; // мобильные push (roadmap Этап 3) — каждому исполнителю
+  const pushQueue = []; // push + email (для Google) каждому получателю
   for (const t of payload.tasks) {
     const taskProjectId = t.projectId || payload.projectId;
     const project = projectsById.get(taskProjectId);
@@ -2564,7 +2565,7 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       coCreators: coCreatorNamesDisplay.join(", "),
     });
 
-    // Уведомления доп. постановщикам: лента + Telegram + push.
+    // Уведомления доп. постановщикам: лента + Telegram + push + email.
     coCreatorEntries.forEach((entry) => {
       const ccText = `👤 Вы добавлены постановщиком задачи «${t.title}» (проект «${projectName}»). Вы получаете уведомления по задаче и можете принять её или вернуть на доработку.`;
       const ccNoteRef = db.collection("agentNotifications").doc();
@@ -2579,7 +2580,15 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
         readAt: null,
       });
       if (entry.data.telegramChatId) telegramQueue.push({ chatId: entry.data.telegramChatId, text: ccText });
-      pushQueue.push({ uid: entry.uid, text: ccText, taskId: taskRef.id, projectId: taskProjectId });
+      pushQueue.push({
+        uid: entry.uid,
+        user: entry.data,
+        title: "Вы назначены постановщиком",
+        text: ccText,
+        taskId: taskRef.id,
+        projectId: taskProjectId,
+        notificationId: ccNoteRef.id,
+      });
     });
 
     // Уведомление и Telegram — только реальному исполнителю; у задачи «Не
@@ -2599,7 +2608,15 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       readAt: null,
     });
     if (user.telegramChatId) telegramQueue.push({ chatId: user.telegramChatId, text });
-    pushQueue.push({ uid: t.assigneeUid, text, taskId: taskRef.id, projectId: taskProjectId });
+    pushQueue.push({
+      uid: t.assigneeUid,
+      user,
+      title: "Новая задача",
+      text,
+      taskId: taskRef.id,
+      projectId: taskProjectId,
+      notificationId: noteRef.id,
+    });
   }
 
   const successResponse = { ok: true, created: payload.tasks.length };
@@ -2636,12 +2653,19 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     }
   });
 
-  // Мобильные push исполнителям (fail-open внутри sendPushToUser).
-  await Promise.allSettled(pushQueue.map((p) => sendPushToUser(p.uid, {
-    title: "Новая задача",
-    body: p.text,
-    data: { taskId: p.taskId, projectId: p.projectId },
-  })));
+  // Мобильные push и email Google-пользователям. Оба канала fail-open.
+  await Promise.allSettled(pushQueue.flatMap((p) => [
+    sendPushToUser(p.uid, {
+      title: p.title,
+      body: p.text,
+      data: { taskId: p.taskId, projectId: p.projectId },
+    }),
+    sendEmailNotification(p.user, {
+      title: p.title,
+      body: p.text,
+      idempotencyKey: p.notificationId,
+    }),
+  ]));
 
   return response.status(200).json(successResponse);
 }

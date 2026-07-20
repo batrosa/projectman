@@ -21,7 +21,7 @@ service cloud.firestore {
       return (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'role', 'allowedProjects', 'organizationId', 'orgRole',
         'totalXP', 'level', 'completedTasksCount', 'onTimeTasksCount', 'noRevisionTasksCount',
-        'telegramChatId'
+        'telegramChatId', 'email', 'emailVerified', 'authProvider'
       ]));
     }
 
@@ -150,6 +150,7 @@ service cloud.firestore {
       // документе users.
       allow create: if request.auth != null && request.auth.uid == userId
         && !request.resource.data.keys().hasAny(['organizationId', 'orgRole'])
+        && !request.resource.data.keys().hasAny(['email', 'emailVerified', 'authProvider'])
         && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == 'reader');
       
       // Обновлять: сам пользователь (но БЕЗ защищённых полей —

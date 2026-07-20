@@ -1,7 +1,7 @@
 // api/agent-monitor.js
 // Серверный «автопилот» агента: обходит активные задачи и рассылает
-// уведомления о сроках — в ленту agentNotifications (колокольчик в приложении)
-// и дублем в Telegram — исполнителю(ям) И постановщику задачи.
+// уведомления о сроках — в ленту agentNotifications (колокольчик в приложении),
+// Telegram, push и email Google-пользователям — исполнителю(ям) И постановщику.
 //
 // События (вся логика дат — lib/agent-monitor-core.js, Europe/Moscow):
 //   overdue           — просрочена; повторяется РАЗ В ДЕНЬ, пока не закрыта
@@ -17,7 +17,7 @@
 //                       (notifiedUnassignedAt).
 //
 // Дайджест: если за прогон одному получателю набегает >3 сообщений одного
-// типа, Telegram и push получают ОДНУ сводку («7 задач просрочены: …»);
+// типа, Telegram, push и email получают ОДНУ сводку («7 задач просрочены: …»);
 // лента agentNotifications остаётся по записи на задачу (deep-link).
 //
 // Кто будит: Vercel Cron раз в сутки (vercel.json, ~18:00 МСК; Hobby-план не
@@ -33,6 +33,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { classifyTask, buildEventText, buildDigestText, mskDateString } from "../lib/agent-monitor-core.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 import { sendPushToUser } from "../lib/push-send.js";
+import { sendEmailNotification } from "../lib/email-send.js";
 import { appendAgentAdvice, fallbackAgentAdvice, generateAgentAdvice } from "../lib/agent-monitor-ai.js";
 
 // Paginated sweep: pages of 500 up to 20 pages (10k active tasks) — far above
@@ -244,7 +245,7 @@ export default async function handler(request, response) {
           console.warn("agent-monitor: recipient outside task org skipped", { uid, taskId: taskDoc.id });
           continue;
         }
-        recipients.push({ uid, telegramChatId: user.telegramChatId || null });
+        recipients.push({ ...user, uid, telegramChatId: user.telegramChatId || null });
       }
 
       if (recipients.length === 0) continue;
@@ -325,6 +326,7 @@ export default async function handler(request, response) {
             }
             pushQueue.push({
               uid: recipient.uid,
+              user: recipient,
               text,
               type: event.type,
               title: taskTitle,
@@ -426,6 +428,33 @@ export default async function handler(request, response) {
     for (const item of pushPlan[index].items) item.pushOk = ok;
   });
 
+  // Та же агрегация для email: Google-пользователь получает одно письмо-
+  // дайджест вместо серии писем, когда однотипных событий больше трёх.
+  let emailSent = 0;
+  let emailFailed = 0;
+  let emailSkipped = 0;
+  const emailResults = await Promise.allSettled(pushPlan.map((message) => {
+    const first = message.items[0];
+    return sendEmailNotification(first.user, {
+      title: message.payload.title,
+      body: message.payload.body,
+      idempotencyKey: first.noteId,
+    });
+  }));
+  emailResults.forEach((result, index) => {
+    if (result.status === "fulfilled" && result.value?.sent) {
+      emailSent += 1;
+      return;
+    }
+    const reason = result.status === "fulfilled" ? result.value?.reason : "unexpected-error";
+    if (["provider-error", "transport-error", "timeout", "unexpected-error"].includes(reason)) {
+      emailFailed += 1;
+      console.error("agent-monitor: email send failed", pushPlan[index].uid, result.status === "rejected" ? result.reason : reason);
+    } else {
+      emailSkipped += 1;
+    }
+  });
+
   // Отметки о доставке на записях ленты: флаги антиспама ставятся в транзакции
   // ДО факта доставки, поэтому сбой Telegram/push фиксируем здесь — best-effort,
   // никогда не бросаем наружу.
@@ -459,6 +488,9 @@ export default async function handler(request, response) {
     telegramFailed,
     pushSent,
     pushFailed,
+    emailSent,
+    emailFailed,
+    emailSkipped,
     truncated,
     processed: scanned,
     remaining: taskDocs.length - scanned,

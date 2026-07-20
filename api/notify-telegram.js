@@ -1,16 +1,18 @@
 // Уведомление участнику о событии задачи (единая серверная точка):
-//   Telegram (если у получателя привязан чат) + мобильный push + запись в
-//   ленту agentNotifications (раздел «Уведомления» в приложениях), когда
-//   передан event.type. Держит bot token вне клиента.
+//   Telegram (если у получателя привязан чат) + мобильный push + email для
+//   Google-аккаунтов + запись в ленту agentNotifications (раздел
+//   «Уведомления» в приложениях), когда передан event.type. Держит секреты
+//   провайдеров вне клиента.
 //
 // Обратная совместимость: старый вызов {chatId, text} работает как раньше
-// (telegram + push, без записи в ленту). Новое: получателя можно задать
+// (telegram + push + email Google, без записи в ленту). Новое: получателя можно задать
 // recipientUid (для участников БЕЗ Telegram), event {type, taskId, projectId}
-// добавляет запись в ленту и типизированный push с deep-link-данными.
+// добавляет запись в ленту и типизированные внешние уведомления.
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 import { sendPushToUser } from "../lib/push-send.js";
+import { sendEmailNotification } from "../lib/email-send.js";
 import deadlineChangeHandler from "../lib/deadline-change.js";
 
 // Типы событий задачи → заголовок системного push
@@ -123,9 +125,10 @@ export default async function handler(request, response) {
     const projectId = event && typeof event.projectId === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(event.projectId)
         ? event.projectId : null;
 
+    let notificationId = null;
     if (eventType) {
         try {
-            await adminDb().collection('agentNotifications').add({
+            const noteRef = await adminDb().collection('agentNotifications').add({
                 uid: recipientDoc.id,
                 organizationId: callerOrgId,
                 taskId,
@@ -135,29 +138,40 @@ export default async function handler(request, response) {
                 createdAt: FieldValue.serverTimestamp(),
                 readAt: null,
             });
+            notificationId = noteRef.id;
         } catch (error) {
-            // Лента — не повод ронять доставку telegram/push
+            // Лента — не повод ронять доставку telegram/push/email
             console.error('notify-telegram: feed write failed', error);
         }
     }
 
-    // Мобильный push (fail-open внутри sendPushToUser)
-    try {
-        await sendPushToUser(recipientDoc.id, {
-            title: eventType ? TASK_EVENT_TITLES[eventType] : 'HoldingMan',
+    // Мобильный push + email для Google-аккаунта. Оба канала fail-open.
+    const notificationTitle = eventType ? TASK_EVENT_TITLES[eventType] : 'HoldingMan';
+    const [pushResult, emailResult] = await Promise.allSettled([
+        sendPushToUser(recipientDoc.id, {
+            title: notificationTitle,
             body: plainText,
             data: {
                 ...(taskId ? { taskId } : {}),
                 ...(projectId ? { projectId } : {}),
                 ...(eventType ? { type: eventType } : {}),
             },
-        });
-    } catch (error) {
-        console.error('notify-telegram: push send failed', error);
+        }),
+        sendEmailNotification(recipientDoc.data, {
+            title: notificationTitle,
+            body: plainText,
+            idempotencyKey: notificationId || '',
+        }),
+    ]);
+    if (pushResult.status === 'rejected') {
+        console.error('notify-telegram: push send failed', pushResult.reason);
+    }
+    if (emailResult.status === 'rejected') {
+        console.error('notify-telegram: email send failed', emailResult.reason);
     }
 
     // Telegram — только если чат привязан. Для uid-получателя без Telegram
-    // push и лента уже доставлены — это успех, а не 4xx/5xx.
+    // push/email и лента уже обработаны — это успех, а не 4xx/5xx.
     const targetChatId = chatId || String(recipientDoc.data.telegramChatId || '').trim();
     if (!targetChatId) {
         if (!process.env.TELEGRAM_BOT_TOKEN) {
