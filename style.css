@@ -95,7 +95,7 @@ body {
 
 /* Sidebar */
 .sidebar {
-    width: 280px;
+    width: 305px;
     background: rgba(30, 41, 59, 0.95);
     /* Solid fallback */
     background: var(--sidebar-bg);
@@ -7601,10 +7601,19 @@ body.light-mode .agent-task-proposal-table td {
 /* ===== Project view switcher (sidebar, under active project) ===== */
 .project-view-switch {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.4rem;
     margin-top: 0.5rem;
     padding-left: 1.5rem;
+    padding-right: 0.5rem;
+    min-width: 0;
     animation: viewSwitchIn 0.18s ease;
+}
+
+/* Три кнопки в ширину сайдбара не помещаются: «Календарь» уходит на свою
+   строку во всю ширину, «Канбан» и «Гант» делят первую. */
+.view-switch-btn[data-pview="calendar"] {
+    flex: 1 1 100%;
 }
 
 @keyframes viewSwitchIn {
