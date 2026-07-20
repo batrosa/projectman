@@ -80,6 +80,7 @@ struct UserDoc {
         switch authProvider {
         case "apple.com": return "Apple"
         case "google.com": return "Google"
+        case "password": return "Email"
         case "telegram": return "Telegram"
         default: return "HoldingMan"
         }

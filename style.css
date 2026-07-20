@@ -1356,7 +1356,8 @@ body.light-mode select option {
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .login-overlay::before {
@@ -1396,7 +1397,7 @@ body.light-mode select option {
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 2.5rem 2rem;
+    padding: 2rem;
     border-radius: 24px;
     width: 100%;
     max-width: 420px;
@@ -1408,6 +1409,7 @@ body.light-mode select option {
     align-items: center;
     position: relative;
     z-index: 1;
+    margin: auto 0;
 }
 
 body.light-mode .auth-card {
@@ -1455,7 +1457,7 @@ body.light-mode .login-overlay {
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
     width: 100%;
     text-align: center;
     align-self: center;
@@ -1473,7 +1475,81 @@ body.light-mode .login-overlay {
     font-size: 0.9rem;
     color: var(--text-secondary);
     text-align: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.auth-email-form {
+    width: 100%;
+    display: grid;
+    gap: 0.85rem;
+}
+
+.email-verification-panel {
+    width: 100%;
+    display: grid;
+    justify-items: center;
+    gap: 0.9rem;
+    text-align: center;
+}
+
+.email-verification-panel[hidden] {
+    display: none;
+}
+
+.email-verification-icon {
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: rgba(99, 102, 241, 0.14);
+    color: #a5b4fc;
+    font-size: 1.5rem;
+}
+
+.email-verification-panel h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.email-verification-panel p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+
+.email-verification-panel strong {
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.auth-email-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.auth-text-btn {
+    border: 0;
+    padding: 0.2rem 0;
+    background: transparent;
+    color: var(--primary);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.auth-text-btn:hover {
+    color: #a78bfa;
+}
+
+.auth-text-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
 }
 
 /* Auth Form */
@@ -1499,7 +1575,7 @@ body.light-mode .login-overlay {
     display: grid;
     gap: 0.75rem;
     width: 100%;
-    margin-top: 1.25rem;
+    margin-top: 0;
 }
 
 .auth-provider-btn,
@@ -1557,7 +1633,7 @@ body.light-mode .login-overlay {
     align-items: center;
     gap: 0.75rem;
     width: 100%;
-    margin: 1rem 0;
+    margin: 1.15rem 0 0.9rem;
     color: var(--text-secondary);
     font-size: 0.8rem;
 }
@@ -1666,6 +1742,10 @@ body.light-mode .login-overlay {
     gap: 0.6rem;
 }
 
+.auth-form-group[hidden] {
+    display: none;
+}
+
 .auth-form-group label {
     display: flex;
     align-items: center;
@@ -1686,7 +1766,7 @@ body.light-mode .login-overlay {
 
 .auth-form-group input {
     width: 100%;
-    padding: 1rem 1.1rem;
+    padding: 0.85rem 1rem;
     border-radius: 12px;
     border: 2px solid rgba(148, 163, 184, 0.15);
     background: rgba(15, 23, 42, 0.4);
@@ -1734,7 +1814,9 @@ body.light-mode .auth-form-group input:focus {
     border: 1px solid rgba(239, 68, 68, 0.2);
     border-radius: 8px;
     display: none;
-    margin: 0;
+    margin: 0.9rem 0 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .auth-error:not(:empty) {
@@ -1765,7 +1847,7 @@ body.light-mode .auth-form-group input:focus {
     gap: 0.5rem;
     transition: all 0.2s;
     box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
-    margin-top: 0.5rem;
+    margin-top: 0.15rem;
 }
 
 .auth-submit-btn:hover {
@@ -1832,7 +1914,7 @@ body.light-mode .auth-form-group input:focus {
     }
 
     .auth-card {
-        padding: 2.25rem 1.5rem;
+        padding: 1.5rem;
         border-radius: 24px;
         max-width: 400px;
         width: 100%;
@@ -1844,8 +1926,8 @@ body.light-mode .auth-form-group input:focus {
     }
 
     .auth-logo {
-        width: 64px;
-        height: 64px;
+        width: 56px;
+        height: 56px;
         margin-bottom: 0.75rem;
     }
 
@@ -1859,7 +1941,7 @@ body.light-mode .auth-form-group input:focus {
 
     .auth-brand {
         font-size: 1.4rem;
-        margin-bottom: 1.25rem;
+        margin-bottom: 0.8rem;
     }
 
     .auth-title {
@@ -1869,7 +1951,7 @@ body.light-mode .auth-form-group input:focus {
 
     .auth-subtitle {
         font-size: 0.9rem;
-        margin-bottom: 1.75rem;
+        margin-bottom: 1.15rem;
     }
 
     .auth-form {
@@ -1891,14 +1973,14 @@ body.light-mode .auth-form-group input:focus {
     }
 
     .auth-form-group input {
-        padding: 1rem 1rem;
+        padding: 0.85rem 1rem;
         font-size: 16px;
         /* Prevents zoom on iOS */
         border-radius: 10px;
     }
 
     .auth-submit-btn {
-        padding: 1rem;
+        padding: 0.9rem;
         font-size: 1rem;
         margin-top: 0.75rem;
         border-radius: 10px;
@@ -1907,6 +1989,14 @@ body.light-mode .auth-form-group input:focus {
     .auth-switch {
         margin-top: 1rem;
         font-size: 0.95rem;
+    }
+
+    .auth-email-actions {
+        align-items: flex-start;
+    }
+
+    .auth-text-btn {
+        font-size: 0.82rem;
     }
 
     .auth-error {

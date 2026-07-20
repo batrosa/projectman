@@ -1,6 +1,6 @@
 // Уведомление участнику о событии задачи (единая серверная точка):
 //   Telegram (если у получателя привязан чат) + мобильный push + email для
-//   Google-аккаунтов + запись в ленту agentNotifications (раздел
+//   Google и подтверждённых email-аккаунтов + запись в ленту agentNotifications (раздел
 //   «Уведомления» в приложениях), когда передан event.type. Держит секреты
 //   провайдеров вне клиента.
 //
@@ -145,7 +145,7 @@ export default async function handler(request, response) {
         }
     }
 
-    // Мобильный push + email для Google-аккаунта. Оба канала fail-open.
+    // Мобильный push + email для подходящего подтверждённого аккаунта. Оба канала fail-open.
     const notificationTitle = eventType ? TASK_EVENT_TITLES[eventType] : 'HoldingMan';
     const [pushResult, emailResult] = await Promise.allSettled([
         sendPushToUser(recipientDoc.id, {

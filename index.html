@@ -17,8 +17,8 @@
     <title>HoldingMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=69.0" as="style">
-    <link rel="stylesheet" href="style.css?v=69.0">
+    <link rel="preload" href="style.css?v=70.0" as="style">
+    <link rel="stylesheet" href="style.css?v=70.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=85.0" defer></script>
+    <script src="script.js?v=86.0" defer></script>
 </head>
 
 <body>
@@ -642,6 +642,51 @@
             <h2 id="auth-title" class="auth-title">Вход в систему</h2>
             <p id="auth-subtitle" class="auth-subtitle">Один аккаунт в веб-версии и приложении</p>
 
+            <div id="email-verification-panel" class="email-verification-panel" hidden>
+                <div class="email-verification-icon"><i class="fa-regular fa-envelope-open" aria-hidden="true"></i></div>
+                <h3>Подтвердите регистрацию</h3>
+                <p>Мы отправили письмо на <strong id="email-verification-address"></strong>.</p>
+                <p>Перейдите по ссылке в письме. После подтверждения откроется окно, где нужно указать имя и фамилию.</p>
+                <button id="email-verification-check" class="auth-submit-btn" type="button">
+                    <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                    <span>Я подтвердил почту</span>
+                </button>
+                <div class="auth-email-actions">
+                    <button id="email-verification-resend" class="auth-text-btn" type="button">Отправить письмо ещё раз</button>
+                    <button id="email-verification-logout" class="auth-text-btn" type="button">Другой аккаунт</button>
+                </div>
+            </div>
+
+            <form id="email-auth-form" class="auth-email-form" novalidate>
+                <div class="auth-form-group">
+                    <label for="auth-email"><i class="fa-regular fa-envelope" aria-hidden="true"></i>Почта</label>
+                    <input id="auth-email" type="email" inputmode="email" autocomplete="email"
+                        maxlength="320" required placeholder="name@company.ru">
+                </div>
+                <div class="auth-form-group">
+                    <label for="auth-password"><i class="fa-solid fa-lock" aria-hidden="true"></i>Пароль</label>
+                    <input id="auth-password" type="password" autocomplete="current-password"
+                        minlength="8" maxlength="128" required placeholder="Минимум 8 символов">
+                </div>
+                <div id="auth-password-confirm-group" class="auth-form-group" hidden>
+                    <label for="auth-password-confirm"><i class="fa-solid fa-lock" aria-hidden="true"></i>Повторите пароль</label>
+                    <input id="auth-password-confirm" type="password" autocomplete="new-password"
+                        minlength="8" maxlength="128" placeholder="Введите пароль ещё раз">
+                </div>
+                <button id="email-auth-submit" class="auth-submit-btn" type="submit">
+                    <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i>
+                    <span>Войти</span>
+                </button>
+                <div class="auth-email-actions">
+                    <button id="auth-mode-toggle" class="auth-text-btn" type="button">Регистрация</button>
+                    <button id="auth-password-reset" class="auth-text-btn" type="button">Забыли пароль?</button>
+                </div>
+            </form>
+
+            <p id="login-error" class="auth-error" aria-live="polite"></p>
+
+            <div class="auth-divider"><span>или войдите через</span></div>
+
             <div class="auth-provider-list">
                 <button id="apple-login-btn" class="auth-provider-btn auth-provider-btn--apple" type="button">
                     <i class="fa-brands fa-apple" aria-hidden="true"></i>
@@ -664,7 +709,6 @@
                     <span>Войти через Telegram</span>
                 </button>
             </div>
-            <p id="login-error" class="auth-error"></p>
         </div>
     </div>
 
@@ -1485,7 +1529,7 @@
                     <h3><i class="fa-solid fa-rocket"></i> О приложении</h3>
                     <p>HoldingMan — система управления проектами и задачами с двойным контролем выполнения. Внутри:
                         проекты с тремя видами (Канбан, Гант, Календарь), жизненный цикл задач с подтверждениями,
-                        ИИ-агент, уведомления (в приложении, по email для Google-аккаунтов, Telegram и push в iOS), XP-рейтинг сотрудников и
+                        ИИ-агент, уведомления (в приложении, по email для Google и подтверждённых email-аккаунтов, Telegram и push в iOS), XP-рейтинг сотрудников и
                         файлы проекта как база знаний.</p>
                 </div>
 
@@ -1584,7 +1628,7 @@
                     </ul>
                     <div class="help-note">
                         <i class="fa-solid fa-bell"></i> Ответственные и доп. постановщики получают уведомление —
-                        в ленту «Уведомления», по email для Google-аккаунтов, в Telegram (если привязан) и push в iOS-приложении.
+                        в ленту «Уведомления», по email для Google и подтверждённых email-аккаунтов, в Telegram (если привязан) и push в iOS-приложении.
                     </div>
                 </div>
 
@@ -1698,8 +1742,8 @@
                     <ul>
                         <li><strong>Лента «Уведомления»:</strong> новые задачи, задачи на проверке, просрочки,
                             переносы сроков. Клик по уведомлению открывает задачу</li>
-                        <li><strong>Email:</strong> если сотрудник зарегистрирован через Google, уведомления
-                            дополнительно приходят на адрес его Google-аккаунта</li>
+                        <li><strong>Email:</strong> пользователи Google и сотрудники с подтверждённой почтой
+                            получают уведомления на адрес, используемый для входа</li>
                         <li><strong>Telegram:</strong> войдите через Telegram-бота — уведомления будут приходить
                             и в Telegram</li>
                         <li><strong>iOS-приложение:</strong> те же уведомления приходят push-сообщениями</li>

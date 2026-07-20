@@ -5002,6 +5002,42 @@ function setupEventListeners() {
     }
     document.getElementById('google-login-btn')?.addEventListener('click', () => startFederatedLogin('google.com'));
     document.getElementById('apple-login-btn')?.addEventListener('click', () => startFederatedLogin('apple.com'));
+    document.getElementById('email-auth-form')?.addEventListener('submit', handleEmailAuthSubmit);
+    document.getElementById('auth-mode-toggle')?.addEventListener('click', () => {
+        setEmailAuthMode(emailAuthMode === 'login' ? 'register' : 'login');
+    });
+    document.getElementById('auth-password-reset')?.addEventListener('click', async () => {
+        const emailInput = document.getElementById('auth-email');
+        const email = emailInput?.value.trim().toLowerCase() || '';
+        if (!emailInput?.checkValidity()) {
+            setLoginErrorMessage('Введите почту, для которой нужно восстановить пароль.');
+            emailInput?.focus();
+            return;
+        }
+        const button = document.getElementById('auth-password-reset');
+        if (button) button.disabled = true;
+        try {
+            await auth.sendPasswordResetEmail(email);
+            setLoginErrorMessage('Письмо для восстановления пароля отправлено.', 'success');
+        } catch (error) {
+            setLoginErrorMessage(emailAuthErrorMessage(error));
+        } finally {
+            if (button) button.disabled = false;
+        }
+    });
+    document.getElementById('email-verification-check')?.addEventListener('click', () => checkEmailVerification());
+    document.getElementById('email-verification-resend')?.addEventListener('click', resendEmailVerification);
+    document.getElementById('email-verification-logout')?.addEventListener('click', async () => {
+        await auth?.signOut().catch(() => {});
+        emailAuthMode = 'login';
+        showEmailAuthContent();
+    });
+    window.addEventListener('focus', () => {
+        const user = auth?.currentUser;
+        if (user && isPasswordAuthUser(user) && !user.emailVerified) {
+            checkEmailVerification({ silent: true });
+        }
+    });
     if (elements.telegramBotLoginBtn) {
         elements.telegramBotLoginBtn.addEventListener('click', () => {
             playClickSound();
@@ -5608,6 +5644,199 @@ const TELEGRAM_BOT_PENDING_KEY = 'projectman.telegramBotLogin.pending';
 let telegramBotLoginAttempt = 0;
 let telegramBotLoginResumeInFlight = false;
 let organizationLoadRetryInFlight = false;
+let emailAuthMode = 'login';
+let emailRegistrationInProgress = false;
+let emailVerificationCheckInFlight = false;
+
+function isPasswordAuthUser(user) {
+    return Boolean(user?.providerData?.some(provider => provider?.providerId === 'password'));
+}
+
+function setEmailAuthMode(mode) {
+    emailAuthMode = mode === 'register' ? 'register' : 'login';
+    const isRegistration = emailAuthMode === 'register';
+    const title = document.getElementById('auth-title');
+    const subtitle = document.getElementById('auth-subtitle');
+    const password = document.getElementById('auth-password');
+    const confirmGroup = document.getElementById('auth-password-confirm-group');
+    const confirm = document.getElementById('auth-password-confirm');
+    const submit = document.getElementById('email-auth-submit');
+    const toggle = document.getElementById('auth-mode-toggle');
+    const reset = document.getElementById('auth-password-reset');
+
+    if (title) title.textContent = isRegistration ? 'Регистрация' : 'Вход в систему';
+    if (subtitle) subtitle.textContent = isRegistration
+        ? 'Создайте аккаунт с рабочей или личной почтой'
+        : 'Один аккаунт в веб-версии и приложении';
+    if (password) password.autocomplete = isRegistration ? 'new-password' : 'current-password';
+    if (confirmGroup) confirmGroup.hidden = !isRegistration;
+    if (confirm) {
+        confirm.required = isRegistration;
+        if (!isRegistration) confirm.value = '';
+    }
+    if (submit) {
+        submit.querySelector('span').textContent = isRegistration ? 'Зарегистрироваться' : 'Войти';
+        const icon = submit.querySelector('i');
+        if (icon) icon.className = isRegistration ? 'fa-solid fa-user-plus' : 'fa-solid fa-right-to-bracket';
+    }
+    if (toggle) toggle.textContent = isRegistration ? 'Уже есть аккаунт? Войти' : 'Регистрация';
+    if (reset) reset.hidden = isRegistration;
+    setLoginErrorMessage('');
+}
+
+function setEmailAuthContentVisible(visible) {
+    const form = document.getElementById('email-auth-form');
+    const divider = document.querySelector('#auth-screen > .auth-divider');
+    const providers = document.querySelector('#auth-screen > .auth-provider-list');
+    if (form) form.hidden = !visible;
+    if (divider) divider.hidden = !visible;
+    if (providers) providers.hidden = !visible;
+}
+
+function showEmailVerificationGate(user, message = '') {
+    hideLoadingScreen();
+    if (elements.authOverlay) elements.authOverlay.style.display = 'flex';
+    if (elements.authScreen) elements.authScreen.style.display = 'flex';
+    setEmailAuthContentVisible(false);
+
+    const panel = document.getElementById('email-verification-panel');
+    const address = document.getElementById('email-verification-address');
+    const title = document.getElementById('auth-title');
+    const subtitle = document.getElementById('auth-subtitle');
+    if (panel) panel.hidden = false;
+    if (address) address.textContent = user?.email || '';
+    if (title) title.textContent = 'Подтвердите почту';
+    if (subtitle) subtitle.textContent = 'Это необходимо, чтобы продолжить регистрацию';
+    setLoginErrorMessage(message, message ? 'success' : 'error');
+}
+
+function showEmailAuthContent() {
+    const panel = document.getElementById('email-verification-panel');
+    if (panel) panel.hidden = true;
+    setEmailAuthContentVisible(true);
+    setEmailAuthMode(emailAuthMode);
+}
+
+function setEmailAuthBusy(busy) {
+    ['email-auth-submit', 'auth-mode-toggle', 'auth-password-reset'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = busy;
+    });
+}
+
+function emailAuthErrorMessage(error) {
+    switch (error?.code) {
+        case 'auth/email-already-in-use':
+            return 'Аккаунт с этой почтой уже существует. Войдите или восстановите пароль.';
+        case 'auth/invalid-email':
+            return 'Проверьте правильность адреса почты.';
+        case 'auth/weak-password':
+            return 'Пароль слишком простой. Используйте минимум 8 символов.';
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-login-credentials':
+        case 'auth/invalid-credential':
+            return 'Неверная почта или пароль.';
+        case 'auth/too-many-requests':
+            return 'Слишком много попыток. Подождите немного и попробуйте снова.';
+        case 'auth/operation-not-allowed':
+            return 'Вход по почте ещё не включён администратором.';
+        case 'auth/network-request-failed':
+            return 'Нет соединения с сервером. Проверьте интернет.';
+        default:
+            return error?.message || 'Не удалось выполнить вход.';
+    }
+}
+
+async function handleEmailAuthSubmit(event) {
+    event.preventDefault();
+    if (!auth) return;
+    const emailInput = document.getElementById('auth-email');
+    const passwordInput = document.getElementById('auth-password');
+    const confirmInput = document.getElementById('auth-password-confirm');
+    const email = emailInput?.value.trim().toLowerCase() || '';
+    const password = passwordInput?.value || '';
+
+    if (!emailInput?.checkValidity()) {
+        setLoginErrorMessage('Введите корректный адрес почты.');
+        emailInput?.focus();
+        return;
+    }
+    if (password.length < 8) {
+        setLoginErrorMessage('Пароль должен содержать минимум 8 символов.');
+        passwordInput?.focus();
+        return;
+    }
+    if (emailAuthMode === 'register' && password !== (confirmInput?.value || '')) {
+        setLoginErrorMessage('Пароли не совпадают.');
+        confirmInput?.focus();
+        return;
+    }
+
+    setLoginErrorMessage('');
+    setEmailAuthBusy(true);
+    try {
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        if (emailAuthMode === 'register') {
+            emailRegistrationInProgress = true;
+            const credential = await auth.createUserWithEmailAndPassword(email, password);
+            await credential.user.sendEmailVerification();
+            showEmailVerificationGate(credential.user, 'Письмо отправлено. Проверьте входящие и папку «Спам».');
+        } else {
+            const credential = await auth.signInWithEmailAndPassword(email, password);
+            if (!credential.user.emailVerified) {
+                showEmailVerificationGate(credential.user);
+            }
+        }
+    } catch (error) {
+        console.error('Email auth failed:', error);
+        setLoginErrorMessage(emailAuthErrorMessage(error));
+    } finally {
+        emailRegistrationInProgress = false;
+        setEmailAuthBusy(false);
+    }
+}
+
+async function resendEmailVerification() {
+    const user = auth?.currentUser;
+    if (!user || !isPasswordAuthUser(user)) return;
+    const button = document.getElementById('email-verification-resend');
+    if (button) button.disabled = true;
+    try {
+        await user.sendEmailVerification();
+        setLoginErrorMessage('Письмо отправлено повторно. Проверьте также папку «Спам».', 'success');
+    } catch (error) {
+        setLoginErrorMessage(emailAuthErrorMessage(error));
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function checkEmailVerification({ silent = false } = {}) {
+    const user = auth?.currentUser;
+    if (!user || !isPasswordAuthUser(user) || emailVerificationCheckInFlight) return;
+    emailVerificationCheckInFlight = true;
+    const button = document.getElementById('email-verification-check');
+    if (button) button.disabled = true;
+    try {
+        await user.reload();
+        if (!user.emailVerified) {
+            if (!silent) setLoginErrorMessage('Почта ещё не подтверждена. Перейдите по ссылке из письма.');
+            return;
+        }
+        await user.getIdToken(true);
+        setLoginErrorMessage('Почта подтверждена. Продолжаем регистрацию…', 'success');
+        const panel = document.getElementById('email-verification-panel');
+        if (panel) panel.hidden = true;
+        await bootstrapAuthenticatedProfile(user);
+        await loadUserRole(user);
+    } catch (error) {
+        if (!silent) setLoginErrorMessage(emailAuthErrorMessage(error));
+    } finally {
+        emailVerificationCheckInFlight = false;
+        if (button) button.disabled = false;
+    }
+}
 
 function getPendingTelegramBotLogin() {
     try {
@@ -5815,6 +6044,19 @@ async function onAuthStateChanged(user) {
     const generation = ++authStateGeneration;
     if (user) {
         clearPendingTelegramBotLogin();
+        if (isPasswordAuthUser(user) && !user.emailVerified) {
+            // Firebase can restore a cached User object after the verification
+            // link was opened in another tab. Refresh it before keeping the
+            // user behind the confirmation gate.
+            await user.reload().catch(() => {});
+            if (user.emailVerified) await user.getIdToken(true).catch(() => {});
+        }
+        if (isPasswordAuthUser(user) && !user.emailVerified) {
+            showEmailVerificationGate(user, emailRegistrationInProgress
+                ? 'Письмо отправлено. Проверьте входящие и папку «Спам».'
+                : 'Подтвердите адрес по ссылке из письма, чтобы продолжить.');
+            return;
+        }
         try {
             await bootstrapAuthenticatedProfile(user);
         } catch (error) {
@@ -5934,6 +6176,7 @@ function renderAuthProvider() {
     const provider = state.currentUser?.authProvider || '';
     const title = provider === 'apple.com' ? 'Apple'
         : provider === 'google.com' ? 'Google'
+            : provider === 'password' ? 'Email'
             : provider === 'telegram' ? 'Telegram' : 'HoldingMan';
     const icon = document.getElementById('profile-auth-icon');
     const label = document.getElementById('profile-auth-provider');
@@ -5942,6 +6185,7 @@ function renderAuthProvider() {
         icon.className = provider === 'apple.com' ? 'fa-brands fa-apple'
             : provider === 'telegram' ? 'fa-brands fa-telegram'
                 : provider === 'google.com' ? 'fa-brands fa-google'
+                    : provider === 'password' ? 'fa-solid fa-envelope-circle-check'
                     : 'fa-solid fa-user-shield';
     }
 }
@@ -6131,8 +6375,14 @@ function showAuthScreen() {
     hideLoadingScreen();
 
     elements.authOverlay.style.display = 'flex';
-    elements.authScreen.style.display = 'block';
+    elements.authScreen.style.display = 'flex';
     if (elements.roleScreen) elements.roleScreen.style.display = 'none';
+    const currentUser = auth?.currentUser;
+    if (currentUser && isPasswordAuthUser(currentUser) && !currentUser.emailVerified) {
+        showEmailVerificationGate(currentUser);
+    } else {
+        showEmailAuthContent();
+    }
     setTimeout(resumeTelegramBotLoginIfPending, 0);
 }
 
