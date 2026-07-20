@@ -2477,6 +2477,12 @@ body:not(.light-mode) .agent-md-pre { background: rgba(0, 0, 0, 0.28); }
     border-color: rgba(99, 102, 241, 0.35);
 }
 
+/* Кнопка «?» — шаблон вопроса «Как сделать: …» */
+.agent-chat-howto-btn {
+    color: var(--primary);
+    font-size: 1.05rem;
+}
+
 .agent-chat-attach-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;

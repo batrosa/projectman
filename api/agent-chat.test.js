@@ -236,6 +236,17 @@ describe("typed agent navigation", () => {
     expect(resolveAgentNavigation({ message: "покажи мои задачи", context })).toBe(null);
   });
 
+  it("«открой справку» открывает окно помощи; в iOS — честный ответ", () => {
+    expect(resolveAgentNavigation({ message: "открой справку", context })).toEqual({
+      navigation: { target: "help" },
+      message: "Открываю справку.",
+    });
+    expect(resolveAgentNavigation({ message: "открой помощь", context }).navigation.target).toBe("help");
+    const ios = resolveAgentNavigation({ message: "открой справку", body: { clientPlatform: "ios" }, context });
+    expect(ios.answer).toContain("веб-версии");
+    expect(resolveAgentNavigation({ message: "помоги создать задачу", context })).toBe(null);
+  });
+
   it("resolves real project and task ids before returning a route", () => {
     expect(resolveAgentNavigation({ message: "Открой проект Абрау-Дюрсо", context }).navigation)
       .toEqual({ target: "project", projectId: "p1" });

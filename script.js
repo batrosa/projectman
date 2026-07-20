@@ -1869,7 +1869,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.15'; // Calendar as third project view
+    const CURRENT_VERSION = '6.16'; // Updated help + agent howto button
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -10323,6 +10323,10 @@ async function performAgentNavigation(navigation) {
             closeChat();
             setProjectView('calendar');
             return true;
+        case 'help':
+            closeChat();
+            elements.helpModal?.classList.add('active');
+            return true;
         case 'team':
             if (!hasPermission('manage_users')) return false;
             closeChat();
@@ -10605,6 +10609,19 @@ function initAgentChat() {
             elements.agentChatFileInput.click();
         });
         elements.agentChatFileInput.addEventListener('change', handleAgentChatFileSelect);
+    }
+
+    // Кнопка «?»: шаблон вопроса «Как сделать: …» — пользователь дописывает,
+    // агент отвечает пошагово и может открыть справку/нужный раздел.
+    const howtoBtn = document.getElementById('agent-chat-howto-btn');
+    if (howtoBtn && elements.agentChatInput) {
+        howtoBtn.addEventListener('click', () => {
+            playClickSound();
+            const input = elements.agentChatInput;
+            if (!input.value.trim()) input.value = 'Как сделать: ';
+            input.focus();
+            try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) { /* ignore */ }
+        });
     }
 
     if (elements.agentChatForm) {
