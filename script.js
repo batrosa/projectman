@@ -1869,7 +1869,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.14'; // Agent project scope selector + list anaphora
+    const CURRENT_VERSION = '6.15'; // Calendar as third project view
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2712,7 +2712,8 @@ function renderProjects() {
             switchWrap.className = 'project-view-switch';
             [
                 { view: 'kanban', icon: 'fa-table-columns', label: 'Канбан' },
-                { view: 'gantt', icon: 'fa-chart-gantt', label: 'Гант' }
+                { view: 'gantt', icon: 'fa-chart-gantt', label: 'Гант' },
+                { view: 'calendar', icon: 'fa-calendar-days', label: 'Календарь' }
             ].forEach(({ view, icon, label }) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
@@ -2749,6 +2750,7 @@ function renderBoard() {
     if (!activeProject) {
         elements.boardContainer.classList.remove('active');
         if (elements.ganttContainer) elements.ganttContainer.classList.remove('active');
+        calElements.container?.classList.remove('active');
         elements.emptyState.style.display = 'flex';
         elements.projectTitle.textContent = 'Выберите проект';
         elements.projectDesc.textContent = 'или создайте новый';
@@ -2759,11 +2761,14 @@ function renderBoard() {
         return;
     }
 
-    // Only one of the two views is visible; the kanban lists below are still
-    // (re)built even in Gantt mode so counts and columns stay fresh on switch.
+    // Only one of the three views is visible; the kanban lists below are still
+    // (re)built even in Gantt/Calendar mode so counts and columns stay fresh
+    // on switch.
     const isGanttView = state.projectView === 'gantt';
-    elements.boardContainer.classList.toggle('active', !isGanttView);
+    const isCalendarView = state.projectView === 'calendar';
+    elements.boardContainer.classList.toggle('active', !isGanttView && !isCalendarView);
     if (elements.ganttContainer) elements.ganttContainer.classList.toggle('active', isGanttView);
+    calElements.container?.classList.toggle('active', isCalendarView);
     elements.emptyState.style.display = 'none';
     elements.projectTitle.textContent = activeProject.name;
 
@@ -2877,8 +2882,9 @@ function renderBoard() {
     // Keep the correct visible column (single-column view)
     setBoardView(state.boardView || 'assigned');
 
-    // Gantt renders from the same tasks snapshot, so it live-updates too
+    // Gantt/Calendar render from the same tasks snapshot, so they live-update too
     if (isGanttView) renderGantt();
+    if (isCalendarView) renderCalendar();
 }
 
 // --- NEW TASK CARD WITH STATUS BADGES ---
@@ -4517,14 +4523,15 @@ function setBoardView(view) {
 
 // Board selector now opens modal on mobile
 
-// ===== Project view: kanban <-> gantt =====
+// ===== Project view: kanban <-> gantt <-> calendar =====
 function setProjectView(view) {
-    const next = view === 'gantt' ? 'gantt' : 'kanban';
+    const next = ['gantt', 'calendar'].includes(view) ? view : 'kanban';
     if (state.projectView === next) return;
     state.projectView = next;
     if (next === 'gantt') state.ganttMonth = null; // always start from the year
+    if (next === 'calendar') calendarState.currentDate = new Date(); // open on the current month
     renderProjects(); // refresh switcher active state under the project
-    renderBoard();    // toggles containers; renders the gantt if needed
+    renderBoard();    // toggles containers; renders gantt/calendar if needed
 }
 
 // ===== Gantt chart =====
@@ -4952,14 +4959,6 @@ function closeModalElement(modal) {
     if (elements.agentChatModal && modal === elements.agentChatModal) {
         agentChatState.generation += 1;
         clearAgentChatFileSelection();
-    }
-    // Detach the calendar's live tasks listener when it is dismissed so it
-    // doesn't keep running in the background after the calendar is closed.
-    if (calElements.modal && modal === calElements.modal) {
-        if (calendarState.tasksListenerUnsubscribe) {
-            calendarState.tasksListenerUnsubscribe();
-            calendarState.tasksListenerUnsubscribe = null;
-        }
     }
     if (calElements.dayTasksModal && modal === calElements.dayTasksModal) {
         calendarState.openDayDate = null;
@@ -8978,13 +8977,11 @@ function initProfileAndLeaderboard() {
 let calendarState = {
     currentDate: new Date(),
     tasks: [],
-    tasksListenerUnsubscribe: null,
     openDayDate: null
 };
 
 const calElements = {
-    btn: document.getElementById('calendar-btn'),
-    modal: document.getElementById('calendar-modal'),
+    container: document.getElementById('calendar-view-container'),
     grid: document.getElementById('calendar-grid'),
     monthTitle: document.getElementById('cal-current-month'),
     prevBtn: document.getElementById('cal-prev-month'),
@@ -8997,11 +8994,6 @@ const calElements = {
 };
 
 function initCalendarModule() {
-    calElements.btn?.addEventListener('click', () => {
-        playClickSound();
-        openCalendar();
-    });
-
     calElements.prevBtn?.addEventListener('click', () => {
         calendarState.currentDate.setMonth(calendarState.currentDate.getMonth() - 1);
         renderCalendar();
@@ -9026,44 +9018,16 @@ function initCalendarModule() {
     });
 }
 
-function openCalendar() {
-    calElements.modal?.classList.add('active');
-    setupCalendarTasksListener();
-    renderCalendar();
-}
-
-// Loads the tasks the user may see so the calendar can plot them by deadline.
-// Scoped to accessible projects via chunked `in` listeners (a broad tasks
-// listener fails entirely for a restricted member — Firestore denies the whole
-// query if any matched doc is unreadable). tasksListenerUnsubscribe stays a
-// single fn that tears down all chunk listeners, so existing teardown works.
-function setupCalendarTasksListener() {
-    if (calendarState.tasksListenerUnsubscribe) calendarState.tasksListenerUnsubscribe();
-
-    const projectIds = getFilteredProjects().map(p => p.id);
-    if (projectIds.length === 0) {
-        calendarState.tasks = [];
-        calendarState.tasksListenerUnsubscribe = null;
-        renderCalendar();
-        return;
-    }
-    const chunks = [];
-    for (let i = 0; i < projectIds.length; i += 10) chunks.push(projectIds.slice(i, i + 10));
-    const byChunk = chunks.map(() => []);
-    const unsubs = chunks.map((chunk, idx) =>
-        db.collection('tasks').where('projectId', 'in', chunk).onSnapshot(snapshot => {
-            byChunk[idx] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            calendarState.tasks = byChunk.flat();
-            renderCalendar();
-            // Keep an open day modal in sync with live task changes.
-            if (calendarState.openDayDate) renderDayTasks(calendarState.openDayDate);
-        }, err => console.error("Calendar tasks listener error:", err))
-    );
-    calendarState.tasksListenerUnsubscribe = () => unsubs.forEach(u => { try { u(); } catch (e) { /* ignore */ } });
-}
-
 function renderCalendar() {
     if (!calElements.grid) return;
+
+    // Календарь — проектный вид (как Канбан и Гант): рисуем задачи АКТИВНОГО
+    // проекта из того же живого снапшота state.tasks. Собственный слушатель по
+    // всем проектам больше не нужен — renderBoard() вызывает renderCalendar()
+    // на каждом обновлении задач.
+    calendarState.tasks = Array.isArray(state.tasks) ? state.tasks : [];
+    // Открытая модалка «Задачи дня» обновляется вместе со снапшотом.
+    if (calendarState.openDayDate) renderDayTasks(calendarState.openDayDate);
 
     const year = calendarState.currentDate.getFullYear();
     const month = calendarState.currentDate.getMonth();
@@ -9252,16 +9216,12 @@ function renderDayTasks(dateStr) {
         row.appendChild(info);
         row.appendChild(tag);
 
-        // Jump to the task: close every layer on top of the board (day-tasks
-        // modal, calendar, and the "Панель управления" settings modal the
-        // calendar was opened from), then open the task's exact status column
-        // and highlight it — same behaviour as "Мои задачи".
+        // Jump to the task: close the day-tasks modal, switch the workspace
+        // to the kanban view and open the task's exact status column with
+        // highlight — same behaviour as "Мои задачи".
         const boardView = boardViewForTask(task);
         row.addEventListener('click', () => {
             closeDayTasksModal();
-            if (calElements.modal) closeModalElement(calElements.modal);
-            const settingsModal = document.getElementById('settings-modal');
-            if (settingsModal) closeModalElement(settingsModal);
             if (task.projectId) navigateToTask(task.projectId, task.id, boardView);
         });
 
@@ -10358,8 +10318,10 @@ async function performAgentNavigation(navigation) {
             openProfileModal();
             return true;
         case 'calendar':
+            // Календарь теперь — вид рабочей области активного проекта
+            if (!state.activeProjectId) return false;
             closeChat();
-            openCalendar();
+            setProjectView('calendar');
             return true;
         case 'team':
             if (!hasPermission('manage_users')) return false;

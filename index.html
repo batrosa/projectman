@@ -17,8 +17,8 @@
     <title>HoldingMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=64.0" as="style">
-    <link rel="stylesheet" href="style.css?v=64.0">
+    <link rel="preload" href="style.css?v=65.0" as="style">
+    <link rel="stylesheet" href="style.css?v=65.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=81.0" defer></script>
+    <script src="script.js?v=82.0" defer></script>
 </head>
 
 <body>
@@ -1060,6 +1060,28 @@
                 <div class="gantt-scroll" id="gantt-scroll"></div>
             </div>
 
+            <!-- Calendar view: third workspace view (Канбан / Гант / Календарь),
+                 project-scoped — plots the ACTIVE project's tasks by deadline.
+                 Toggled from the sidebar view switcher under the active project. -->
+            <div class="calendar-view-container" id="calendar-view-container">
+                <div class="calendar-view-toolbar">
+                    <div class="calendar-header-nav">
+                        <button id="cal-prev-month" class="icon-btn" title="Предыдущий месяц"><i class="fa-solid fa-chevron-left"></i></button>
+                        <h2 id="cal-current-month">Календарь</h2>
+                        <button id="cal-next-month" class="icon-btn" title="Следующий месяц"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <button id="cal-today-btn" class="secondary-btn small">Сегодня</button>
+                </div>
+                <div class="calendar-body">
+                    <div class="calendar-week-days">
+                        <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+                    </div>
+                    <div id="calendar-grid" class="calendar-grid">
+                        <!-- Days will be injected here -->
+                    </div>
+                </div>
+            </div>
+
             <div id="empty-state" class="empty-state">
                 <i class="fa-solid fa-clipboard-list"></i>
                 <p>Выберите проект слева, чтобы увидеть задачи</p>
@@ -1185,16 +1207,6 @@
                     <div class="settings-option-info">
                         <span class="settings-option-title">Рейтинг сотрудников</span>
                         <span class="settings-option-desc">Топ по выполненным задачам</span>
-                    </div>
-                    <i class="fa-solid fa-chevron-right"></i>
-                </button>
-                <button id="calendar-btn" class="settings-option">
-                    <div class="settings-option-icon calendar">
-                        <i class="fa-solid fa-calendar-days"></i>
-                    </div>
-                    <div class="settings-option-info">
-                        <span class="settings-option-title">Календарь</span>
-                        <span class="settings-option-desc">Планирование и встречи</span>
                     </div>
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
@@ -1328,31 +1340,6 @@
     </div>
 
     <!-- Calendar Modal -->
-    <div id="calendar-modal" class="modal">
-        <div class="modal-content calendar-modal-content">
-            <div class="modal-header calendar-header">
-                <div class="calendar-header-nav">
-                    <button id="cal-prev-month" class="icon-btn"><i class="fa-solid fa-chevron-left"></i></button>
-                    <h2 id="cal-current-month">Июнь 2024</h2>
-                    <button id="cal-next-month" class="icon-btn"><i class="fa-solid fa-chevron-right"></i></button>
-                </div>
-                <div class="calendar-header-actions">
-                    <button id="cal-today-btn" class="secondary-btn small">Сегодня</button>
-                    <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-            </div>
-
-            <div class="calendar-body">
-                <div class="calendar-week-days">
-                    <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
-                </div>
-                <div id="calendar-grid" class="calendar-grid">
-                    <!-- Days will be injected here -->
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Day Tasks Modal (opens when a calendar day is clicked) -->
     <div id="day-tasks-modal" class="modal">
         <div class="modal-content day-tasks-modal-content">
