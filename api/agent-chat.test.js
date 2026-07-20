@@ -2060,6 +2060,43 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(payload.messages[1].content).toContain("Текущая дата: 2026-07-03.");
   });
 
+  it("never exposes hard-coded participant names in a task-assignee clarification", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-current", orgRole: "owner" },
+      orgUsers: [
+        { id: "u-current", organizationId: "org-current", displayName: "Участник Текущей Организации" },
+      ],
+      projects: [{ id: "p-current", name: "Текущий проект", organizationId: "org-current" }],
+      tasks: [],
+      filesByProject: {},
+    });
+    fetchJsonWithTimeout.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: {
+        choices: [{
+          message: {
+            content: "```json\n{\"action\":\"propose_tasks\",\"file\":\"текстовый запрос\",\"tasks\":[],\"hasMore\":false}\n```",
+          },
+        }],
+      },
+    });
+
+    const res = mockResponse();
+    await handler(makeRequest({
+      message: "Создай задачу: название, исполнитель, срок",
+      projectId: "p-current",
+    }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.answer).toBe(
+      "Не понял однозначно, кому поставить задачу. Назовите точные имена участников вашей организации и сформулируйте поручение одной фразой — я подготовлю карточку.",
+    );
+    const modelPayload = JSON.parse(fetchJsonWithTimeout.mock.calls[0][1].body);
+    expect(modelPayload.messages[0].content).not.toMatch(/Тэко|Эльдар|Амирхан|Абигасанов|Исаев/u);
+    expect(modelPayload.messages[1].content).toContain("Участник Текущей Организации");
+  });
+
   it("turns the production phrase «можешь озадачить ... этими задачами?» into a real knowledge-grounded preview", async () => {
     state.db = makeFakeDb({
       userDoc: { organizationId: "org-1", orgRole: "owner", firstName: "Тэко", lastName: "Исаев" },
