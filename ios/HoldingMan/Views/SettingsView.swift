@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
     @State private var confirmLogout = false
     @State private var showOrgScreen = false
+    @State private var showNameEditor = false
 
     private var appearance: Appearance {
         get { Appearance(rawValue: appearanceRaw) ?? .system }
@@ -77,6 +78,11 @@ struct SettingsView: View {
             }
             .screenBackground()
             .navigationTitle("Профиль")
+            .sheet(isPresented: $showNameEditor) {
+                if let user = appState.user {
+                    EditProfileNameView(user: user)
+                }
+            }
         }
     }
 
@@ -105,6 +111,17 @@ struct SettingsView: View {
                         .background(Theme.primary.opacity(0.12), in: Capsule())
                 }
                 Spacer(minLength: 0)
+                Button {
+                    showNameEditor = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.primary)
+                        .frame(width: 38, height: 38)
+                        .background(Theme.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .buttonStyle(PressableStyle())
+                .accessibilityLabel("Изменить имя и фамилию")
             }
 
             HStack(spacing: 10) {
@@ -277,5 +294,108 @@ struct SettingsView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+}
+
+private struct EditProfileNameView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var firstName: String
+    @State private var lastName: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case firstName, lastName }
+
+    init(user: UserDoc) {
+        _firstName = State(initialValue: user.firstName)
+        _lastName = State(initialValue: user.lastName)
+    }
+
+    private var trimmedFirstName: String {
+        firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedLastName: String {
+        lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSave: Bool {
+        trimmedFirstName.count >= 2 && trimmedLastName.count >= 2 && !isSaving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Имя", text: $firstName)
+                        .textContentType(.givenName)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .focused($focusedField, equals: .firstName)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .lastName }
+
+                    TextField("Фамилия", text: $lastName)
+                        .textContentType(.familyName)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .focused($focusedField, equals: .lastName)
+                        .submitLabel(.done)
+                        .onSubmit { save() }
+                } header: {
+                    Text("Данные профиля")
+                } footer: {
+                    Text("Новое имя будет показано участникам ваших организаций.")
+                }
+
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.danger)
+                    }
+                }
+            }
+            .navigationTitle("Имя и фамилия")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") { dismiss() }
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        save()
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Text("Сохранить")
+                        }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+            .interactiveDismissDisabled(isSaving)
+            .onAppear { focusedField = .firstName }
+        }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                try await ApiClient.completeAuthProfile(
+                    firstName: trimmedFirstName,
+                    lastName: trimmedLastName
+                )
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isSaving = false
+            }
+        }
     }
 }

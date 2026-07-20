@@ -8821,6 +8821,101 @@ async function updateOrgLimit(newLimit = 100) {
 }
 
 // ========== PERSONAL PROFILE ==========
+function setProfileNameEditorOpen(isOpen) {
+    const form = document.getElementById('profile-name-form');
+    const editButton = document.getElementById('profile-name-edit');
+    const error = document.getElementById('profile-name-error');
+    if (!form) return;
+
+    form.hidden = !isOpen;
+    if (editButton) editButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    if (error) {
+        error.hidden = true;
+        error.textContent = '';
+    }
+
+    if (isOpen) {
+        const userData = state.users.find(user => user.id === state.currentUser?.uid) || state.currentUser;
+        const firstInput = document.getElementById('profile-first-name');
+        const lastInput = document.getElementById('profile-last-name');
+        if (firstInput) firstInput.value = userData?.firstName || '';
+        if (lastInput) lastInput.value = userData?.lastName || '';
+        requestAnimationFrame(() => firstInput?.focus());
+    }
+}
+
+async function handleProfileNameSubmit(event) {
+    event.preventDefault();
+    const firstInput = document.getElementById('profile-first-name');
+    const lastInput = document.getElementById('profile-last-name');
+    const error = document.getElementById('profile-name-error');
+    const message = document.getElementById('profile-name-message');
+    const saveButton = document.getElementById('profile-name-save');
+    const firstName = (firstInput?.value || '').trim().replace(/\s+/g, ' ');
+    const lastName = (lastInput?.value || '').trim().replace(/\s+/g, ' ');
+
+    if (firstName.length < 2 || lastName.length < 2) {
+        if (error) {
+            error.textContent = 'Введите имя и фамилию: минимум по 2 символа.';
+            error.hidden = false;
+        }
+        return;
+    }
+
+    const originalButton = saveButton?.innerHTML || '';
+    if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение';
+    }
+    if (error) error.hidden = true;
+    if (message) message.hidden = true;
+
+    try {
+        const result = await callOrgApi('completeProfile', { firstName, lastName });
+        const displayName = result.displayName || `${firstName} ${lastName}`;
+        Object.assign(state.currentUser, {
+            firstName,
+            lastName,
+            fullName: displayName,
+            displayName,
+            profileCompleted: true,
+        });
+        const currentRosterUser = state.users.find(user => user.id === state.currentUser.uid);
+        if (currentRosterUser) {
+            Object.assign(currentRosterUser, { firstName, lastName, displayName });
+        }
+
+        const profileName = document.getElementById('profile-name');
+        if (profileName) profileName.textContent = displayName;
+        const avatarText = document.getElementById('profile-avatar-text');
+        const avatarImg = document.getElementById('profile-avatar-img');
+        if (avatarText && avatarImg?.style.display === 'none') {
+            avatarText.textContent = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase() || 'U';
+        }
+
+        setProfileNameEditorOpen(false);
+        if (message) {
+            message.textContent = 'Имя и фамилия обновлены.';
+            message.hidden = false;
+        }
+        renderUsersList();
+        renderProjectAccessTab();
+        renderLoginHistoryTab();
+        renderAdminUsersStatsPanel();
+        playClickSound();
+    } catch (submitError) {
+        if (error) {
+            error.textContent = submitError?.message || 'Не удалось сохранить имя и фамилию.';
+            error.hidden = false;
+        }
+    } finally {
+        if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.innerHTML = originalButton;
+        }
+    }
+}
+
 function openProfileModal() {
     const modal = document.getElementById('profile-modal');
     if (!modal || !state.currentUser) return;
@@ -8848,6 +8943,9 @@ function openProfileModal() {
     const fullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'Без имени';
     document.getElementById('profile-name').textContent = fullName;
     document.getElementById('profile-email').textContent = userData.email || '';
+    setProfileNameEditorOpen(false);
+    const profileNameMessage = document.getElementById('profile-name-message');
+    if (profileNameMessage) profileNameMessage.hidden = true;
     renderAuthProvider();
 
     // Update level info
@@ -9284,6 +9382,9 @@ function initProfileAndLeaderboard() {
     const profileBtn = document.getElementById('profile-btn');
     const leaderboardBtn = document.getElementById('leaderboard-btn');
     const photoInput = document.getElementById('profile-photo-input');
+    const profileNameEdit = document.getElementById('profile-name-edit');
+    const profileNameCancel = document.getElementById('profile-name-cancel');
+    const profileNameForm = document.getElementById('profile-name-form');
 
     if (profileBtn) {
         profileBtn.addEventListener('click', () => {
@@ -9307,6 +9408,13 @@ function initProfileAndLeaderboard() {
             }
         });
     }
+
+    profileNameEdit?.addEventListener('click', () => {
+        const form = document.getElementById('profile-name-form');
+        setProfileNameEditorOpen(Boolean(form?.hidden));
+    });
+    profileNameCancel?.addEventListener('click', () => setProfileNameEditorOpen(false));
+    profileNameForm?.addEventListener('submit', handleProfileNameSubmit);
 
     // Initialize photo crop
     initPhotoCrop();

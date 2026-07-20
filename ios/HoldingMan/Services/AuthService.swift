@@ -124,7 +124,7 @@ final class AuthService: ObservableObject {
                 if !silent { setStatus("Email ещё не подтверждён. Перейдите по ссылке из письма.") }
                 return
             }
-            _ = try await user.getIDTokenForcingRefresh(true)
+            _ = try await user.getIDTokenResult(forcingRefresh: true)
             pendingVerificationEmail = nil
             setStatus("Email подтверждён. Готовим профиль…", success: true)
             try await bootstrapOrSignOut()

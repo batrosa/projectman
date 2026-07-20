@@ -19,8 +19,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=73.0" as="style">
-    <link rel="stylesheet" href="style.css?v=73.0">
+    <link rel="preload" href="style.css?v=74.0" as="style">
+    <link rel="stylesheet" href="style.css?v=74.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=89.0" defer></script>
+    <script src="script.js?v=90.0" defer></script>
 </head>
 
 <body>
@@ -1268,10 +1268,39 @@
                         </label>
                     </div>
                     <div class="profile-info">
-                        <h3 id="profile-name">Имя Фамилия</h3>
+                        <div class="profile-name-row">
+                            <h3 id="profile-name">Имя Фамилия</h3>
+                            <button type="button" id="profile-name-edit" class="profile-name-edit"
+                                aria-label="Изменить имя и фамилию" title="Изменить имя и фамилию">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                        </div>
                         <p id="profile-email">email@example.com</p>
                     </div>
                 </div>
+
+                <form id="profile-name-form" class="profile-name-form" hidden>
+                    <div class="profile-name-fields">
+                        <label>
+                            <span>Имя</span>
+                            <input type="text" id="profile-first-name" required minlength="2" maxlength="40"
+                                autocomplete="given-name" placeholder="Имя">
+                        </label>
+                        <label>
+                            <span>Фамилия</span>
+                            <input type="text" id="profile-last-name" required minlength="2" maxlength="40"
+                                autocomplete="family-name" placeholder="Фамилия">
+                        </label>
+                    </div>
+                    <p id="profile-name-error" class="profile-name-error" role="alert" hidden></p>
+                    <div class="profile-name-actions">
+                        <button type="button" id="profile-name-cancel" class="secondary-btn">Отмена</button>
+                        <button type="submit" id="profile-name-save" class="primary-btn">
+                            <i class="fa-solid fa-check"></i> Сохранить
+                        </button>
+                    </div>
+                </form>
+                <p id="profile-name-message" class="profile-name-message" role="status" hidden></p>
 
                 <section class="profile-auth-section" aria-labelledby="profile-auth-title">
                     <div>

@@ -104,6 +104,17 @@ function activeUserPatch(orgId, orgRole, allowedProjects) {
   return patch;
 }
 
+function replaceDenormalizedName(value, userIds, userId, displayName) {
+  if (!Array.isArray(userIds)) return null;
+  const index = userIds.indexOf(userId);
+  if (index < 0) return null;
+  const names = String(value || "").split(",").map((name) => name.trim());
+  while (names.length <= index) names.push("");
+  if (names[index] === displayName) return null;
+  names[index] = displayName;
+  return names.filter(Boolean).join(", ");
+}
+
 function membershipPatch({ organizationId, userId, orgRole, userData, allowedProjects, includeJoinedAt = false }) {
   const patch = {
     organizationId,
@@ -292,23 +303,82 @@ export default async function handler(request, response) {
   }
 
   if (action === "completeProfile") {
-    const firstName = String(body.firstName || "").trim().slice(0, 40);
-    const lastName = String(body.lastName || "").trim().slice(0, 40);
+    const firstName = String(body.firstName || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const lastName = String(body.lastName || "").trim().replace(/\s+/g, " ").slice(0, 40);
     if (firstName.length < 2 || lastName.length < 2) {
       return response.status(400).json({ error: "Введите имя и фамилию: минимум по 2 символа." });
     }
     try {
       const userRef = db.collection("users").doc(decoded.uid);
-      const userSnap = await userRef.get();
+      const [userSnap, membershipsSnap, assigneeTasks, coCreatorTasks, createdTasks] = await Promise.all([
+        userRef.get(),
+        db.collection(MEMBERSHIP_COLLECTION).where("userId", "==", decoded.uid).get(),
+        db.collection("tasks").where("assigneeIds", "array-contains", decoded.uid).get(),
+        db.collection("tasks").where("coCreatorIds", "array-contains", decoded.uid).get(),
+        db.collection("tasks").where("createdByUid", "==", decoded.uid).get(),
+      ]);
       if (!userSnap.exists) return response.status(404).json({ error: "Профиль не найден" });
-      await userRef.set({
+
+      const displayName = `${firstName} ${lastName}`;
+      const userPatch = {
         firstName,
         lastName,
-        displayName: `${firstName} ${lastName}`,
+        displayName,
         profileCompleted: true,
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-      return response.status(200).json({ ok: true });
+      };
+      const membershipPatch = {
+        firstName,
+        lastName,
+        displayName,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      // The roster is denormalized per organization. Update every membership
+      // so the new name appears immediately in all teams after an org switch.
+      const writes = [
+        { ref: userRef, patch: userPatch },
+        ...membershipsSnap.docs.map((doc) => ({ ref: doc.ref, patch: membershipPatch })),
+      ];
+
+      // Tasks keep display-name snapshots for fast web/iOS rendering. Refresh
+      // those snapshots by UID so existing cards do not retain the old name.
+      const taskDocs = new Map();
+      [assigneeTasks, coCreatorTasks, createdTasks].forEach((snapshot) => {
+        snapshot.docs.forEach((doc) => taskDocs.set(doc.ref.path, doc));
+      });
+      taskDocs.forEach((doc) => {
+        const task = doc.data() || {};
+        const patch = {};
+        const assignee = replaceDenormalizedName(
+          task.assignee,
+          task.assigneeIds,
+          decoded.uid,
+          displayName
+        );
+        if (assignee !== null) patch.assignee = assignee;
+        const coCreators = replaceDenormalizedName(
+          task.coCreators,
+          task.coCreatorIds,
+          decoded.uid,
+          displayName
+        );
+        if (coCreators !== null) patch.coCreators = coCreators;
+        if (task.createdByUid === decoded.uid && task.createdBy !== displayName) {
+          patch.createdBy = displayName;
+        }
+        if (Object.keys(patch).length > 0) writes.push({ ref: doc.ref, patch });
+      });
+
+      for (let offset = 0; offset < writes.length; offset += 400) {
+        const batch = db.batch();
+        writes.slice(offset, offset + 400).forEach(({ ref, patch }) => {
+          batch.set(ref, patch, { merge: true });
+        });
+        await batch.commit();
+      }
+
+      return response.status(200).json({ ok: true, firstName, lastName, displayName });
     } catch (error) {
       console.error("profile completion failed", error);
       return response.status(500).json({ error: "Не удалось сохранить имя и фамилию" });
