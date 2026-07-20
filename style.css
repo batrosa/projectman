@@ -3659,6 +3659,8 @@ body.light-mode .project-checkbox-item:hover {
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
     -webkit-box-sizing: border-box;
     box-sizing: border-box;
+    display: block;
+    overflow-x: hidden;
 
     /* Hidden state */
     opacity: 0;
@@ -3699,6 +3701,7 @@ body.light-mode .status-dropdown {
     margin-bottom: 4px;
     -webkit-box-sizing: border-box;
     box-sizing: border-box;
+    width: 100%;
 }
 
 .status-dropdown-header span {
@@ -3741,6 +3744,10 @@ body.light-mode .status-dropdown-header span {
     -webkit-box-sizing: border-box;
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
 }
 
 body.light-mode .status-option {

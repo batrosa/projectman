@@ -7,6 +7,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 import { buildAuthProfilePatch, selectedProviderId } from "../lib/auth-profile.js";
+import {
+  activeOrganizationStatsPatch,
+  emptyOrganizationStats,
+  ensureScopedOrganizationStats,
+  organizationStatsPatch,
+} from "../lib/organization-stats.js";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing 0/O, 1/I
 const MAX_ORG_NAME = 80;
@@ -62,7 +68,7 @@ function membershipRef(db, orgId, userId) {
   return db.collection(MEMBERSHIP_COLLECTION).doc(membershipDocId(orgId, userId));
 }
 
-function publicUserFields(userData = {}) {
+function publicIdentityFields(userData = {}) {
   return {
     firstName: userData.firstName || "",
     lastName: userData.lastName || "",
@@ -71,11 +77,10 @@ function publicUserFields(userData = {}) {
     telegramChatId: userData.telegramChatId || null,
     telegramUsername: userData.telegramUsername || null,
     profilePhotoUrl: userData.profilePhotoUrl || null,
-    totalXP: userData.totalXP || 0,
-    level: userData.level || 1,
-    completedTasksCount: userData.completedTasksCount || 0,
-    onTimeTasksCount: userData.onTimeTasksCount || 0,
-    noRevisionTasksCount: userData.noRevisionTasksCount || 0,
+    authProvider: userData.authProvider || null,
+    lastLoginAt: userData.lastLoginAt || null,
+    lastSeenAt: userData.lastSeenAt || null,
+    lastSeenClientAt: userData.lastSeenClientAt || null,
   };
 }
 
@@ -97,8 +102,12 @@ function organizationPayload(orgId, orgData = {}, orgRole, membersCount = orgDat
   return organization;
 }
 
-function activeUserPatch(orgId, orgRole, allowedProjects) {
-  const patch = { organizationId: orgId, orgRole };
+function activeUserPatch(orgId, orgRole, allowedProjects, stats = null) {
+  const patch = {
+    organizationId: orgId,
+    orgRole,
+    ...(stats ? activeOrganizationStatsPatch(stats) : {}),
+  };
   if (Array.isArray(allowedProjects)) patch.allowedProjects = allowedProjects;
   else patch.allowedProjects = FieldValue.delete();
   return patch;
@@ -120,7 +129,7 @@ function membershipPatch({ organizationId, userId, orgRole, userData, allowedPro
     organizationId,
     userId,
     orgRole,
-    ...publicUserFields(userData),
+    ...publicIdentityFields(userData),
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (Array.isArray(allowedProjects)) patch.allowedProjects = allowedProjects;
@@ -392,6 +401,7 @@ export default async function handler(request, response) {
       const userData = await loadCaller(db, decoded.uid);
       if (!userData) return response.status(403).json({ error: "Профиль не найден" });
       await ensureActiveMembership(db, decoded.uid, userData);
+      await ensureScopedOrganizationStats(db, decoded.uid, userData);
 
       const membershipsSnap = await db.collection(MEMBERSHIP_COLLECTION)
         .where("userId", "==", decoded.uid)
@@ -425,6 +435,12 @@ export default async function handler(request, response) {
         backfillLegacyMembershipsForOrg(db, orgId),
       ]);
       if (!orgSnap.exists) return response.status(404).json({ error: "Организация не найдена" });
+      const statsByOrganization = await ensureScopedOrganizationStats(db, decoded.uid, userData);
+      const activeStats = statsByOrganization.get(orgId) || emptyOrganizationStats();
+      await db.collection("users").doc(decoded.uid).set(
+        activeOrganizationStatsPatch(activeStats),
+        { merge: true }
+      );
       const orgData = orgSnap.data() || {};
       const orgRole = userData.orgRole || "employee";
       const membersCount = Math.max(orgData.membersCount || 0, backfill.memberships || 0, backfill.legacyUsers || 0);
@@ -457,13 +473,15 @@ export default async function handler(request, response) {
         return response.status(403).json({ error: "Нет доступа к этой организации" });
       }
       const backfill = await backfillLegacyMembershipsForOrg(db, orgId);
+      const statsByOrganization = await ensureScopedOrganizationStats(db, decoded.uid, userData);
       const membership = memberSnap.data() || {};
       const orgRole = membership.orgRole || "employee";
       const allowedProjects = Array.isArray(membership.allowedProjects) ? membership.allowedProjects : undefined;
+      const activeStats = statsByOrganization.get(orgId) || emptyOrganizationStats();
       const batch = db.batch();
       batch.set(
         db.collection("users").doc(decoded.uid),
-        activeUserPatch(orgId, orgRole, allowedProjects),
+        activeUserPatch(orgId, orgRole, allowedProjects, activeStats),
         { merge: true }
       );
       batch.set(
@@ -553,18 +571,21 @@ export default async function handler(request, response) {
       batch.set(orgRef, orgData);
       batch.set(
         membershipRef(db, orgRef.id, decoded.uid),
-        membershipPatch({
-          organizationId: orgRef.id,
-          userId: decoded.uid,
-          orgRole: "owner",
-          userData,
-          includeJoinedAt: true,
-        }),
+        {
+          ...membershipPatch({
+            organizationId: orgRef.id,
+            userId: decoded.uid,
+            orgRole: "owner",
+            userData,
+            includeJoinedAt: true,
+          }),
+          ...organizationStatsPatch(emptyOrganizationStats()),
+        },
         { merge: true }
       );
       batch.set(
         db.collection("users").doc(decoded.uid),
-        activeUserPatch(orgRef.id, "owner"),
+        activeUserPatch(orgRef.id, "owner", undefined, emptyOrganizationStats()),
         { merge: true }
       );
       await batch.commit();

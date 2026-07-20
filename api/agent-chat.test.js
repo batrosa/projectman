@@ -798,12 +798,12 @@ describe("normalizeHistory", () => {
     expect(normalizeHistory({})).toEqual([]);
   });
 
-  it("keeps at most the last MAX_HISTORY_TURNS (8) entries", () => {
-    const history = Array.from({ length: 20 }, (_, i) => ({ role: "user", content: `msg ${i}` }));
+  it("keeps at most the last MAX_HISTORY_TURNS (100) entries", () => {
+    const history = Array.from({ length: 120 }, (_, i) => ({ role: "user", content: `msg ${i}` }));
     const result = normalizeHistory(history);
-    expect(result).toHaveLength(8);
-    expect(result[0].content).toBe("msg 12");
-    expect(result[7].content).toBe("msg 19");
+    expect(result).toHaveLength(100);
+    expect(result[0].content).toBe("msg 20");
+    expect(result[99].content).toBe("msg 119");
   });
 
   it("preserves the assistant role", () => {
@@ -826,10 +826,10 @@ describe("normalizeHistory", () => {
     expect(result.map((t) => t.role)).toEqual(["user", "user", "user"]);
   });
 
-  it("caps each entry's content to 2000 characters", () => {
-    const longContent = "a".repeat(3000);
+  it("caps each entry's content to 3500 characters", () => {
+    const longContent = "a".repeat(4000);
     const result = normalizeHistory([{ role: "user", content: longContent }]);
-    expect(result[0].content).toHaveLength(2000);
+    expect(result[0].content).toHaveLength(3500);
   });
 
   it("coerces missing/non-string content to an empty string safely", () => {

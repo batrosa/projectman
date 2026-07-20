@@ -22,56 +22,19 @@
 // task that was actually completed (it has a completedAt timestamp).
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
+import {
+  activeOrganizationStatsPatch,
+  computeWasOnTime,
+  computeXpDelta,
+  ensureScopedOrganizationStats,
+  getLevelFromXP,
+  membershipRef,
+  organizationStatsPatch,
+  readOrganizationStats,
+  XP_CONFIG,
+} from "../lib/organization-stats.js";
 
-// Mirror of the client XP_CONFIG (script.js). Keep the two in sync — the client
-// still uses its copy to render level/progress; this copy is the authoritative
-// one for what actually gets written.
-export const XP_CONFIG = {
-  baseTaskXP: 10,
-  onTimeBonus: 5,
-  revisionPenalty: 3,
-  levels: [
-    { level: 1, xpRequired: 0 },
-    { level: 2, xpRequired: 50 },
-    { level: 3, xpRequired: 150 },
-    { level: 4, xpRequired: 300 },
-    { level: 5, xpRequired: 500 },
-    { level: 6, xpRequired: 800 },
-    { level: 7, xpRequired: 1200 },
-  ],
-};
-
-// Highest level whose xpRequired is <= xp (mirrors getLevelFromXP in script.js).
-export function getLevelFromXP(xp) {
-  let level = XP_CONFIG.levels[0].level;
-  for (const l of XP_CONFIG.levels) {
-    if (xp >= l.xpRequired) level = l.level;
-    else break;
-  }
-  return level;
-}
-
-// XP delta for one completed task (mirrors awardXP in script.js): base, +on-time
-// bonus, -revision penalty, floored at 1.
-export function computeXpDelta(wasOnTime, wasReturned) {
-  let xp = XP_CONFIG.baseTaskXP;
-  if (wasOnTime) xp += XP_CONFIG.onTimeBonus;
-  if (wasReturned) xp -= XP_CONFIG.revisionPenalty;
-  return Math.max(1, xp);
-}
-
-// Was the task completed on time? Mirrors the client: no deadline → on time;
-// otherwise the completion time must be <= the deadline's end of day. A missing
-// completion time falls back to "on time" (client parity — the client fell back
-// to now, but with a server-set completedAt this branch is effectively unused).
-export function computeWasOnTime(completedAtDate, deadlineStr) {
-  if (!deadlineStr) return true;
-  const deadline = new Date(deadlineStr);
-  if (isNaN(deadline.getTime())) return true;
-  deadline.setHours(23, 59, 59, 999);
-  if (!completedAtDate || isNaN(completedAtDate.getTime())) return true;
-  return completedAtDate <= deadline;
-}
+export { computeWasOnTime, computeXpDelta, getLevelFromXP, XP_CONFIG };
 
 // Mirrors the canManageProject Firestore rule: owner/admin manage any project in
 // their org; a moderator manages only projects in their allowedProjects
@@ -83,15 +46,6 @@ export function callerCanManageProject(orgRole, allowedProjects, projectId) {
     return allowedProjects.includes(projectId);
   }
   return false;
-}
-
-// Convert a Firestore Timestamp | ISO string | null into a JS Date (or null).
-function toDate(value) {
-  if (!value) return null;
-  if (typeof value.toDate === "function") return value.toDate();
-  if (typeof value === "object" && typeof value.seconds === "number") return new Date(value.seconds * 1000);
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? null : d;
 }
 
 export default async function handler(request, response) {
@@ -153,9 +107,11 @@ export default async function handler(request, response) {
   const projectId = task.projectId;
   if (!projectId) return response.status(400).json({ error: "Task has no projectId" });
 
+  let taskOrganizationId = null;
   try {
     const projectDoc = await db.collection("projects").doc(projectId).get();
-    if (!projectDoc.exists || projectDoc.data().organizationId !== callerOrgId) {
+    taskOrganizationId = projectDoc.exists ? projectDoc.data().organizationId : null;
+    if (!projectDoc.exists || taskOrganizationId !== callerOrgId) {
       return response.status(403).json({ error: "Forbidden" });
     }
   } catch (error) {
@@ -189,6 +145,20 @@ export default async function handler(request, response) {
   // De-duplicate (a task could list the same uid twice).
   assigneeUids = [...new Set(assigneeUids)];
 
+  // Migrate legacy global counters before the transaction. After this point
+  // every award is written to the assignee's membership in THIS organization.
+  try {
+    await Promise.all(assigneeUids.map((uid) => ensureScopedOrganizationStats(
+      db,
+      uid,
+      null,
+      { excludeTaskIds: [taskId] }
+    )));
+  } catch (error) {
+    console.error("award-xp: failed to prepare organization stats", error);
+    return response.status(500).json({ error: "Failed to prepare organization stats" });
+  }
+
   const taskRef = db.collection("tasks").doc(taskId);
 
   try {
@@ -210,29 +180,43 @@ export default async function handler(request, response) {
         return { status: 409, error: "Task has no completion timestamp" };
       }
 
-      const wasOnTime = computeWasOnTime(toDate(fresh.completedAt), fresh.deadline);
+      const wasOnTime = computeWasOnTime(fresh.completedAt, fresh.deadline);
       const wasReturned = !!(fresh.wasReturned || fresh.revisionReason);
       const xpDelta = computeXpDelta(wasOnTime, wasReturned);
 
       // Read every assignee's user doc BEFORE any write (transaction rule).
       const userRefs = assigneeUids.map((uid) => db.collection("users").doc(uid));
+      const memberRefs = assigneeUids.map((uid) => membershipRef(db, taskOrganizationId, uid));
       const userSnaps = [];
+      const memberSnaps = [];
       for (const ref of userRefs) {
         userSnaps.push(await tx.get(ref));
+      }
+      for (const ref of memberRefs) {
+        memberSnaps.push(await tx.get(ref));
       }
 
       const awarded = [];
       userSnaps.forEach((snap, i) => {
-        if (!snap.exists) return;
+        if (!snap.exists || !memberSnaps[i]?.exists) return;
         const ud = snap.data();
-        const newXP = (ud.totalXP || 0) + xpDelta;
-        tx.update(userRefs[i], {
+        const current = readOrganizationStats(memberSnaps[i].data());
+        const newXP = current.totalXP + xpDelta;
+        const nextStats = {
           totalXP: newXP,
           level: getLevelFromXP(newXP),
-          completedTasksCount: (ud.completedTasksCount || 0) + 1,
-          onTimeTasksCount: (ud.onTimeTasksCount || 0) + (wasOnTime ? 1 : 0),
-          noRevisionTasksCount: (ud.noRevisionTasksCount || 0) + (wasReturned ? 0 : 1),
-        });
+          completedTasksCount: current.completedTasksCount + 1,
+          onTimeTasksCount: current.onTimeTasksCount + (wasOnTime ? 1 : 0),
+          noRevisionTasksCount: current.noRevisionTasksCount + (wasReturned ? 0 : 1),
+        };
+        tx.set(memberRefs[i], {
+          ...organizationStatsPatch(nextStats),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+        // users/{uid} is a compatibility mirror only for the active org.
+        if (ud.organizationId === taskOrganizationId) {
+          tx.set(userRefs[i], activeOrganizationStatsPatch(nextStats), { merge: true });
+        }
         awarded.push({ uid: assigneeUids[i], xp: xpDelta, newXP });
       });
 

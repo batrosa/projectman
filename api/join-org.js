@@ -7,6 +7,12 @@
 // membership.
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
+import {
+  activeOrganizationStatsPatch,
+  emptyOrganizationStats,
+  ensureScopedOrganizationStats,
+  organizationStatsPatch,
+} from "../lib/organization-stats.js";
 
 const MEMBERSHIP_COLLECTION = "organizationMemberships";
 
@@ -27,7 +33,7 @@ function membershipRef(db, orgId, userId) {
   return db.collection(MEMBERSHIP_COLLECTION).doc(membershipDocId(orgId, userId));
 }
 
-function publicUserFields(userData = {}) {
+function publicIdentityFields(userData = {}) {
   return {
     firstName: userData.firstName || "",
     lastName: userData.lastName || "",
@@ -36,11 +42,10 @@ function publicUserFields(userData = {}) {
     telegramChatId: userData.telegramChatId || null,
     telegramUsername: userData.telegramUsername || null,
     profilePhotoUrl: userData.profilePhotoUrl || null,
-    totalXP: userData.totalXP || 0,
-    level: userData.level || 1,
-    completedTasksCount: userData.completedTasksCount || 0,
-    onTimeTasksCount: userData.onTimeTasksCount || 0,
-    noRevisionTasksCount: userData.noRevisionTasksCount || 0,
+    authProvider: userData.authProvider || null,
+    lastLoginAt: userData.lastLoginAt || null,
+    lastSeenAt: userData.lastSeenAt || null,
+    lastSeenClientAt: userData.lastSeenClientAt || null,
   };
 }
 
@@ -121,7 +126,13 @@ export default async function handler(request, response) {
       const membership = existingMember.data() || {};
       const orgRole = membership.orgRole || "employee";
       const allowedProjects = Array.isArray(membership.allowedProjects) ? membership.allowedProjects : undefined;
-      const patch = { organizationId: orgDoc.id, orgRole };
+      const statsByOrganization = await ensureScopedOrganizationStats(db, decoded.uid, userData);
+      const stats = statsByOrganization.get(orgDoc.id) || emptyOrganizationStats();
+      const patch = {
+        organizationId: orgDoc.id,
+        orgRole,
+        ...activeOrganizationStatsPatch(stats),
+      };
       if (allowedProjects) patch.allowedProjects = allowedProjects;
       else patch.allowedProjects = FieldValue.delete();
       await db.collection("users").doc(decoded.uid).set(patch, { merge: true });
@@ -140,7 +151,12 @@ export default async function handler(request, response) {
       db.collection("users").doc(decoded.uid),
       // Clear any stale per-project restriction from a previous org so it can't
       // follow the user in and hide/scramble access in the new org.
-      { organizationId: orgDoc.id, orgRole: "employee", allowedProjects: FieldValue.delete() },
+      {
+        organizationId: orgDoc.id,
+        orgRole: "employee",
+        allowedProjects: FieldValue.delete(),
+        ...activeOrganizationStatsPatch(emptyOrganizationStats()),
+      },
       { merge: true }
     );
     batch.set(
@@ -149,7 +165,8 @@ export default async function handler(request, response) {
         organizationId: orgDoc.id,
         userId: decoded.uid,
         orgRole: "employee",
-        ...publicUserFields(userData),
+        ...publicIdentityFields(userData),
+        ...organizationStatsPatch(emptyOrganizationStats()),
         joinedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },

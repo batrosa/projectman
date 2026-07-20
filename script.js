@@ -3032,6 +3032,7 @@ function openStatusMenu(event, task, currentSubStatus) {
     createGlobalStatusMenu();
 
     globalStatusMenu.innerHTML = '';
+    globalStatusMenu.classList.toggle('status-dropdown-executor', isCurrentUserAssignee(task));
 
     // Постановщик = менеджер проекта ИЛИ доп. постановщик этой задачи
     const canManage = canActAsTaskCreator(task);
@@ -3113,59 +3114,44 @@ function openStatusMenu(event, task, currentSubStatus) {
         globalStatusOverlay.classList.add('active');
         globalStatusMenu.removeAttribute('style');
     } else {
-        // PC: position directly below badge - ALWAYS below
+        // Desktop: keep the common action popover inside the horizontal
+        // bounds of its task card (Kanban and «Мои задачи» use the same code).
+        // If there is no room below, place it above instead of clipping it.
         const badge = event.target.closest('.status-badge');
         if (!badge) return;
 
         const rect = badge.getBoundingClientRect();
-
-        // Menu dimensions
-        const menuWidth = 240;
-        const menuHeight = 200;
+        const cardRect = badge.closest('.task-card')?.getBoundingClientRect();
         const gap = 6;
-
-        // Always position below badge
-        let top = rect.bottom + gap;
+        const cardWidth = cardRect ? cardRect.width - 16 : 240;
+        const menuWidth = Math.max(190, Math.min(240, cardWidth, window.innerWidth - 32));
         let left = rect.left;
-
-        // Keep on screen horizontally
-        if (left + menuWidth > window.innerWidth - 16) {
-            left = window.innerWidth - menuWidth - 16;
+        if (cardRect) {
+            left = Math.max(cardRect.left + 8, Math.min(left, cardRect.right - menuWidth - 8));
         }
-        if (left < 16) {
-            left = 16;
-        }
+        left = Math.max(16, Math.min(left, window.innerWidth - menuWidth - 16));
 
-        // Calculate available space below
-        const availableBelow = window.innerHeight - top - 16;
-        let maxHeight = null;
-
-        // If not enough space below, limit height and add scroll
-        if (availableBelow < menuHeight) {
-            maxHeight = Math.max(120, availableBelow);
-        }
-
-        // Build style string
-        let styleStr = `
+        globalStatusMenu.setAttribute('style', `
             position: fixed !important;
-            top: ${top}px !important;
+            top: 0 !important;
             left: ${left}px !important;
             right: auto !important;
             bottom: auto !important;
             width: ${menuWidth}px !important;
+            min-width: 0 !important;
+            max-width: ${menuWidth}px !important;
             transform: translateY(0) !important;
             -webkit-transform: translateY(0) !important;
-        `;
-
-        if (maxHeight) {
-            styleStr += `
-                max-height: ${maxHeight}px !important;
-                overflow-y: auto !important;
-                -webkit-overflow-scrolling: touch !important;
-            `;
-        }
-
-        globalStatusMenu.setAttribute('style', styleStr);
+        `);
+        const menuHeight = Math.max(1, globalStatusMenu.scrollHeight);
+        const belowTop = rect.bottom + gap;
+        const aboveTop = rect.top - menuHeight - gap;
+        const top = belowTop + menuHeight <= window.innerHeight - 16
+            ? belowTop
+            : Math.max(16, aboveTop);
+        globalStatusMenu.style.setProperty('top', `${top}px`, 'important');
+        globalStatusMenu.style.setProperty('max-height', `${window.innerHeight - top - 16}px`, 'important');
+        globalStatusMenu.style.setProperty('overflow-y', 'auto', 'important');
     }
 
     // Animate in
@@ -9712,7 +9698,7 @@ function closeDayTasksModal() {
 // error-handling path for network failures and the auth/validation 4xx cases,
 // not for "the LLM had a bad day".
 
-const AGENT_CHAT_MAX_HISTORY_TURNS = 8; // mirrors MAX_HISTORY_TURNS in api/agent-chat.js
+const AGENT_CHAT_MAX_HISTORY_TURNS = 100; // mirrors MAX_HISTORY_TURNS in api/agent-chat.js
 const AGENT_TASK_FILE_MAX_BYTES = 3 * 1024 * 1024;
 const AGENT_TASK_FILE_ALLOWED_EXTENSIONS = ['md', 'xlsx', 'xlsm', 'pdf', 'docx'];
 // Clickable suggestions in the empty chat state. Clicking one only fills the
@@ -9728,12 +9714,9 @@ const AGENT_CHAT_EXAMPLE_PROMPTS = [
 const AGENT_CHAT_RATE_LIMIT_SECONDS = 60;
 
 const agentChatState = {
-    // { role: 'user' | 'assistant', content: string }[] — capped to the last
-    // AGENT_CHAT_MAX_HISTORY_TURNS entries before every send. Deliberately a
-    // plain in-memory array, not persisted to localStorage/Firestore: a fresh
-    // chat on page reload is a reasonable, simple default per the plan, and
-    // avoids having to think about retention/PII-in-localStorage questions
-    // for LLM chat transcripts that were never asked for.
+    // { role: 'user' | 'assistant', content: string }[] — up to 100 turns from
+    // this live chat session. The server retains the newest turns verbatim and
+    // compactly carries the older part so follow-ups keep names and decisions.
     history: [],
     // Incremented by three lifecycle triggers (not by handleAgentChatSubmit itself
     // firing twice — the synchronous `elements.agentChatInput.disabled`

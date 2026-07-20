@@ -329,8 +329,16 @@ async function resolveTargetProject({ db, payload, projects, organizationId, cal
 
 async function loadOrgUsers(db, organizationId) {
   try {
-    const snap = await db.collection("users").where("organizationId", "==", organizationId).get();
-    return { ok: true, users: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+    const snap = await db.collection("organizationMemberships")
+      .where("organizationId", "==", organizationId)
+      .get();
+    return {
+      ok: true,
+      users: snap.docs.map((doc) => {
+        const data = doc.data() || {};
+        return { id: data.userId || doc.id, ...data };
+      }),
+    };
   } catch (error) {
     console.error("agent-task-file: failed to load users", error);
     return { ok: false, answer: "Не удалось загрузить участников организации, попробуйте ещё раз." };

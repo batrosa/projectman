@@ -453,13 +453,16 @@ final class OrgUsersStore: ObservableObject {
 
     func subscribe(organizationId: String) {
         listener?.remove()
-        listener = Firestore.firestore().collection("users")
+        listener = Firestore.firestore().collection("organizationMemberships")
             .whereField("organizationId", isEqualTo: organizationId)
             .addSnapshotListener { [weak self] snapshot, _ in
                 Task { @MainActor [weak self] in
                     guard let self, let snapshot else { return }
                     self.users = snapshot.documents
-                        .map { OrgUser.from(uid: $0.documentID, data: $0.data()) }
+                        .map {
+                            let data = $0.data()
+                            return OrgUser.from(uid: data["userId"] as? String ?? $0.documentID, data: data)
+                        }
                         .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
                 }
             }

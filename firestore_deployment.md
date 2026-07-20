@@ -36,6 +36,13 @@ firebase deploy --only firestore:rules
   Защищены (пишет лишь сервер через Admin SDK): `role`, `orgRole`,
   `organizationId`, `allowedProjects`, `telegramChatId`, и игровые счётчики
   `totalXP`/`level`/`completedTasksCount`/`onTimeTasksCount`/`noRevisionTasksCount`.
+  Игровые счётчики здесь являются только зеркалом АКТИВНОЙ организации для
+  совместимости web/iOS; источником истины служит членство пользователя.
+- **organizationMemberships/{orgId}_{userId}**: долговечное членство и роль
+  пользователя в конкретной организации. Здесь же отдельно для каждой
+  организации хранятся XP, уровень и история выполнения. При первом входе
+  старые глобальные показатели восстанавливаются по подтверждённым задачам и
+  больше не переносятся между организациями.
 - **organizations/{orgId}**: `get` — только участник; `list` запрещён (закрывает
   перебор inviteCode); `create` и `delete` — только сервер (`api/org`); `update`
   — владелец/админ и ТОЛЬКО поле `name` (ownerId неизменяем; `inviteCode`/`plan`/

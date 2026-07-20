@@ -269,7 +269,7 @@ struct AgentChatView: View {
     }
 
     private func trimHistory() {
-        if history.count > 12 { history.removeFirst(history.count - 12) }
+        if history.count > 100 { history.removeFirst(history.count - 100) }
     }
 
     private func performNavigation(_ navigation: AgentNavigation) {
