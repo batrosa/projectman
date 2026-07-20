@@ -2477,10 +2477,18 @@ body:not(.light-mode) .agent-md-pre { background: rgba(0, 0, 0, 0.28); }
     border-color: rgba(99, 102, 241, 0.35);
 }
 
-/* Кнопка «?» — шаблон вопроса «Как сделать: …» */
-.agent-chat-howto-btn {
+/* Основная кнопка справки «?» над доской — заметная, в фирменном цвете */
+#help-btn {
     color: var(--primary);
-    font-size: 1.05rem;
+    border-color: rgba(99, 102, 241, 0.45);
+    background: rgba(99, 102, 241, 0.12);
+    font-size: 1.15rem;
+}
+
+#help-btn:hover {
+    background: rgba(99, 102, 241, 0.22);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .agent-chat-attach-btn:disabled {

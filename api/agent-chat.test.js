@@ -236,6 +236,14 @@ describe("typed agent navigation", () => {
     expect(resolveAgentNavigation({ message: "покажи мои задачи", context })).toBe(null);
   });
 
+  it("«открой календарь» — вид проекта: с открытым проектом навигация, без — объяснение где он", () => {
+    expect(resolveAgentNavigation({ message: "открой календарь", body: { projectId: "p1" }, context }).navigation.target)
+      .toBe("calendar");
+    const noProject = resolveAgentNavigation({ message: "открой календарь", context });
+    expect(noProject.answer).toContain("Канбан / Гант / Календарь");
+    expect(noProject.navigation).toBeUndefined();
+  });
+
   it("«открой справку» открывает окно помощи; в iOS — честный ответ", () => {
     expect(resolveAgentNavigation({ message: "открой справку", context })).toEqual({
       navigation: { target: "help" },

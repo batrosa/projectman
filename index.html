@@ -17,8 +17,8 @@
     <title>HoldingMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=67.0" as="style">
-    <link rel="stylesheet" href="style.css?v=67.0">
+    <link rel="preload" href="style.css?v=68.0" as="style">
+    <link rel="stylesheet" href="style.css?v=68.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=83.0" defer></script>
+    <script src="script.js?v=84.0" defer></script>
 </head>
 
 <body>
@@ -1687,8 +1687,8 @@
                             срок завтра», можно с доп. постановщиками) или из прикреплённого файла (кнопка «+»,
                             до 3 МБ). Агент покажет карточку предпросмотра — создание только после вашей кнопки</li>
                         <li><strong>Удаление задач:</strong> тоже через карточку подтверждения</li>
-                        <li><strong>Кнопка «?» в чате:</strong> шаблон вопроса «Как сделать: …» — агент объяснит
-                            пошагово, куда нажимать, и может сам открыть нужный раздел или эту справку</li>
+                        <li><strong>Вопросы «как сделать …»:</strong> агент объяснит пошагово, куда нажимать,
+                            и может сам открыть нужный раздел или эту справку</li>
                         <li><strong>Навигация:</strong> «открой мои задачи», «открой проект …», «открой справку»</li>
                     </ul>
                 </div>
@@ -1771,11 +1771,6 @@
                 <button type="button" id="agent-chat-attach-btn" class="agent-chat-attach-btn"
                     title="Прикрепить файл с задачами" aria-label="Прикрепить файл с задачами" hidden>
                     <i class="fa-solid fa-plus"></i>
-                </button>
-                <button type="button" id="agent-chat-howto-btn" class="agent-chat-attach-btn agent-chat-howto-btn"
-                    title="Спросить, как что-то сделать в HoldingMan"
-                    aria-label="Спросить, как что-то сделать в HoldingMan">
-                    <i class="fa-solid fa-circle-question"></i>
                 </button>
                 <input id="agent-chat-file-input" type="file" hidden
                     accept=".md,.xlsx,.xlsm,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">

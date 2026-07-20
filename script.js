@@ -1869,7 +1869,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.16'; // Updated help + agent howto button
+    const CURRENT_VERSION = '6.17'; // Help button restyle, agent calendar knowledge
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -10611,18 +10611,6 @@ function initAgentChat() {
         elements.agentChatFileInput.addEventListener('change', handleAgentChatFileSelect);
     }
 
-    // Кнопка «?»: шаблон вопроса «Как сделать: …» — пользователь дописывает,
-    // агент отвечает пошагово и может открыть справку/нужный раздел.
-    const howtoBtn = document.getElementById('agent-chat-howto-btn');
-    if (howtoBtn && elements.agentChatInput) {
-        howtoBtn.addEventListener('click', () => {
-            playClickSound();
-            const input = elements.agentChatInput;
-            if (!input.value.trim()) input.value = 'Как сделать: ';
-            input.focus();
-            try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) { /* ignore */ }
-        });
-    }
 
     if (elements.agentChatForm) {
         elements.agentChatForm.addEventListener('submit', handleAgentChatSubmit);
