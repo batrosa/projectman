@@ -7,6 +7,7 @@
 *.test.js
 firestore-tests/
 tmp/
+outputs/
 ios/
 
 # Нативный iOS-клиент — не часть web-деплоя

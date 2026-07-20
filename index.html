@@ -1988,9 +1988,14 @@
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="my-tasks-content">
-                <button id="agent-notify-read-all" class="secondary-btn agent-notify-read-all">
-                    <i class="fa-solid fa-check-double"></i> Прочитать все
-                </button>
+                <div class="agent-notify-actions">
+                    <button id="agent-notify-read-all" type="button" class="secondary-btn agent-notify-read-all">
+                        <i class="fa-solid fa-check-double"></i> Прочитать все
+                    </button>
+                    <button id="agent-notify-delete-all" type="button" class="secondary-btn agent-notify-delete-all">
+                        <i class="fa-solid fa-trash-can"></i> Удалить все
+                    </button>
+                </div>
                 <div id="agent-notify-list" class="my-tasks-list">
                     <!-- Notifications are rendered here -->
                 </div>

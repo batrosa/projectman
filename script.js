@@ -5523,6 +5523,13 @@ function setupEventListeners() {
             markAllAgentNotificationsRead();
         });
     }
+    const agentNotifyDeleteAll = document.getElementById('agent-notify-delete-all');
+    if (agentNotifyDeleteAll) {
+        agentNotifyDeleteAll.addEventListener('click', () => {
+            playClickSound();
+            deleteAllAgentNotifications(agentNotifyDeleteAll);
+        });
+    }
 
     // Admin Panel Tabs
     document.querySelectorAll('.admin-tab').forEach(tab => {
@@ -7891,6 +7898,7 @@ async function updateMyTasksCount() {
 // правила отклонят его целиком.
 let agentNotifyUnsubscribe = null;
 let agentNotifications = [];
+let agentNotifyDeletingAll = false;
 
 function subscribeToAgentNotifications() {
     if (agentNotifyUnsubscribe) { agentNotifyUnsubscribe(); agentNotifyUnsubscribe = null; }
@@ -7944,6 +7952,7 @@ function renderAgentNotifyList() {
     const list = document.getElementById('agent-notify-list');
     if (!list) return;
     list.textContent = '';
+    updateAgentNotifyActions();
     if (agentNotifications.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'agent-notify-empty';
@@ -7989,6 +7998,18 @@ function renderAgentNotifyList() {
     });
 }
 
+function updateAgentNotifyActions() {
+    const readAllBtn = document.getElementById('agent-notify-read-all');
+    const deleteAllBtn = document.getElementById('agent-notify-delete-all');
+    if (readAllBtn) {
+        readAllBtn.disabled = agentNotifyDeletingAll || !agentNotifications.some(n => !n.readAt);
+    }
+    if (deleteAllBtn) {
+        deleteAllBtn.disabled = agentNotifyDeletingAll || agentNotifications.length === 0;
+        deleteAllBtn.setAttribute('aria-busy', agentNotifyDeletingAll ? 'true' : 'false');
+    }
+}
+
 function markAgentNotificationRead(n) {
     if (!n || n.readAt || !db) return;
     db.collection('agentNotifications').doc(n.id)
@@ -8029,6 +8050,36 @@ async function deleteAgentNotification(n, itemEl) {
         itemEl?.classList.remove('deleting');
         console.warn('agent-notify delete failed:', err?.message || err);
         alert('Не удалось удалить уведомление. Попробуйте ещё раз.');
+    }
+}
+
+async function deleteAllAgentNotifications(buttonEl) {
+    if (agentNotifyDeletingAll || agentNotifications.length === 0) return;
+    if (!confirm('Удалить все уведомления этой организации?\n\nЭто действие нельзя отменить.')) return;
+
+    agentNotifyDeletingAll = true;
+    updateAgentNotifyActions();
+    try {
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('not-authenticated');
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/agent-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ action: 'delete_notifications', all: true })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || 'delete all failed');
+        agentNotifications = [];
+        renderAgentNotifyBadge();
+        renderAgentNotifyList();
+    } catch (err) {
+        console.warn('agent-notify delete all failed:', err?.message || err);
+        alert('Не удалось удалить уведомления. Попробуйте ещё раз.');
+    } finally {
+        agentNotifyDeletingAll = false;
+        updateAgentNotifyActions();
+        buttonEl?.blur();
     }
 }
 

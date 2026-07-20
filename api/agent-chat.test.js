@@ -1954,6 +1954,25 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
   });
 
+  it("delete_notifications all mode deletes every caller notification in the current organization only", async () => {
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-current", orgRole: "employee" },
+      agentNotifications: {
+        "n-current-one": { uid: "user-1", organizationId: "org-current", text: "one" },
+        "n-current-two": { uid: "user-1", organizationId: "org-current", text: "two" },
+        "n-old-org": { uid: "user-1", organizationId: "org-old", text: "old" },
+        "n-other-user": { uid: "user-2", organizationId: "org-current", text: "other" },
+      },
+    });
+    const res = mockResponse();
+    await handler(makeRequest({ action: "delete_notifications", all: true }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, deleted: 2 });
+    expect([...state.db.notifications.keys()].sort()).toEqual(["n-old-org", "n-other-user"]);
+    expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
+  });
+
   it("delete_notifications action is atomic when any selected notification crosses the user boundary", async () => {
     state.db = makeFakeDb({
       userDoc: { organizationId: "org-1", orgRole: "owner" },

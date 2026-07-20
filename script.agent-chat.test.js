@@ -74,6 +74,8 @@ afterEach(() => {
   if (!ctx) return;
   ctx.firebase.auth = () => ({ currentUser: null });
   ctx.fetch = () => Promise.reject(new Error("network disabled in test"));
+  ctx.confirm = () => false;
+  ctx.alert = () => {};
   // Clear any 429 lockout a test started: the live interval would otherwise
   // keep firing against stale DOM, and the lockout would suppress input
   // re-enabling in later tests (setAgentChatInputDisabled consults it).
@@ -1097,5 +1099,63 @@ describe("error-bubble «Повторить» retry", () => {
     expect(dom.messages.querySelector(".agent-chat-message-assistant")?.textContent).toBe("Ничего не просрочено.");
     expect(dom.messages.querySelectorAll(".agent-chat-message-user").length).toBe(2);
     expect(vm.runInContext("agentChatState.history.length", ctx)).toBe(2);
+  });
+});
+
+describe("agent notifications bulk deletion", () => {
+  function setNotificationDom() {
+    ctx.document.body.innerHTML = `
+      <button id="agent-notify-read-all" type="button">Прочитать все</button>
+      <button id="agent-notify-delete-all" type="button">Удалить все</button>
+      <span id="agent-notify-count"></span>
+      <div id="agent-notify-list"></div>
+    `;
+    vm.runInContext(`
+      agentNotifyDeletingAll = false;
+      agentNotifications = [
+        { id: 'n-1', text: 'Первое', readAt: null },
+        { id: 'n-2', text: 'Второе', readAt: { seconds: 1 } }
+      ];
+    `, ctx);
+    getFn("renderAgentNotifyBadge")();
+    getFn("renderAgentNotifyList")();
+    return ctx.document.getElementById("agent-notify-delete-all");
+  }
+
+  it("sends an organization-scoped delete-all action only after confirmation", async () => {
+    const button = setNotificationDom();
+    const requests = [];
+    ctx.confirm = () => true;
+    ctx.firebase.auth = () => ({
+      currentUser: { getIdToken: async () => "fake-id-token" },
+    });
+    ctx.fetch = async (url, options) => {
+      requests.push({ url, options });
+      return { ok: true, status: 200, json: async () => ({ ok: true, deleted: 2 }) };
+    };
+
+    await getFn("deleteAllAgentNotifications")(button);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe("/api/agent-chat");
+    expect(JSON.parse(requests[0].options.body)).toEqual({ action: "delete_notifications", all: true });
+    expect(ctx.document.getElementById("agent-notify-list").textContent).toContain("Пока нет уведомлений");
+    expect(ctx.document.getElementById("agent-notify-count").style.display).toBe("none");
+    expect(button.disabled).toBe(true);
+  });
+
+  it("does nothing when the destructive confirmation is cancelled", async () => {
+    const button = setNotificationDom();
+    let fetchCalled = false;
+    ctx.confirm = () => false;
+    ctx.fetch = async () => {
+      fetchCalled = true;
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+
+    await getFn("deleteAllAgentNotifications")(button);
+
+    expect(fetchCalled).toBe(false);
+    expect(ctx.document.querySelectorAll(".agent-notify-item")).toHaveLength(2);
   });
 });

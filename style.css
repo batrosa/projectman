@@ -2015,6 +2015,7 @@ body.read-only #mobile-menu-btn,
 body.read-only #my-tasks-btn,
 body.read-only #agent-notify-btn,
 body.read-only #agent-notify-read-all,
+body.read-only #agent-notify-delete-all,
 body.read-only #agent-chat-btn,
 body.read-only #settings-btn,
 body.read-only #calendar-btn,
@@ -7400,12 +7401,36 @@ body.light-mode .leaderboard-empty {
 }
 
 /* ===== Agent notifications feed (колокольчик) ===== */
-.agent-notify-read-all {
+.agent-notify-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     margin: 0 0 0.75rem 0;
+}
+
+.agent-notify-read-all,
+.agent-notify-delete-all {
     width: auto;
-    align-self: flex-start;
     font-size: 0.85rem;
     padding: 0.4rem 0.9rem;
+}
+
+.agent-notify-delete-all {
+    color: #dc2626;
+    border-color: rgba(220, 38, 38, 0.35);
+}
+
+.agent-notify-delete-all:hover:not(:disabled) {
+    color: #b91c1c;
+    border-color: rgba(220, 38, 38, 0.65);
+    background: rgba(239, 68, 68, 0.10);
+}
+
+.agent-notify-read-all:disabled,
+.agent-notify-delete-all:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .agent-notify-item {

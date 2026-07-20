@@ -37,6 +37,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 20; // requests per window per user
 const AGENT_EXECUTION_COLLECTION = "agentProposalExecutions";
 const NOTIFICATION_DELETE_MAX = 100;
+const NOTIFICATION_DELETE_BATCH_SIZE = 450;
 const OFF_TOPIC_RESPONSE =
   "Я отвечаю только по HoldingMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
 const TEXT_TASK_SOURCE_NAME = "текстовый запрос";
@@ -3230,12 +3231,15 @@ async function handleDeleteNotification({ db, response, decoded, body }) {
 }
 
 async function handleDeleteNotifications({ db, response, decoded, body }) {
-  if (!Array.isArray(body.ids)) {
+  const deleteAll = body.all === true;
+  if (!deleteAll && !Array.isArray(body.ids)) {
     return response.status(400).json({ error: "Invalid notification ids" });
   }
-  const ids = [...new Set(body.ids.map((id) => String(id || "").trim()).filter(Boolean))];
-  if (ids.length === 0 || ids.length > NOTIFICATION_DELETE_MAX
-      || ids.some((id) => !/^[A-Za-z0-9_-]{1,160}$/.test(id))) {
+  const ids = deleteAll
+    ? []
+    : [...new Set(body.ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!deleteAll && (ids.length === 0 || ids.length > NOTIFICATION_DELETE_MAX
+      || ids.some((id) => !/^[A-Za-z0-9_-]{1,160}$/.test(id)))) {
     return response.status(400).json({ error: "Invalid notification ids" });
   }
 
@@ -3251,17 +3255,31 @@ async function handleDeleteNotifications({ db, response, decoded, body }) {
 
   const ownedRefs = [];
   try {
-    const refs = ids.map((id) => db.collection("agentNotifications").doc(id));
-    const snapshots = await Promise.all(refs.map((ref) => ref.get()));
-    for (let index = 0; index < snapshots.length; index += 1) {
-      const ref = refs[index];
-      const snap = snapshots[index];
-      if (!snap.exists) continue;
-      const notification = snap.data() || {};
-      if (notification.uid !== decoded.uid || notification.organizationId !== callerOrgId) {
-        return response.status(403).json({ error: "Forbidden" });
+    if (deleteAll) {
+      // Query only by uid so this path does not depend on a new composite
+      // Firestore index. The organization check remains server-side and
+      // explicit: notifications from a previous organization are preserved.
+      const snap = await db.collection("agentNotifications")
+        .where("uid", "==", decoded.uid)
+        .get();
+      for (const doc of snap.docs) {
+        const notification = doc.data() || {};
+        if (notification.uid !== decoded.uid || notification.organizationId !== callerOrgId) continue;
+        ownedRefs.push(doc.ref || db.collection("agentNotifications").doc(doc.id));
       }
-      ownedRefs.push(ref);
+    } else {
+      const refs = ids.map((id) => db.collection("agentNotifications").doc(id));
+      const snapshots = await Promise.all(refs.map((ref) => ref.get()));
+      for (let index = 0; index < snapshots.length; index += 1) {
+        const ref = refs[index];
+        const snap = snapshots[index];
+        if (!snap.exists) continue;
+        const notification = snap.data() || {};
+        if (notification.uid !== decoded.uid || notification.organizationId !== callerOrgId) {
+          return response.status(403).json({ error: "Forbidden" });
+        }
+        ownedRefs.push(ref);
+      }
     }
   } catch (error) {
     console.error("agent-chat delete_notifications: failed to load notifications", error);
@@ -3269,9 +3287,14 @@ async function handleDeleteNotifications({ db, response, decoded, body }) {
   }
 
   try {
-    const batch = db.batch();
-    ownedRefs.forEach((ref) => batch.delete(ref));
-    await batch.commit();
+    // Firestore batches allow at most 500 writes. Leave headroom and support
+    // long-lived accounts with more than one visible 50-item client page.
+    for (let index = 0; index < ownedRefs.length; index += NOTIFICATION_DELETE_BATCH_SIZE) {
+      const batch = db.batch();
+      ownedRefs.slice(index, index + NOTIFICATION_DELETE_BATCH_SIZE)
+        .forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
   } catch (error) {
     console.error("agent-chat delete_notifications: failed to delete notifications", error);
     return response.status(500).json({ error: "Failed to delete notifications" });

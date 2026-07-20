@@ -9,3 +9,4 @@ ui-debug.log
 .vercel
 ios/HoldingMan/GoogleService-Info.plist
 tmp/
+outputs/
