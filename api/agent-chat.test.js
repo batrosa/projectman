@@ -9,6 +9,7 @@ import {
   isCreateAffirmation,
   getTextTaskCreationRequest,
   referencesShownTaskList,
+  deterministicAssignmentProposal,
   resolveProjectFromHistory,
   requestedTaskCount,
   extractAssigneeFilterWords,
@@ -36,6 +37,25 @@ import {
   agentTaskBoardStatus,
   clearOrganizationContextCache,
 } from "./agent-chat.js";
+
+describe("deterministicAssignmentProposal (страховка назначительной формы)", () => {
+  const users = [
+    { id: "u-teko", displayName: "Тэко Исаев", email: "teko@example.com" },
+    { id: "u-amir", displayName: "Амирхан Абигасанов", email: "amir@example.com" },
+  ];
+
+  it("«поставь … тэко исаева отвественным по задаче пнуть» → задача «Пнуть» на Тэко", () => {
+    const rescue = deterministicAssignmentProposal(
+      "поставь в абрау дюрсо тэко исаева отвественным по задаче пнуть", users);
+    expect(rescue).toMatchObject({ title: "Пнуть", assigneeName: "Тэко Исаев", deadline: null });
+  });
+
+  it("без названия задачи или без однозначного участника — null", () => {
+    expect(deterministicAssignmentProposal("поставь тэко исаева ответственным", users)).toBe(null);
+    expect(deterministicAssignmentProposal("поставь задачу проверить договор", users)).toBe(null);
+    expect(deterministicAssignmentProposal("", users)).toBe(null);
+  });
+});
 
 describe("анафора на показанный список («поставь ему все эти задачи»)", () => {
   const listHistory = [

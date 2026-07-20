@@ -652,7 +652,7 @@ function parseUserOverrides(message) {
   const assigneeMatch = text.match(/назнач(?:ь|ить)?(?:[^\S\n]+все)?[^\S\n]+на[^\S\n]+(.+?)(?:[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|[^\S\n]+до[^\S\n]+20\d{2}-\d{2}-\d{2}|$)/im);
   if (assigneeMatch) assigneeName = cleanAssigneeOverride(assigneeMatch[1]);
   if (!assigneeName) {
-    const explicit = text.match(/ответст?венн(?:ый|ого|ым)?[^\S\n]*[:—-]?[^\S\n]+(.+?)(?:,|[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|$)/im);
+    const explicit = text.match(/отве[тс]{2,3}венн(?:ый|ого|ым)?[^\S\n]*[:—-]?[^\S\n]+(.+?)(?:,|[^\S\n]+со[^\S\n]+сроком|[^\S\n]+срок|$)/im);
     if (explicit) assigneeName = cleanAssigneeOverride(explicit[1]);
   }
   return {
@@ -666,7 +666,7 @@ function parseUserOverrides(message) {
 // agent-chat.js — модули намеренно не связаны (как и rate-limit).
 function assigneeFilterWordsFromMessage(message) {
   const text = normalizeLookup(message);
-  const match = text.match(/(?:^|[^а-яa-z0-9])(?:где|котор[а-я]+|у)\s+(.{2,60}?)\s+(?:указан[а-я]*\s+)?ответст?венн/u);
+  const match = text.match(/(?:^|[^а-яa-z0-9])(?:где|котор[а-я]+|у)\s+(.{2,60}?)\s+(?:указан[а-я]*\s+)?отве[тс]{2,3}венн/u);
   if (!match) return [];
   const stop = new Set(["он", "она", "они", "оно", "все", "всех", "будет", "есть", "человек", "участник", "сотрудник", "поле", "указан", "указана"]);
   return match[1]

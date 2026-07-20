@@ -635,7 +635,7 @@ function looksLikeTextTaskCreationRequest(message) {
   if (!text) return false;
   if (isReadOnlyInformationRequest(message)) return false;
   const createVerb = /(создай|создать|создайте|дай|дать|дайте|поставь|поставить|поставьте|назначь|назначить|назначьте|добавь|добавить|добавьте|заведи|завести|оформи|оформить|поручи|поручить|озадачь|озадачить|озадачьте|загрузи|загрузить|импортируй|импортировать|перенеси|перенести|сформируй|сформировать|сформируйте|сгенерируй|сгенерировать)/u;
-  const taskHint = /(задач|поручени|исполнител|ответст?венн|срок|дедлайн|сегодня|завтра|послезавтра)/u;
+  const taskHint = /(задач|поручени|исполнител|отве[тс]{2,3}венн|срок|дедлайн|сегодня|завтра|послезавтра)/u;
   return createVerb.test(text) && taskHint.test(text);
 }
 
@@ -644,7 +644,7 @@ export function looksLikeUnsupportedMutationRequest(message) {
   if (!text) return false;
   if (isReadOnlyInformationRequest(message)) return false;
   const verb = /(создай|создать|добавь|добавить|загрузи|загрузить|прикрепи|прикрепить|удали|удалить|измени|изменить|редактир|переимен|назначь|назначить|озадач|возьми|взять|прими|принять|верни|вернуть|заверши|завершить|отметь|очисти|прочитай|перенеси|передай|сдвинь|поставь|сними|отправь)/u;
-  const entity = /(задач|проект|файл|вложен|описан|комментари|уведомлен|участник|сотрудник|роль|доступ|срок|дедлайн|исполнител|ответст?венн|организац)/u;
+  const entity = /(задач|проект|файл|вложен|описан|комментари|уведомлен|участник|сотрудник|роль|доступ|срок|дедлайн|исполнител|отве[тс]{2,3}венн|организац)/u;
   return verb.test(text) && entity.test(text);
 }
 
@@ -1558,7 +1558,7 @@ export function isLikelyTextTaskContinuation(message, historyAfterBase = []) {
     return /^(?:срок\s+|дедлайн\s+)?(?:без\s+срок(?:а|ов)?|сегодня|завтра|послезавтра|до\s+конца\s+(?:дня|недели|месяца)|\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{4}-\d{2}-\d{2})$/u.test(text);
   }
   if (asksAssignee) {
-    if (/^(?:без\s+ответст?венн[а-я]*|никому|не назначать|им|ему|ей|обоим|обеим|всем)$/u.test(text)) return true;
+    if (/^(?:без\s+отве[тс]{2,3}венн[а-я]*|никому|не назначать|им|ему|ей|обоим|обеим|всем)$/u.test(text)) return true;
     return /^[а-яёa-z][а-яёa-z'-]*(?:\s+[а-яёa-z][а-яёa-z'-]*){0,3}$/u.test(text);
   }
   if (asksProject) {
@@ -1596,7 +1596,7 @@ export function isReadOnlyInformationRequest(message) {
       && /(список|перечень|отчет|все\s+(?:задач|проект|файл|документ|уведомлен|участник|сотрудник)|всех\s+(?:задач|проект|участник|сотрудник))/u.test(text)) {
     return true;
   }
-  const entityLead = /^(?:файлы?|документы?|задачи?|проекты?|сроки|ответст?венн[а-я]*|исполнител[а-я]*|участник[а-я]*|сотрудник[а-я]*)(?:$|[^а-яёa-z0-9])/u;
+  const entityLead = /^(?:файлы?|документы?|задачи?|проекты?|сроки|отве[тс]{2,3}венн[а-я]*|исполнител[а-я]*|участник[а-я]*|сотрудник[а-я]*)(?:$|[^а-яёa-z0-9])/u;
   return entityLead.test(text)
     || (/(файл|документ)/u.test(text) && /(список|перечень|имеется|загружен|доступен|в проекте|по проекту)/u.test(text));
 }
@@ -1692,7 +1692,18 @@ function resolveTextTaskProject({ projects, body, message, projectHintText, call
       const name = normalizeLookup(p?.name);
       return name && name.length >= 3 && messageText.includes(name);
     });
-    if (explicitByName.length === 1) {
+    // Исключение: селектор области в шапке чата (projectScope='only') —
+    // ЖЁСТКАЯ граница. Поручение в адрес другого проекта не переезжает туда
+    // молча, а получает честный отказ с подсказкой (прод-кейс: при области
+    // «Елисеевский парк» задача «в абрау дюрсо» уехала в Абрау-Дюрсо).
+    const scopeLocked = body.projectScope === "only";
+    if (explicitByName.length === 1 && explicitByName[0].id !== requestedId && scopeLocked) {
+      const currentProject = list.find((p) => p?.id === requestedId);
+      return {
+        answer: `В шапке чата выбрана область «${currentProject?.name || "текущий проект"}», а поручение адресовано проекту «${explicitByName[0].name || "другой проект"}». Ничего не создано. Переключите проект в шапке чата (или выберите «Все проекты») и повторите поручение.`,
+      };
+    }
+    if (explicitByName.length === 1 && !scopeLocked) {
       project = explicitByName[0];
     } else {
       project = list.find((p) => p?.id === requestedId) || null;
@@ -1753,7 +1764,7 @@ export function resolveProjectFromHistory(projects, history) {
 // отбрасываем, максимум три слова имени.
 export function extractAssigneeFilterWords(message) {
   const text = normalizeLookup(message);
-  const match = text.match(/(?:^|[^а-яa-z0-9])(?:где|котор[а-я]+|у)\s+(.{2,60}?)\s+(?:указан[а-я]*\s+)?ответст?венн/u);
+  const match = text.match(/(?:^|[^а-яa-z0-9])(?:где|котор[а-я]+|у)\s+(.{2,60}?)\s+(?:указан[а-я]*\s+)?отве[тс]{2,3}венн/u);
   if (!match) return [];
   const stop = new Set(["он", "она", "они", "оно", "все", "всех", "будет", "есть", "человек", "участник", "сотрудник", "поле", "указан", "указана"]);
   return match[1]
@@ -2015,8 +2026,20 @@ async function buildTextTaskProposal({
     message,
   ].join("\n\n");
 
+  const buildFromTasks = (tasks) => buildTextTaskProposalFromRaw({
+    rawAnswer: JSON.stringify({ action: "propose_tasks", file: TEXT_TASK_SOURCE_NAME, tasks }),
+    users: assignableUsers,
+    projects: targetProjects,
+    message,
+    today,
+  });
+
   const llm = await callModelForTextTaskProposal({ openRouterKey, userPrompt });
   if (!llm.ok) {
+    // Назначительная форма точнее табличного импорта: «поставь X по задаче Y»
+    // при недоступной LLM не должно вываливать весь план из базы знаний.
+    const rescueOnFail = deterministicAssignmentProposal(message, assignableUsers);
+    if (rescueOnFail) return buildFromTasks([rescueOnFail]);
     if (tableFallback) {
       return buildTextTaskProposalFromRaw({
         rawAnswer: JSON.stringify(tableFallback),
@@ -2036,6 +2059,13 @@ async function buildTextTaskProposal({
     message,
     today,
   });
+  // LLM вернула пустой список, хотя в сообщении однозначно есть участник и
+  // название задачи — строим карточку детерминированно (прод-кейс: «поставь
+  // тэко исаева ответственным по задаче пнуть» → «Не понял, кому…»).
+  if (built.emptyTasks) {
+    const rescue = deterministicAssignmentProposal(message, assignableUsers);
+    if (rescue) return { ...buildFromTasks([rescue]), model: llm.model };
+  }
   return { ...built, model: llm.model };
 }
 
@@ -2063,6 +2093,46 @@ async function callModelForTextTaskProposal({ openRouterKey, userPrompt }) {
     if (answer) return { ok: true, answer, model };
   }
   return { ok: false };
+}
+
+// LLM иногда возвращает пустой список на простое «поставь Тэко Исаева
+// ответственным по задаче пнуть» (склонённое имя, короткое название).
+// Детерминированная страховка: если в сообщении ОДНОЗНАЧНО находятся участник
+// (matchAssignee умеет падежи) и название задачи после слова «задач…», строим
+// одну задачу без LLM. Карточка всё равно требует подтверждения кнопкой.
+export function deterministicAssignmentProposal(message, users) {
+  const text = normalizeLookup(message);
+  const titleMatch = text.match(/(?:по\s+)?задач[аеиу]?\s+[«"]?([^»"\n]{2,80}?)[»"]?\s*(?:$|[.!?\n])/u);
+  if (!titleMatch) return null;
+  let titleWords = titleMatch[1].trim().split(/\s+/);
+
+  // Ответственный: единственный участник, которого matchAssignee однозначно
+  // узнаёт в биграммах сообщения («тэко исаева» → Тэко Исаев) или, если
+  // биграммы не дали ничего, в отдельных словах.
+  const words = text.split(/\s+/).filter((word) => word.length >= 3);
+  const matchedByUid = new Map();
+  const tryMatch = (candidate) => {
+    const match = matchAssignee(users, candidate);
+    if (!match.error) matchedByUid.set(match.uid, { candidate, displayName: match.displayName });
+  };
+  for (let index = 0; index < words.length - 1; index += 1) tryMatch(`${words[index]} ${words[index + 1]}`);
+  if (matchedByUid.size === 0) {
+    for (const word of words) tryMatch(word);
+  }
+  if (matchedByUid.size !== 1) return null;
+  const [{ candidate, displayName }] = matchedByUid.values();
+
+  // Из названия задачи убираем слова имени и служебное «ответственн…»
+  const candidateWords = new Set(candidate.split(" "));
+  titleWords = titleWords.filter((word) => !candidateWords.has(word) && !/^отве[тс]{2,3}венн/u.test(word));
+  const title = titleWords.join(" ").trim();
+  if (title.length < 2) return null;
+  return {
+    title: title[0].toUpperCase() + title.slice(1),
+    description: "",
+    deadline: null,
+    assigneeName: displayName,
+  };
 }
 
 // Разрешение имён доп. постановщиков предложения в участников с доступом к
