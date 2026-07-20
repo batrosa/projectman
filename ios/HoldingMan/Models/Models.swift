@@ -126,6 +126,7 @@ struct Organization: Identifiable {
     var name: String
     var orgRole: String?
     var membersCount: Int?
+    var inviteCode: String? = nil
 }
 
 struct Project: Identifiable, Equatable {

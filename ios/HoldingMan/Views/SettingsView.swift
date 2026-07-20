@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -22,6 +23,16 @@ struct SettingsView: View {
                     appearanceCard
 
                     organizationCard
+
+                    if let user = appState.user,
+                       let organizationId = user.organizationId,
+                       user.orgRole == "owner" || user.orgRole == "admin" {
+                        OrganizationInviteCard(
+                            organizationId: organizationId,
+                            organizationName: appState.organizationName
+                        )
+                        .id(organizationId)
+                    }
 
                     if let user = appState.user {
                         loginMethodCard(user)
@@ -294,6 +305,190 @@ struct SettingsView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+}
+
+private struct OrganizationInviteCard: View {
+    let organizationId: String
+    let organizationName: String
+
+    @State private var inviteCode: String?
+    @State private var isLoading = true
+    @State private var isRegenerating = false
+    @State private var errorMessage: String?
+    @State private var didCopy = false
+    @State private var confirmRegeneration = false
+
+    private var inviteURL: URL? {
+        guard let inviteCode else { return nil }
+        var components = URLComponents(url: ApiClient.baseURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "invite", value: inviteCode)]
+        return components?.url
+    }
+
+    private var resolvedOrganizationName: String {
+        organizationName.isEmpty ? "организацию" : "«\(organizationName)»"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Theme.primary.opacity(0.12))
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.primary)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Приглашение в организацию")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Отправьте код или ссылку новому участнику")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .tint(Theme.primary)
+                    Spacer()
+                }
+                .frame(height: 82)
+            } else if let errorMessage {
+                VStack(spacing: 10) {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.danger)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Button("Повторить") {
+                        Task { await loadInviteCode() }
+                    }
+                    .buttonStyle(SoftButtonStyle())
+                }
+            } else if let inviteCode {
+                VStack(spacing: 7) {
+                    Text("КОД ОРГАНИЗАЦИИ")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .tracking(1.1)
+                    Text(inviteCode)
+                        .font(.system(size: 27, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
+                        .tracking(2.2)
+                        .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Theme.primary.opacity(0.22), lineWidth: 1)
+                )
+
+                HStack(spacing: 10) {
+                    Button {
+                        UIPasteboard.general.string = inviteCode
+                        withAnimation(.easeInOut(duration: 0.2)) { didCopy = true }
+                        Task { @MainActor in
+                            try? await Task<Never, Never>.sleep(for: .seconds(2))
+                            withAnimation(.easeInOut(duration: 0.2)) { didCopy = false }
+                        }
+                    } label: {
+                        Label(didCopy ? "Скопировано" : "Копировать", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(SoftButtonStyle())
+
+                    if let inviteURL {
+                        ShareLink(
+                            item: inviteURL,
+                            subject: Text("Приглашение в ProjectMan"),
+                            message: Text("Присоединяйтесь в ProjectMan к \(resolvedOrganizationName). Код организации: \(inviteCode)")
+                        ) {
+                            Label("Поделиться", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(SoftButtonStyle())
+                    }
+                }
+
+                Button {
+                    confirmRegeneration = true
+                } label: {
+                    HStack(spacing: 7) {
+                        if isRegenerating {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                        Text("Сменить код приглашения")
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PressableStyle())
+                .disabled(isRegenerating)
+            } else {
+                Label("Код приглашения недоступен", systemImage: "lock.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+        .task(id: organizationId) {
+            await loadInviteCode()
+        }
+        .confirmationDialog(
+            "Сменить код приглашения?",
+            isPresented: $confirmRegeneration,
+            titleVisibility: .visible
+        ) {
+            Button("Сменить код", role: .destructive) {
+                Task { await regenerateInviteCode() }
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Старый код и ссылка перестанут работать.")
+        }
+    }
+
+    @MainActor
+    private func loadInviteCode() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            let organization = try await ApiClient.currentOrganization(id: organizationId)
+            inviteCode = organization.inviteCode
+        } catch {
+            inviteCode = nil
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    @MainActor
+    private func regenerateInviteCode() async {
+        isRegenerating = true
+        errorMessage = nil
+        do {
+            inviteCode = try await ApiClient.regenerateOrganizationInviteCode()
+            didCopy = false
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isRegenerating = false
     }
 }
 

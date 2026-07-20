@@ -80,6 +80,34 @@ struct ApiClient {
         }
     }
 
+    // Текущая организация. Сервер возвращает код приглашения только владельцу
+    // или администратору; для остальных ролей поле inviteCode отсутствует.
+    static func currentOrganization(id: String) async throws -> Organization {
+        let json = try await post("api/org", body: [
+            "action": "current",
+            "organizationId": id,
+        ])
+        guard let dict = json["organization"] as? [String: Any],
+              let organizationId = dict["id"] as? String else {
+            throw ApiError.server("Не удалось загрузить организацию")
+        }
+        return Organization(
+            id: organizationId,
+            name: dict["name"] as? String ?? "Организация",
+            orgRole: json["orgRole"] as? String,
+            membersCount: dict["membersCount"] as? Int,
+            inviteCode: dict["inviteCode"] as? String
+        )
+    }
+
+    static func regenerateOrganizationInviteCode() async throws -> String {
+        let json = try await post("api/org", body: ["action": "regenerateCode"])
+        guard let inviteCode = json["inviteCode"] as? String, !inviteCode.isEmpty else {
+            throw ApiError.server("Не удалось обновить код приглашения")
+        }
+        return inviteCode
+    }
+
     static func switchOrganization(id: String) async throws {
         _ = try await post("api/org", body: ["action": "switch", "organizationId": id])
     }
