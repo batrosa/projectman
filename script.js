@@ -3002,6 +3002,27 @@ function closeGlobalStatusMenu() {
     }, 300);
 }
 
+// The status menu is appended directly to <body> and is shared by the Kanban
+// board and «Мои задачи». Keep its children in one vertical column inline:
+// this prevents legacy/adaptive stylesheet rules (and a cached CSS bundle)
+// from turning the header and the executor action into a horizontal row.
+function enforceVerticalStatusMenuLayout() {
+    if (!globalStatusMenu) return;
+    globalStatusMenu.style.setProperty('display', 'flex', 'important');
+    globalStatusMenu.style.setProperty('flex-direction', 'column', 'important');
+    globalStatusMenu.style.setProperty('align-items', 'stretch', 'important');
+    globalStatusMenu.style.setProperty('gap', '4px', 'important');
+    globalStatusMenu.style.setProperty('box-sizing', 'border-box', 'important');
+
+    Array.from(globalStatusMenu.children).forEach((child) => {
+        child.style.setProperty('display', 'flex', 'important');
+        child.style.setProperty('width', '100%', 'important');
+        child.style.setProperty('max-width', '100%', 'important');
+        child.style.setProperty('flex', '0 0 auto', 'important');
+        child.style.setProperty('box-sizing', 'border-box', 'important');
+    });
+}
+
 // Determines whether the signed-in user is an assignee of the task.
 // Primary match is by uid (task.assigneeIds vs currentUser.uid) — this is the
 // only reliable key for Telegram-login users, who have no email. Falls back to
@@ -3113,6 +3134,7 @@ function openStatusMenu(event, task, currentSubStatus) {
         // Mobile: bottom sheet
         globalStatusOverlay.classList.add('active');
         globalStatusMenu.removeAttribute('style');
+        enforceVerticalStatusMenuLayout();
     } else {
         // Desktop: keep the common action popover inside the horizontal
         // bounds of its task card (Kanban and «Мои задачи» use the same code).
@@ -3133,6 +3155,11 @@ function openStatusMenu(event, task, currentSubStatus) {
 
         globalStatusMenu.setAttribute('style', `
             position: fixed !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 4px !important;
+            box-sizing: border-box !important;
             top: 0 !important;
             left: ${left}px !important;
             right: auto !important;
@@ -3153,6 +3180,10 @@ function openStatusMenu(event, task, currentSubStatus) {
         globalStatusMenu.style.setProperty('max-height', `${window.innerHeight - top - 16}px`, 'important');
         globalStatusMenu.style.setProperty('overflow-y', 'auto', 'important');
     }
+
+    // Apply after positioning as setAttribute/removeAttribute above replaces
+    // the previous inline declaration block.
+    enforceVerticalStatusMenuLayout();
 
     // Animate in
     requestAnimationFrame(() => {

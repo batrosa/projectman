@@ -3659,7 +3659,13 @@ body.light-mode .project-checkbox-item:hover {
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
     -webkit-box-sizing: border-box;
     box-sizing: border-box;
-    display: block;
+    display: -webkit-flex !important;
+    display: flex !important;
+    -webkit-flex-direction: column !important;
+    flex-direction: column !important;
+    -webkit-align-items: stretch !important;
+    align-items: stretch !important;
+    gap: 4px !important;
     overflow-x: hidden;
 
     /* Hidden state */
@@ -3695,6 +3701,14 @@ body.light-mode .status-dropdown {
 
 /* Header */
 .status-dropdown-header {
+    display: -webkit-flex !important;
+    display: flex !important;
+    -webkit-align-items: center !important;
+    align-items: center !important;
+    -webkit-justify-content: center !important;
+    justify-content: center !important;
+    -webkit-flex: 0 0 auto !important;
+    flex: 0 0 auto !important;
     padding: 10px 12px;
     text-align: center;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -3748,6 +3762,8 @@ body.light-mode .status-dropdown-header span {
     max-width: 100%;
     min-width: 0;
     overflow: hidden;
+    -webkit-flex: 0 0 auto !important;
+    flex: 0 0 auto !important;
 }
 
 body.light-mode .status-option {

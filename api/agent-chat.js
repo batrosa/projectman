@@ -277,7 +277,25 @@ export default async function handler(request, response) {
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
   }
 
-  const fileInventory = resolveFileInventoryQuestion({ message, context, body });
+  // A short turn such as «а сроки?», «кто по нему ответственный?» or
+  // «что с ней?» is not a new topic. The model already receives chat history,
+  // but the server must also use that same immediate dialogue when selecting
+  // which tasks/project knowledge fit into the bounded grounded context.
+  const contextDependentFollowUp = isContextDependentFollowUp(message);
+  const immediateLookupText = buildImmediateContextLookup(message, history);
+  const explicitlyMentionedProject = resolveProjectFromText(context.projects, message).project || null;
+  const selectedProjectIdForFollowUp = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  const selectedProjectForFollowUp = selectedProjectIdForFollowUp
+    ? context.projects.find((project) => project?.id === selectedProjectIdForFollowUp) || null
+    : null;
+  const inheritedProject = contextDependentFollowUp && !explicitlyMentionedProject
+    ? (selectedProjectForFollowUp || resolveProjectFromHistory(context.projects, history))
+    : null;
+  const contextualBody = inheritedProject && !selectedProjectIdForFollowUp
+    ? { ...body, projectId: inheritedProject.id, projectName: inheritedProject.name || "" }
+    : body;
+
+  const fileInventory = resolveFileInventoryQuestion({ message, context, body: contextualBody });
   if (fileInventory) {
     return response.status(200).json({ ok: true, answer: fileInventory });
   }
@@ -362,12 +380,18 @@ export default async function handler(request, response) {
     }
   }
 
-  const projectKnowledge = resolveMentionedProjectKnowledge({
+  let projectKnowledge = resolveMentionedProjectKnowledge({
     projects: context.projects,
     files: context.files,
     message,
-    body,
+    body: contextualBody,
   });
+  if (projectKnowledge.projects.length === 0 && inheritedProject?.id) {
+    projectKnowledge = {
+      projects: [inheritedProject],
+      files: context.files.filter((file) => file?.projectId === inheritedProject.id),
+    };
+  }
 
   // Текущая дата (от клиента, иначе серверная) — «сегодня» для вопросов про
   // сроки/просрочку; также используется счётчиками просрочки в контексте.
@@ -376,9 +400,10 @@ export default async function handler(request, response) {
   let contextText;
   try {
     contextText = compactContext(context, {
-      // Релевантность контекста считается ТОЛЬКО по текущему вопросу: слова из
-      // истории подтягивали блоки знаний и задачи уже закрытых тем диалога.
-      lookupText: message,
+      // Для самостоятельного вопроса используем только текущую реплику. Для
+      // короткого продолжения добавляем ближайший обмен: иначе «а сроки?» не
+      // поднимало задачу/проект, названные непосредственно перед этим.
+      lookupText: immediateLookupText,
       priorityProjectIds: projectKnowledge.projects.map((project) => project.id),
       todayIso: chatToday,
     });
@@ -518,11 +543,14 @@ export default async function handler(request, response) {
       : `\nТекущий выбранный проект: «${sanitizeUntrustedText(String(selectedProject.name || "Без названия").slice(0, 300))}».`)
     : "";
   const projectKnowledgeLine = buildProjectKnowledgeInstruction(projectKnowledge);
+  const immediateContextLine = contextDependentFollowUp
+    ? "\nТекущая реплика — продолжение ближайшего обмена в этой сессии. Разреши её ссылки по последнему однозначному объекту из истории; не начинай новую тему без явного сигнала пользователя."
+    : "";
   const currentDateLine = `\nТекущая дата: ${chatToday} (${weekdayRu(chatToday)}). Считай эту дату словом «сегодня»: вопросы о сроках, просрочке, «этой неделе», «сегодня» и «завтра» разрешай относительно неё, а не даты твоего обучения.`;
   const messages = [
     {
       role: "system",
-      content: `${SYSTEM_PROMPT_RULES}${selectedProjectLine}${projectKnowledgeLine}${currentDateLine}\n\n<holdingman_untrusted_data>\n${contextText}\n</holdingman_untrusted_data>`,
+      content: `${SYSTEM_PROMPT_RULES}${selectedProjectLine}${projectKnowledgeLine}${immediateContextLine}${currentDateLine}\n\n<holdingman_untrusted_data>\n${contextText}\n</holdingman_untrusted_data>`,
     },
     ...compactHistoryForModel(history),
     { role: "user", content: message },
@@ -558,7 +586,7 @@ export default async function handler(request, response) {
     if (!answer) continue;
     let checkedAnswer = answer;
     if (answerSkipsAvailableProjectKnowledge(answer, projectKnowledge)
-        && projectKnowledgeHasQuestionOverlap(projectKnowledge.files, message)) {
+        && projectKnowledgeHasQuestionOverlap(projectKnowledge.files, immediateLookupText)) {
       const repairRemainingMs = llmDeadline - Date.now();
       if (repairRemainingMs >= 3000) {
         const repairAttempt = await fetchJsonWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
@@ -4191,6 +4219,39 @@ function projectRecency(project) {
 
 function fileRecency(file) {
   return recencyOf(file && file.uploadedAt);
+}
+
+// Detect turns whose meaning depends on the immediately preceding dialogue.
+// This flag affects only grounded-context selection; it never authorizes an
+// action or bypasses the deterministic mutation confirmation pipeline.
+export function isContextDependentFollowUp(message) {
+  const text = normalizeLookup(message);
+  if (!text) return false;
+  const words = text.split(/\s+/u).filter(Boolean);
+  const startsAsContinuation = /^(?:а|и|ну|тогда|теперь|дальше|потом|также|еще|ещё|тоже)(?:$|[^а-яёa-z0-9])/u.test(text);
+  const hasReference = /(^|[^а-яёa-z0-9])(?:он|она|оно|они|его|ее|её|ей|ему|им|ими|их|него|нее|неё|ней|нему|них|это|этот|эта|эти|тот|та|те|такой|такая|такие|там|тут|здесь|сюда|туда)(?:$|[^а-яёa-z0-9])/u.test(text)
+    || /(?:по|про|о|об|с|для)\s+(?:нему|ней|ним|них|этому|этой|этим|этого)/u.test(text);
+  const shortEllipticalQuestion = words.length <= 6
+    && /^(?:(?:а|и|ну)\s+)?(?:когда|где|кто|сколько|какие|какой|какая|что|почему|зачем|сроки?|дедлайн|статус|ответственн[а-яё]*|исполнител[а-яё]*)(?:$|[^а-яёa-z0-9])/u.test(text);
+  return startsAsContinuation || hasReference || shortEllipticalQuestion;
+}
+
+// Relevance lookup for a dependent turn: retain only the nearest exchange,
+// role-labelled and bounded. Independent turns still use the current message
+// alone so an old topic cannot pollute a genuinely new question.
+export function buildImmediateContextLookup(message, history) {
+  const current = String(message || "").trim();
+  if (!isContextDependentFollowUp(current)) return current;
+  const turns = Array.isArray(history) ? history : [];
+  const nearby = turns
+    .slice(-6)
+    .map((turn) => {
+      const content = String(turn?.content || "").replace(/\s+/g, " ").trim().slice(0, 700);
+      if (!content) return "";
+      return `${turn?.role === "assistant" ? "Агент" : "Пользователь"}: ${content}`;
+    })
+    .filter(Boolean);
+  return [...nearby, `Пользователь: ${current}`].join("\n").slice(-5000);
 }
 
 function normalizeHistory(history) {

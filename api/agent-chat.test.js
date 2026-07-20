@@ -27,6 +27,8 @@ import {
   resolveAgentMutationProposal,
   resolveProjectFromText,
   resolveMentionedProjectKnowledge,
+  isContextDependentFollowUp,
+  buildImmediateContextLookup,
   answerSkipsAvailableProjectKnowledge,
   suppressKnowledgeSourceNames,
   callerHasProjectAccess,
@@ -839,6 +841,30 @@ describe("normalizeHistory", () => {
 
   it("handles an empty array", () => {
     expect(normalizeHistory([])).toEqual([]);
+  });
+});
+
+describe("immediate multi-turn context", () => {
+  it("recognizes short replies that depend on the previous exchange", () => {
+    expect(isContextDependentFollowUp("а сроки?")).toBe(true);
+    expect(isContextDependentFollowUp("кто по нему ответственный?")).toBe(true);
+    expect(isContextDependentFollowUp("и что дальше?")).toBe(true);
+  });
+
+  it("does not mix old dialogue into an independent new question", () => {
+    expect(isContextDependentFollowUp("Покажи задачи проекта Лазурный берег")).toBe(false);
+    expect(buildImmediateContextLookup("Покажи задачи проекта Лазурный берег", [
+      { role: "user", content: "Что по Абрау-Дюрсо?" },
+    ])).toBe("Покажи задачи проекта Лазурный берег");
+  });
+
+  it("adds the nearest exchange to relevance lookup for a follow-up", () => {
+    const lookup = buildImmediateContextLookup("а сроки?", [
+      { role: "user", content: "Что с задачей Согласовать договор?" },
+      { role: "assistant", content: "Она находится в работе." },
+    ]);
+    expect(lookup).toContain("Согласовать договор");
+    expect(lookup).toContain("Пользователь: а сроки?");
   });
 });
 
