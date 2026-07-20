@@ -17,8 +17,8 @@
     <title>HoldingMan</title>
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=71.0" as="style">
-    <link rel="stylesheet" href="style.css?v=71.0">
+    <link rel="preload" href="style.css?v=72.0" as="style">
+    <link rel="stylesheet" href="style.css?v=72.0">
     <link rel="stylesheet" href="mobile-additions.css?v=17.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -574,7 +574,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=87.0" defer></script>
+    <script src="script.js?v=88.0" defer></script>
 </head>
 
 <body>
@@ -2028,12 +2028,18 @@
     <!-- Agent Notifications Modal (лента уведомлений ИИ-агента; записи пишет
          только сервер — api/agent-monitor и api/agent-chat) -->
     <div id="agent-notify-modal" class="modal">
-        <div class="modal-content my-tasks-modal-content">
-            <div class="modal-header">
-                <h2><i class="fa-solid fa-bell"></i> Уведомления агента</h2>
+        <div class="modal-content agent-notify-modal-content">
+            <div class="modal-header agent-notify-header">
+                <div class="agent-notify-heading">
+                    <span class="agent-notify-heading-icon"><i class="fa-solid fa-bell"></i></span>
+                    <div>
+                        <h2>Уведомления</h2>
+                        <p id="agent-notify-summary">События по вашим проектам и задачам</p>
+                    </div>
+                </div>
                 <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div class="my-tasks-content">
+            <div class="agent-notify-content">
                 <div class="agent-notify-actions">
                     <button id="agent-notify-read-all" type="button" class="secondary-btn agent-notify-read-all">
                         <i class="fa-solid fa-check-double"></i> Прочитать все
@@ -2042,7 +2048,7 @@
                         <i class="fa-solid fa-trash-can"></i> Удалить все
                     </button>
                 </div>
-                <div id="agent-notify-list" class="my-tasks-list">
+                <div id="agent-notify-list" class="agent-notify-list">
                     <!-- Notifications are rendered here -->
                 </div>
             </div>

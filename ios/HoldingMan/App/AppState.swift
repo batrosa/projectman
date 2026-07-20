@@ -52,6 +52,14 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 if let firebaseUser {
                     self.subscribeToOwnUserDoc(uid: firebaseUser.uid)
+                    // Email/password accounts must not enter the application or
+                    // create an API profile until the mailbox is confirmed.
+                    if self.isUnverifiedEmailUser(firebaseUser) {
+                        self.user = nil
+                        self.organizationName = ""
+                        self.phase = .signedOut
+                        return
+                    }
                     Task {
                         do {
                             try await ApiClient.bootstrapAuthProfile()
@@ -81,8 +89,17 @@ final class AppState: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     guard let snapshot else { return }
+                    // The listener is kept alive while the verification screen
+                    // is open. After User.reload + bootstrap creates the profile,
+                    // the same listener advances to NameSetupView automatically.
+                    if let authUser = Auth.auth().currentUser,
+                       self.isUnverifiedEmailUser(authUser) {
+                        self.user = nil
+                        self.phase = .signedOut
+                        return
+                    }
                     guard snapshot.exists, let data = snapshot.data() else {
-                        // Новый Google/Apple-пользователь: AuthService создаёт
+                        // Новый Google/Apple/email-пользователь: AuthService создаёт
                         // профиль через API. До появления документа не открываем
                         // экран организаций и не показываем ложную ошибку.
                         return
@@ -102,6 +119,10 @@ final class AppState: ObservableObject {
                     }
                 }
             }
+    }
+
+    private func isUnverifiedEmailUser(_ user: FirebaseAuth.User) -> Bool {
+        user.providerData.contains { $0.providerID == "password" } && !user.isEmailVerified
     }
 
     private func loadOrganizationName(orgId: String) {

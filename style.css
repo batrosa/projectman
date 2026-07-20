@@ -4456,20 +4456,12 @@ body.light-mode .file-preview-container {
     opacity: 0.7;
 }
 
-/* Обёртка карточки: чип проекта + настоящая канбан-карточка. Внутренние
-   кнопки карточки отключены — весь клик ведёт к задаче на её доске. */
+/* Обёртка карточки: чип проекта + настоящая интерактивная канбан-карточка. */
 .my-kanban-card-wrap {
-    cursor: pointer;
     border-radius: 14px;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.my-kanban-card-wrap:hover {
-    transform: translateY(-2px);
 }
 
 .my-kanban-card-wrap .task-card {
-    pointer-events: none;
     margin: 0;
 }
 
@@ -4486,17 +4478,15 @@ body.light-mode .file-preview-container {
     font-weight: 600;
 }
 
-.my-task-go-hint {
-    margin-left: auto;
-    color: var(--text-secondary);
-    font-weight: 500;
-    font-size: 0.75rem;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-}
-
-.my-kanban-card-wrap:hover .my-task-go-hint {
-    opacity: 1;
+/* Action modals opened from «Мои задачи» must stay above the board modal. */
+#task-modal.active,
+#file-preview-modal.active,
+#files-list-modal.active,
+#completion-proof-modal.active,
+#revision-reason-modal.active,
+#deadline-change-modal.active,
+#task-details-modal.active {
+    z-index: 1100;
 }
 
 @media (max-width: 900px) {
@@ -7299,6 +7289,32 @@ body.light-mode .leaderboard-empty {
     opacity: 0.3;
 }
 
+/* In dark mode the month must read as a grid, not as one flat panel. */
+body:not(.light-mode) .calendar-view-container .calendar-body {
+    border-color: rgba(148, 163, 184, 0.34);
+}
+
+body:not(.light-mode) .calendar-grid {
+    gap: 2px;
+    background: rgba(148, 163, 184, 0.30);
+    border-color: rgba(148, 163, 184, 0.38);
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+}
+
+body:not(.light-mode) .calendar-day {
+    background: #26344a;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18);
+}
+
+body:not(.light-mode) .calendar-day:hover {
+    background: #30415d;
+}
+
+body:not(.light-mode) .calendar-day.other-month {
+    opacity: 0.48;
+    background: #202c40;
+}
+
 .calendar-day .day-number {
     font-size: 0.85rem;
     font-weight: 600;
@@ -7647,19 +7663,78 @@ body.light-mode .leaderboard-empty {
 }
 
 /* ===== Agent notifications feed (колокольчик) ===== */
+.agent-notify-modal-content {
+    width: min(900px, 94vw);
+    max-width: 900px;
+    height: min(760px, 86vh);
+    max-height: 86vh;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-radius: 22px;
+}
+
+.agent-notify-header {
+    margin: 0;
+    padding: 1.25rem 1.4rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.11), rgba(139, 92, 246, 0.04));
+}
+
+.agent-notify-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.agent-notify-heading-icon {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 13px;
+    color: #fff;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25);
+}
+
+.agent-notify-heading h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.agent-notify-heading p {
+    margin: 0.2rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.agent-notify-content {
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 1.25rem 1.25rem;
+}
+
 .agent-notify-actions {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
-    margin: 0 0 0.75rem 0;
+    margin: 0 0 1rem;
 }
 
 .agent-notify-read-all,
 .agent-notify-delete-all {
     width: auto;
-    font-size: 0.85rem;
-    padding: 0.4rem 0.9rem;
+    min-height: 38px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 0.45rem 0.85rem;
+    border-radius: 11px;
 }
 
 .agent-notify-delete-all {
@@ -7679,34 +7754,70 @@ body.light-mode .leaderboard-empty {
     cursor: not-allowed;
 }
 
+.agent-notify-list {
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.1rem 0.25rem 0.5rem 0.1rem;
+    scrollbar-gutter: stable;
+}
+
 .agent-notify-item {
     display: flex;
-    gap: 0.65rem;
+    gap: 0.85rem;
     align-items: flex-start;
     position: relative;
-    padding: 0.65rem 0.75rem;
-    padding-right: 2.6rem;
-    border-radius: 10px;
+    padding: 0.9rem 3.15rem 0.9rem 0.9rem;
+    border-radius: 15px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
     cursor: pointer;
-    transition: background 0.15s ease;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .agent-notify-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-1px);
+    border-color: rgba(99, 102, 241, 0.45);
+    box-shadow: 0 9px 24px rgba(15, 23, 42, 0.10);
 }
 
 body.light-mode .agent-notify-item:hover {
-    background: rgba(0, 0, 0, 0.05);
+    background: #fff;
 }
 
 .agent-notify-item.unread {
-    background: rgba(99, 102, 241, 0.10);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.13), rgba(99, 102, 241, 0.05));
+    border-color: rgba(99, 102, 241, 0.30);
 }
 
-.agent-notify-item i {
-    margin-top: 0.15rem;
+.agent-notify-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: #818cf8;
+    background: rgba(99, 102, 241, 0.13);
     flex-shrink: 0;
+}
+
+.agent-notify-item.type-warning .agent-notify-icon {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.13);
+}
+
+.agent-notify-item.type-danger .agent-notify-icon {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.13);
+}
+
+.agent-notify-item.type-success .agent-notify-icon {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.13);
 }
 
 .agent-notify-body {
@@ -7714,30 +7825,72 @@ body.light-mode .agent-notify-item:hover {
     flex: 1;
 }
 
+.agent-notify-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.28rem;
+}
+
+.agent-notify-title {
+    font-size: 0.92rem;
+    line-height: 1.2;
+    font-weight: 750;
+    color: var(--text-primary);
+}
+
+.agent-notify-unread-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.11);
+    flex-shrink: 0;
+}
+
 .agent-notify-text {
-    font-size: 0.9rem;
-    line-height: 1.35;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
     word-break: break-word;
+    white-space: pre-line;
 }
 
 .agent-notify-time {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     font-size: 0.72rem;
-    opacity: 0.55;
-    margin-top: 0.2rem;
+    color: var(--text-secondary);
+    margin-top: 0.55rem;
 }
 
 .agent-notify-empty {
-    opacity: 0.6;
     text-align: center;
-    padding: 1.25rem 0.5rem;
+    color: var(--text-secondary);
+    padding: 4rem 1rem;
+}
+
+.agent-notify-empty i {
+    display: block;
+    font-size: 2rem;
+    color: var(--primary);
+    opacity: 0.65;
+    margin-bottom: 0.75rem;
+}
+
+.agent-notify-empty strong {
+    display: block;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
 }
 
 .agent-notify-delete {
     position: absolute;
-    top: 0.45rem;
-    right: 0.45rem;
-    width: 28px;
-    height: 28px;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 30px;
+    height: 30px;
     border: 0;
     border-radius: 8px;
     background: transparent;
@@ -7748,6 +7901,29 @@ body.light-mode .agent-notify-item:hover {
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+@media (max-width: 640px) {
+    .agent-notify-modal-content {
+        width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .agent-notify-header,
+    .agent-notify-content {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .agent-notify-heading p {
+        display: none;
+    }
+
+    .agent-notify-item {
+        padding-left: 0.75rem;
+    }
 }
 
 .agent-notify-item:hover .agent-notify-delete,

@@ -19,7 +19,7 @@ enum ApiError: LocalizedError {
 }
 
 struct ApiClient {
-    static let baseURL = URL(string: "https://projectmanteko.vercel.app")!
+    static let baseURL = URL(string: "https://projectman.online")!
 
     // POST с Bearer idToken текущего пользователя Firebase.
     static func post(_ path: String, body: [String: Any], authorized: Bool = true) async throws -> [String: Any] {

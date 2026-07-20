@@ -7,13 +7,14 @@ import CryptoKit
 import Security
 import UIKit
 
-// Три взаимоисключающих способа входа. Провайдеры не привязываются друг к
+// Взаимоисключающие способы входа. Провайдеры не привязываются друг к
 // другу: выбранный при регистрации способ сохраняется в профиле сервером.
 @MainActor
 final class AuthService: ObservableObject {
     @Published var isBusy = false
     @Published var statusMessage: String?
     @Published var statusIsSuccess = false
+    @Published var pendingVerificationEmail: String?
 
     private let telegramPendingKey = "holdingman.telegramLogin.pending"
     private var telegramAttempt = 0
@@ -22,6 +23,133 @@ final class AuthService: ObservableObject {
     private struct PendingTelegramLogin: Codable {
         let code: String
         let expiresAt: Date
+    }
+
+    func registerWithEmail(email: String, password: String, confirmation: String) async {
+        guard !isBusy else { return }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.looksLikeEmail(normalizedEmail) else {
+            setStatus("Введите корректный email.")
+            return
+        }
+        guard password.count >= 8 else {
+            setStatus("Пароль должен содержать минимум 8 символов.")
+            return
+        }
+        guard password == confirmation else {
+            setStatus("Пароли не совпадают.")
+            return
+        }
+
+        isBusy = true
+        setStatus(nil)
+        defer { isBusy = false }
+        do {
+            let result = try await Auth.auth().createUser(withEmail: normalizedEmail, password: password)
+            pendingVerificationEmail = result.user.email ?? normalizedEmail
+            try await result.user.sendEmailVerification()
+            setStatus("Письмо отправлено. Подтвердите email, чтобы продолжить.", success: true)
+        } catch {
+            setStatus(Self.ruAuthError(error))
+        }
+    }
+
+    func signInWithEmail(email: String, password: String) async {
+        guard !isBusy else { return }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.looksLikeEmail(normalizedEmail), !password.isEmpty else {
+            setStatus("Введите email и пароль.")
+            return
+        }
+
+        isBusy = true
+        setStatus(nil)
+        defer { isBusy = false }
+        do {
+            let result = try await Auth.auth().signIn(withEmail: normalizedEmail, password: password)
+            if Self.isUnverifiedEmailUser(result.user) {
+                pendingVerificationEmail = result.user.email ?? normalizedEmail
+                setStatus("Подтвердите регистрацию по ссылке из письма.", success: true)
+                return
+            }
+            try await bootstrapOrSignOut()
+        } catch {
+            setStatus(Self.ruAuthError(error))
+        }
+    }
+
+    func sendPasswordReset(email: String) async {
+        guard !isBusy else { return }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.looksLikeEmail(normalizedEmail) else {
+            setStatus("Введите email, на который отправить ссылку.")
+            return
+        }
+        isBusy = true
+        setStatus(nil)
+        defer { isBusy = false }
+        do {
+            try await Auth.auth().sendPasswordReset(withEmail: normalizedEmail)
+            setStatus("Ссылка для восстановления пароля отправлена на почту.", success: true)
+        } catch {
+            setStatus(Self.ruAuthError(error))
+        }
+    }
+
+    func resumeEmailVerificationIfNeeded() async {
+        guard let user = Auth.auth().currentUser, Self.isEmailUser(user) else {
+            pendingVerificationEmail = nil
+            return
+        }
+        if Self.isUnverifiedEmailUser(user) {
+            pendingVerificationEmail = user.email
+            return
+        }
+        pendingVerificationEmail = nil
+        do {
+            try await bootstrapOrSignOut()
+        } catch {
+            setStatus(Self.ruAuthError(error))
+        }
+    }
+
+    func checkEmailVerification(silent: Bool = false) async {
+        guard !isBusy, let user = Auth.auth().currentUser, Self.isEmailUser(user) else { return }
+        isBusy = true
+        if !silent { setStatus(nil) }
+        defer { isBusy = false }
+        do {
+            try await user.reload()
+            guard user.isEmailVerified else {
+                if !silent { setStatus("Email ещё не подтверждён. Перейдите по ссылке из письма.") }
+                return
+            }
+            _ = try await user.getIDTokenForcingRefresh(true)
+            pendingVerificationEmail = nil
+            setStatus("Email подтверждён. Готовим профиль…", success: true)
+            try await bootstrapOrSignOut()
+        } catch {
+            setStatus(Self.ruAuthError(error))
+        }
+    }
+
+    func resendEmailVerification() async {
+        guard !isBusy, let user = Auth.auth().currentUser, Self.isUnverifiedEmailUser(user) else { return }
+        isBusy = true
+        setStatus(nil)
+        defer { isBusy = false }
+        do {
+            try await user.sendEmailVerification()
+            setStatus("Новое письмо отправлено.", success: true)
+        } catch {
+            setStatus(Self.ruAuthError(error))
+        }
+    }
+
+    func useDifferentEmail() {
+        try? Auth.auth().signOut()
+        pendingVerificationEmail = nil
+        setStatus(nil)
     }
 
     func signInWithGoogle() async {
@@ -51,7 +179,7 @@ final class AuthService: ObservableObject {
             try await bootstrapOrSignOut()
         } catch {
             if (error as NSError).code == GIDSignInError.canceled.rawValue { return }
-            setStatus(Self.ruFederatedAuthError(error))
+            setStatus(Self.ruAuthError(error))
         }
     }
 
@@ -88,7 +216,7 @@ final class AuthService: ObservableObject {
             try await bootstrapOrSignOut()
         } catch {
             if (error as? ASAuthorizationError)?.code == .canceled { return }
-            setStatus(Self.ruFederatedAuthError(error))
+            setStatus(Self.ruAuthError(error))
         }
     }
 
@@ -194,7 +322,7 @@ final class AuthService: ObservableObject {
         case tokenMissing
     }
 
-    private static func ruFederatedAuthError(_ error: Error) -> String {
+    private static func ruAuthError(_ error: Error) -> String {
         if let local = error as? FederatedAuthError {
             switch local {
             case .googleClientMissing:
@@ -210,6 +338,16 @@ final class AuthService: ObservableObject {
             return message
         }
         switch code {
+        case .emailAlreadyInUse:
+            return "Аккаунт с этой почтой уже существует. Войдите или восстановите пароль."
+        case .invalidEmail:
+            return "Введите корректный email."
+        case .weakPassword:
+            return "Пароль слишком простой. Используйте минимум 8 символов."
+        case .wrongPassword, .userNotFound, .invalidCredential:
+            return "Неверный email или пароль."
+        case .tooManyRequests:
+            return "Слишком много попыток. Подождите и попробуйте ещё раз."
         case .credentialAlreadyInUse:
             return "Этот вход уже относится к другому аккаунту. Автоматическое объединение запрещено для защиты данных."
         case .accountExistsWithDifferentCredential:
@@ -221,6 +359,19 @@ final class AuthService: ObservableObject {
         default:
             return "Не удалось выполнить вход. Попробуйте ещё раз."
         }
+    }
+
+    private static func isEmailUser(_ user: FirebaseAuth.User) -> Bool {
+        user.providerData.contains { $0.providerID == "password" }
+    }
+
+    private static func isUnverifiedEmailUser(_ user: FirebaseAuth.User) -> Bool {
+        isEmailUser(user) && !user.isEmailVerified
+    }
+
+    private static func looksLikeEmail(_ value: String) -> Bool {
+        let parts = value.split(separator: "@", omittingEmptySubsequences: false)
+        return parts.count == 2 && !parts[0].isEmpty && parts[1].contains(".")
     }
 
     private static func presentingViewController() -> UIViewController? {

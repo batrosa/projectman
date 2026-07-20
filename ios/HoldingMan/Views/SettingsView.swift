@@ -40,7 +40,7 @@ struct SettingsView: View {
                         .buttonStyle(PressableStyle())
                     }
 
-                    Link(destination: URL(string: "https://projectmanteko.vercel.app")!) {
+                    Link(destination: URL(string: "https://projectman.online")!) {
                         settingsRow(
                             icon: "safari.fill",
                             iconColor: Color(hex: 0x0EA5E9),

@@ -2496,6 +2496,7 @@ async function deleteTask(id) {
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     try {
         await db.collection('tasks').doc(id).delete();
+        await refreshMyTasksModalIfOpen();
     } catch (error) {
         console.error('Error deleting task:', error);
         alert('Ошибка при удалении задачи: ' + error.message);
@@ -2607,10 +2608,11 @@ function updateTask(id, data) {
     if (submitBtn) setButtonLoading(submitBtn, true, 'Сохранить');
 
     return db.collection('tasks').doc(id).update(data)
-        .then(() => {
+        .then(async () => {
             console.log("✅ Задача успешно обновлена!");
             elements.taskModal.classList.remove('active');
             elements.taskForm.reset();
+            await refreshMyTasksModalIfOpen();
             if (submitBtn) setButtonLoading(submitBtn, false, 'Сохранить');
         })
         .catch((error) => {
@@ -3700,7 +3702,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
             // Уведомление исполнителям: задача принята в «Готово» (Telegram
             // при наличии + push + email Google + лента — сервер решает доставку по uid)
             try {
-                const doneTask = state.tasks.find(t => t.id === taskId);
+                const doneTask = findLoadedTask(taskId);
                 if (doneTask && Array.isArray(doneTask.assigneeIds) && doneTask.assigneeIds.length > 0) {
                     const project = state.projects.find(p => p.id === doneTask.projectId);
                     const doneMessage = `✅ <b>Задача принята!</b>
@@ -3716,6 +3718,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                 console.error('Error sending task-done notification:', error);
             }
         }
+        await refreshMyTasksModalIfOpen();
     }).catch(error => {
         console.error("Error updating status:", error);
         alert("Ошибка: " + error.message);
@@ -3897,7 +3900,7 @@ function submitRevisionReason(e) {
 
     // Уведомление исполнителям о возврате — по uid (Telegram при наличии +
     // push + email Google + лента); для легаси-задач без assigneeIds — старый путь по chatId.
-    const task = state.tasks.find(t => t.id === taskId);
+    const task = findLoadedTask(taskId);
     if (task) {
         const revisionEvent = { type: 'task_revision', taskId, projectId: task.projectId || null };
         const revisionMessage = `🔄 <b>Задача возвращена на доработку</b>
@@ -4276,6 +4279,7 @@ function openTaskDetailsModal(task) {
             try {
                 await callDeadlineChangeApi({ action: 'decide', requestId, decision });
                 modal.classList.remove('active');
+                await refreshMyTasksModalIfOpen();
             } catch (error) {
                 button.disabled = false;
                 alert(error.message || 'Не удалось обработать запрос');
@@ -5058,6 +5062,7 @@ function setupEventListeners() {
             try {
                 await callDeadlineChangeApi({ action: 'request', taskId, requestedDeadline, comment });
                 closeModalElement(document.getElementById('deadline-change-modal'));
+                await refreshMyTasksModalIfOpen();
             } catch (error) {
                 alert(error.message || 'Не удалось отправить запрос');
             } finally {
@@ -5420,7 +5425,7 @@ function setupEventListeners() {
                 const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
 
                 // Update existing task
-                const previousTask = state.tasks.find(t => t.id === taskId) || null;
+                const previousTask = findLoadedTask(taskId);
                 const nextAssigneeIds = selectedAssignees.map(a => a.id).filter(Boolean);
                 const taskUpdates = {
                     title,
@@ -7945,20 +7950,37 @@ async function openMyTasksModal() {
 }
 
 // Render tasks in the My Tasks modal — полноэкранная мини-доска: три колонки
-// по статусам (Назначенные / В работе / На проверке), карточки — ровно те же,
-// что на канбан-доске (createTaskCard), с чипом проекта сверху. Клик по
-// карточке ведёт к задаче на её доске; внутренние кнопки карточки отключены
-// (pointer-events: none в CSS), чтобы клик был единым «перейти к задаче».
+// по статусам (Назначенные / В работе / На проверке). Это настоящие карточки
+// доски: статус, информация, файлы, перенос срока, редактирование и удаление
+// работают прямо здесь, без перехода в проект.
 const MY_TASKS_COLUMNS = [
     { key: 'assigned', title: 'Назначенные', icon: 'fa-circle-exclamation', cls: 'col-assigned' },
     { key: 'in-progress', title: 'В работе', icon: 'fa-person-digging', cls: 'col-in-progress' },
     { key: 'review', title: 'На проверке', icon: 'fa-check', cls: 'col-review' },
 ];
 
+let myTasksModalTasks = [];
+let myTasksRefreshPromise = null;
+
+function findLoadedTask(taskId) {
+    return state.tasks.find(task => task.id === taskId) ||
+        myTasksModalTasks.find(task => task.id === taskId) || null;
+}
+
+async function refreshMyTasksModalIfOpen() {
+    if (!elements.myTasksModal?.classList.contains('active')) return;
+    if (myTasksRefreshPromise) return myTasksRefreshPromise;
+    myTasksRefreshPromise = fetchMyTasks()
+        .then(renderMyTasks)
+        .finally(() => { myTasksRefreshPromise = null; });
+    return myTasksRefreshPromise;
+}
+
 function renderMyTasks(tasks) {
     const container = elements.myTasksList;
+    myTasksModalTasks = Array.isArray(tasks) ? tasks : [];
     container.classList.remove('my-tasks-board');
-    if (tasks.length === 0) {
+    if (myTasksModalTasks.length === 0) {
         container.innerHTML = `
             <div class="my-tasks-empty">
                 <i class="fa-solid fa-clipboard-check"></i>
@@ -7972,7 +7994,7 @@ function renderMyTasks(tasks) {
     container.classList.add('my-tasks-board');
 
     MY_TASKS_COLUMNS.forEach(col => {
-        const colTasks = tasks.filter(task => boardViewForTask(task) === col.key);
+        const colTasks = myTasksModalTasks.filter(task => boardViewForTask(task) === col.key);
 
         const colEl = document.createElement('div');
         colEl.className = `my-tasks-col ${col.cls}`;
@@ -8008,20 +8030,11 @@ function renderMyTasks(tasks) {
             folderIcon.className = 'fa-solid fa-folder';
             projectChip.appendChild(folderIcon);
             projectChip.appendChild(document.createTextNode(' ' + (task.projectName || 'Проект')));
-            const goHint = document.createElement('span');
-            goHint.className = 'my-task-go-hint';
-            goHint.innerHTML = 'Перейти <i class="fa-solid fa-arrow-right"></i>';
-            projectChip.appendChild(goHint);
             wrap.appendChild(projectChip);
 
             const card = createTaskCard(task);
             card.classList.add('my-tasks-kanban-card');
             wrap.appendChild(card);
-
-            wrap.addEventListener('click', () => {
-                playClickSound();
-                navigateToTask(task.projectId, task.id, col.key);
-            });
 
             list.appendChild(wrap);
         });
@@ -8145,37 +8158,99 @@ function renderAgentNotifyBadge() {
 
 const AGENT_NOTIFY_ICONS = {
     overdue: 'fa-triangle-exclamation',
+    deadline_today: 'fa-calendar-day',
     deadline_tomorrow: 'fa-clock',
     not_taken_1h: 'fa-hourglass-half',
     unassigned_1h: 'fa-user-slash',
-    tasks_created: 'fa-square-plus'
+    tasks_created: 'fa-square-plus',
+    task_created: 'fa-clipboard-list',
+    task_completed: 'fa-clipboard-check',
+    task_done: 'fa-circle-check',
+    task_revision: 'fa-rotate-left'
 };
+
+const AGENT_NOTIFY_META = {
+    overdue: { title: 'Задача просрочена', tone: 'danger' },
+    deadline_today: { title: 'Срок сегодня', tone: 'warning' },
+    deadline_tomorrow: { title: 'Срок завтра', tone: 'warning' },
+    not_taken_1h: { title: 'Задача ещё не принята', tone: 'warning' },
+    unassigned_1h: { title: 'Нет ответственного', tone: 'danger' },
+    tasks_created: { title: 'Задачи созданы агентом', tone: 'success' },
+    task_created: { title: 'Новая задача', tone: 'default' },
+    task_completed: { title: 'Задача на проверке', tone: 'warning' },
+    task_done: { title: 'Задача принята', tone: 'success' },
+    task_revision: { title: 'Возврат на доработку', tone: 'warning' }
+};
+
+function pluralizeRu(count, forms) {
+    const value = Math.abs(Number(count)) % 100;
+    const last = value % 10;
+    if (value > 10 && value < 20) return forms[2];
+    if (last > 1 && last < 5) return forms[1];
+    if (last === 1) return forms[0];
+    return forms[2];
+}
+
+function agentNotificationText(notification, title) {
+    let text = formatIsoDatesInText(notification?.text || '').trim();
+    text = text.replace(/^[^\p{L}\p{N}]+/u, '');
+    const escapedTitle = String(title || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (escapedTitle) {
+        text = text.replace(new RegExp(`^${escapedTitle}\\s*[:!—-]*\\s*`, 'i'), '');
+    }
+    return text || 'Откройте уведомление, чтобы посмотреть подробности.';
+}
 
 function renderAgentNotifyList() {
     const list = document.getElementById('agent-notify-list');
     if (!list) return;
     list.textContent = '';
     updateAgentNotifyActions();
+    const summary = document.getElementById('agent-notify-summary');
+    const unreadCount = agentNotifications.filter(notification => !notification.readAt).length;
+    if (summary) {
+        summary.textContent = agentNotifications.length === 0
+            ? 'События по вашим проектам и задачам'
+            : `${agentNotifications.length} ${pluralizeRu(agentNotifications.length, ['уведомление', 'уведомления', 'уведомлений'])}${unreadCount ? ` · ${unreadCount} непрочитано` : ''}`;
+    }
     if (agentNotifications.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'agent-notify-empty';
-        empty.textContent = 'Пока нет уведомлений от агента';
+        empty.innerHTML = '<i class="fa-regular fa-bell-slash"></i><strong>Пока всё спокойно</strong><span>Новые события по задачам появятся здесь.</span>';
         list.appendChild(empty);
         return;
     }
     agentNotifications.forEach(n => {
+        const meta = AGENT_NOTIFY_META[n.type] || { title: 'Системное уведомление', tone: 'default' };
         const item = document.createElement('div');
-        item.className = 'agent-notify-item' + (n.readAt ? '' : ' unread');
+        item.className = `agent-notify-item type-${meta.tone}${n.readAt ? '' : ' unread'}`;
+        const iconWrap = document.createElement('div');
+        iconWrap.className = 'agent-notify-icon';
         const icon = document.createElement('i');
         icon.className = 'fa-solid ' + (AGENT_NOTIFY_ICONS[n.type] || 'fa-bell');
+        iconWrap.appendChild(icon);
         const body = document.createElement('div');
         body.className = 'agent-notify-body';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'agent-notify-title-row';
+        const title = document.createElement('div');
+        title.className = 'agent-notify-title';
+        title.textContent = meta.title;
+        titleRow.appendChild(title);
+        if (!n.readAt) {
+            const unreadDot = document.createElement('span');
+            unreadDot.className = 'agent-notify-unread-dot';
+            unreadDot.title = 'Не прочитано';
+            titleRow.appendChild(unreadDot);
+        }
         const text = document.createElement('div');
         text.className = 'agent-notify-text';
-        text.textContent = formatIsoDatesInText(n.text || '');
+        text.textContent = agentNotificationText(n, meta.title);
         const when = document.createElement('div');
         when.className = 'agent-notify-time';
-        when.textContent = formatDateTimeRu(n.createdAt) || '';
+        when.innerHTML = '<i class="fa-regular fa-clock"></i>';
+        when.appendChild(document.createTextNode(formatDateTimeRu(n.createdAt) || ''));
+        body.appendChild(titleRow);
         body.appendChild(text);
         body.appendChild(when);
         const deleteBtn = document.createElement('button');
@@ -8190,7 +8265,7 @@ function renderAgentNotifyList() {
             event.stopPropagation();
             deleteAgentNotification(n, item);
         });
-        item.appendChild(icon);
+        item.appendChild(iconWrap);
         item.appendChild(body);
         item.appendChild(deleteBtn);
         item.addEventListener('click', () => {
