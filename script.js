@@ -1673,6 +1673,8 @@ function enterApp() {
     subscribeToMyTasks();
     subscribeToAgentNotifications();
     subscribeToOwnUserDoc();
+    updateTelegramLinkUI();
+    setTimeout(resumeTelegramLinkIfPending, 0);
 
 
     // Start presence tracking (used for admin "who is online" / last seen)
@@ -1886,6 +1888,10 @@ const elements = {
     // Buttons
     addProjectBtn: document.getElementById('add-project-btn'),
     helpBtn: document.getElementById('help-btn'),
+    telegramLinkBtn: document.getElementById('telegram-link-btn'),
+    telegramLinkTitle: document.getElementById('telegram-link-title'),
+    telegramLinkDesc: document.getElementById('telegram-link-desc'),
+    telegramLinkStatusIcon: document.getElementById('telegram-link-status-icon'),
     closeModalBtns: document.querySelectorAll('.close-modal'),
 
     // Auth
@@ -2132,6 +2138,11 @@ function subscribeToOwnUserDoc() {
     ownUserDocListenerUnsubscribe = db.collection('users').doc(uid).onSnapshot(doc => {
         if (!doc.exists || !state.currentUser) return;
         const data = doc.data();
+
+        state.currentUser.telegramId = data.telegramId || null;
+        state.currentUser.telegramChatId = data.telegramChatId || null;
+        state.currentUser.telegramUsername = data.telegramUsername || null;
+        updateTelegramLinkUI();
 
         // Removed from / moved out of the organization we're currently in.
         if (state.organization && data.organizationId !== state.organization.id) {
@@ -5454,8 +5465,17 @@ function setupEventListeners() {
     if (settingsBtn && settingsModal) {
         settingsBtn.addEventListener('click', () => {
             playClickSound();
+            updateTelegramLinkUI();
             settingsModal.classList.add('active');
             closeSidebarOnMobile();
+        });
+    }
+
+    if (elements.telegramLinkBtn) {
+        elements.telegramLinkBtn.addEventListener('click', () => {
+            if (isTelegramLinked() || telegramLinkBusy) return;
+            playClickSound();
+            startTelegramLink();
         });
     }
 
@@ -5865,8 +5885,13 @@ function setupEventListeners() {
 // Authentication Functions
 
 const TELEGRAM_BOT_PENDING_KEY = 'projectman.telegramBotLogin.pending';
+const TELEGRAM_LINK_PENDING_KEY = 'projectman.telegramLink.pending';
 let telegramBotLoginAttempt = 0;
 let telegramBotLoginResumeInFlight = false;
+let telegramLinkAttempt = 0;
+let telegramLinkResumeInFlight = false;
+let telegramLinkBusy = false;
+let telegramLinkStatusText = '';
 let organizationLoadRetryInFlight = false;
 let emailAuthMode = 'login';
 let emailRegistrationInProgress = false;
@@ -6149,6 +6174,195 @@ function setTelegramBotLoginBusy(isBusy) {
 
 function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isTelegramLinked() {
+    const user = state.currentUser;
+    return Boolean(user && (user.authProvider === 'telegram' || user.telegramId || user.telegramChatId));
+}
+
+function updateTelegramLinkUI() {
+    const button = elements.telegramLinkBtn;
+    if (!button) return;
+    const linked = isTelegramLinked();
+    button.disabled = linked || telegramLinkBusy;
+    button.classList.toggle('disabled', linked || telegramLinkBusy);
+    button.classList.toggle('telegram-connected', linked);
+    button.classList.toggle('telegram-link-busy', telegramLinkBusy && !linked);
+    button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
+
+    if (linked) {
+        if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Telegram подключён';
+        if (elements.telegramLinkDesc) {
+            elements.telegramLinkDesc.textContent = state.currentUser?.telegramUsername
+                ? `@${state.currentUser.telegramUsername} · уведомления включены`
+                : 'Дополнительный канал уведомлений включён';
+        }
+        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-circle-check';
+        return;
+    }
+
+    if (elements.telegramLinkTitle) {
+        elements.telegramLinkTitle.textContent = telegramLinkBusy ? 'Подключаем Telegram…' : 'Подключить Telegram';
+    }
+    if (elements.telegramLinkDesc) {
+        elements.telegramLinkDesc.textContent = telegramLinkStatusText || 'Дополнительный канал уведомлений';
+    }
+    if (elements.telegramLinkStatusIcon) {
+        elements.telegramLinkStatusIcon.className = telegramLinkBusy
+            ? 'fa-solid fa-spinner fa-spin'
+            : 'fa-solid fa-chevron-right';
+    }
+}
+
+function setTelegramLinkBusy(isBusy, statusText = '') {
+    telegramLinkBusy = isBusy;
+    telegramLinkStatusText = statusText;
+    updateTelegramLinkUI();
+}
+
+function getPendingTelegramLink() {
+    try {
+        const raw = sessionStorage.getItem(TELEGRAM_LINK_PENDING_KEY);
+        if (!raw) return null;
+        const pending = JSON.parse(raw);
+        const expiresAtMs = Date.parse(pending.expiresAt || '');
+        if (!pending.code || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+            sessionStorage.removeItem(TELEGRAM_LINK_PENDING_KEY);
+            return null;
+        }
+        return pending;
+    } catch {
+        sessionStorage.removeItem(TELEGRAM_LINK_PENDING_KEY);
+        return null;
+    }
+}
+
+function savePendingTelegramLink(code, expiresAt) {
+    if (code && expiresAt) {
+        sessionStorage.setItem(TELEGRAM_LINK_PENDING_KEY, JSON.stringify({ code, expiresAt }));
+    }
+}
+
+function clearPendingTelegramLink() {
+    sessionStorage.removeItem(TELEGRAM_LINK_PENDING_KEY);
+}
+
+function verifiedTelegramBotUrl(value) {
+    const url = new URL(String(value || ''));
+    if (url.protocol !== 'https:' || url.hostname !== 't.me' || !url.searchParams.get('start')) {
+        throw new Error('Сервер вернул некорректную ссылку Telegram.');
+    }
+    return url.href;
+}
+
+async function startTelegramLink() {
+    if (isTelegramLinked()) return;
+    const currentUser = auth?.currentUser;
+    if (!currentUser) {
+        alert('Сначала войдите в ProjectMan.');
+        return;
+    }
+
+    const attemptId = ++telegramLinkAttempt;
+    let botWindow = null;
+    try {
+        setTelegramLinkBusy(true, 'Открываем Telegram-бота…');
+        botWindow = window.open('', '_blank');
+        if (botWindow) {
+            botWindow.opener = null;
+            botWindow.document.title = 'ProjectMan Telegram';
+        }
+
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch('/api/telegram-bot-login-start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ mode: 'link' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok || !data.code || !data.botUrl) {
+            throw new Error(data.status === 'already_linked'
+                ? 'Telegram уже подключён к этому аккаунту.'
+                : data.error || 'Не удалось начать подключение Telegram.');
+        }
+
+        const botUrl = verifiedTelegramBotUrl(data.botUrl);
+        savePendingTelegramLink(data.code, data.expiresAt);
+        if (botWindow) botWindow.location.href = botUrl;
+        else window.location.assign(botUrl);
+        setTelegramLinkBusy(true, 'Нажмите Start в боте, затем вернитесь сюда');
+        await pollTelegramLink(data.code, data.expiresAt, attemptId);
+    } catch (error) {
+        if (botWindow && !botWindow.closed) botWindow.close();
+        console.error('Telegram link failed', error);
+        if (attemptId === telegramLinkAttempt) {
+            clearPendingTelegramLink();
+            setTelegramLinkBusy(false);
+            alert(error.message || 'Не удалось подключить Telegram.');
+        }
+    }
+}
+
+async function pollTelegramLink(code, expiresAt, attemptId) {
+    const expiresAtMs = Date.parse(expiresAt || '');
+    const deadlineMs = Number.isFinite(expiresAtMs) ? expiresAtMs : Date.now() + 5 * 60 * 1000;
+    let delayMs = 0;
+
+    while (attemptId === telegramLinkAttempt && Date.now() < deadlineMs) {
+        if (delayMs > 0) await wait(delayMs);
+        const currentUser = auth?.currentUser;
+        if (!currentUser) throw new Error('Сессия ProjectMan завершена. Войдите снова.');
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch('/api/telegram-bot-login-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ code }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (data.status === 'pending') {
+            delayMs = Math.min(delayMs + 500, 2000);
+            continue;
+        }
+        if (res.ok && data.ok && data.status === 'confirmed' && data.linked) {
+            clearPendingTelegramLink();
+            state.currentUser.telegramId = data.telegramId || null;
+            state.currentUser.telegramChatId = data.telegramChatId || data.telegramId || null;
+            state.currentUser.telegramUsername = data.telegramUsername || null;
+            setTelegramLinkBusy(false);
+            updateTelegramLinkUI();
+            return;
+        }
+        throw new Error(data.status === 'conflict'
+            ? 'Этот Telegram уже подключён к другому аккаунту ProjectMan.'
+            : data.error || 'Telegram-бот не подтвердил подключение.');
+    }
+
+    clearPendingTelegramLink();
+    throw new Error('Ссылка устарела. Нажмите «Подключить Telegram» ещё раз.');
+}
+
+async function resumeTelegramLinkIfPending() {
+    if (telegramLinkResumeInFlight || isTelegramLinked() || !auth?.currentUser) return;
+    const pending = getPendingTelegramLink();
+    if (!pending) return;
+
+    const attemptId = ++telegramLinkAttempt;
+    telegramLinkResumeInFlight = true;
+    try {
+        setTelegramLinkBusy(true, 'Ждём подтверждение в Telegram-боте…');
+        await pollTelegramLink(pending.code, pending.expiresAt, attemptId);
+    } catch (error) {
+        if (attemptId === telegramLinkAttempt) {
+            clearPendingTelegramLink();
+            setTelegramLinkBusy(false);
+            alert(error.message || 'Не удалось завершить подключение Telegram.');
+        }
+    } finally {
+        telegramLinkResumeInFlight = false;
+        if (attemptId === telegramLinkAttempt && !isTelegramLinked()) setTelegramLinkBusy(false);
+    }
 }
 
 // Telegram Login Widget callback (see index.html data-onauth="onTelegramAuth(user)").
@@ -6470,6 +6684,7 @@ async function loadUserRole(user) {
             state.currentUser.organizationId = userData.organizationId || null;
             state.currentUser.allowedProjects = userData.allowedProjects || [];
             state.currentUser.telegramChatId = userData.telegramChatId || null;
+            state.currentUser.telegramId = userData.telegramId || null;
             state.currentUser.telegramUsername = userData.telegramUsername || null;
             state.currentUser.authProvider = userData.authProvider || null;
             state.currentUser.profileCompleted = userData.profileCompleted === true;

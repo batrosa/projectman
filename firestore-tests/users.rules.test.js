@@ -38,7 +38,7 @@ describe("users doc — XP/stats are server-only", () => {
     await assertFails(u1.collection("users").doc("u1").update({ noRevisionTasksCount: 500 }));
   });
 
-  it("blocks a user from self-writing telegramChatId (notification-routing / open-relay vector)", async () => {
+  it("blocks a user from self-writing server-owned Telegram linkage fields", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("users").doc("u3").set({
         role: "reader",
@@ -49,9 +49,12 @@ describe("users doc — XP/stats are server-only", () => {
     });
 
     const u3 = testEnv.authenticatedContext("u3").firestore();
-    // telegramChatId is bound server-side during Telegram login; a client must
-    // not be able to point it at an arbitrary chat.
+    // These fields are bound server-side during Telegram login/linking; a
+    // client must not be able to point notifications at an arbitrary chat.
+    await assertFails(u3.collection("users").doc("u3").update({ telegramId: "999" }));
     await assertFails(u3.collection("users").doc("u3").update({ telegramChatId: "999" }));
+    await assertFails(u3.collection("users").doc("u3").update({ telegramUsername: "attacker" }));
+    await assertFails(u3.collection("users").doc("u3").update({ telegramLinkedAt: "2026-07-21" }));
   });
 
   it("blocks a moderator (and owner) from writing ANOTHER user's stats via the client", async () => {

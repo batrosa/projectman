@@ -32,6 +32,23 @@ export default async function handler(request, response) {
     }
 
     const session = sessionDoc.data() || {};
+    const mode = session.mode === "link" ? "link" : "login";
+    let authenticatedUid = null;
+    if (mode === "link") {
+      const idToken = String(request.headers?.authorization || "").replace(/^Bearer\s+/i, "");
+      if (!idToken) return response.status(401).json({ ok: false, error: "Authentication required" });
+      let decoded;
+      try {
+        decoded = await adminAuth().verifyIdToken(idToken);
+      } catch {
+        return response.status(401).json({ ok: false, error: "Invalid authentication token" });
+      }
+      authenticatedUid = decoded.uid;
+      if (!session.uid || session.uid !== authenticatedUid) {
+        return response.status(403).json({ ok: false, error: "This link session belongs to another user" });
+      }
+    }
+
     const expiresAtMs = Date.parse(session.expiresAt || "");
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
       await sessionRef.set({ status: "expired", expiredAt: new Date().toISOString() }, { merge: true });
@@ -49,6 +66,27 @@ export default async function handler(request, response) {
     if (!session.telegramId) {
       console.error("Telegram bot login session is confirmed without telegramId", { code });
       return response.status(500).json({ ok: false, error: "Invalid confirmed login session" });
+    }
+
+    if (mode === "link") {
+      const linkResult = await linkTelegramToUser(db, authenticatedUid, session);
+      if (!linkResult.ok) {
+        await sessionRef.set(
+          { status: linkResult.status, failedAt: new Date().toISOString() },
+          { merge: true }
+        );
+        return response.status(409).json(linkResult);
+      }
+
+      await sessionRef.set({ status: "consumed", consumedAt: new Date().toISOString() }, { merge: true });
+      return response.status(200).json({
+        ok: true,
+        status: "confirmed",
+        linked: true,
+        telegramId: session.telegramId,
+        telegramChatId: session.telegramChatId || session.telegramId,
+        telegramUsername: session.telegramUsername || null,
+      });
     }
 
     const userResult = await findOrCreateTelegramUser(db, {
@@ -71,6 +109,63 @@ export default async function handler(request, response) {
     console.error("Telegram bot login status failed:", error);
     return response.status(500).json({ ok: false, error: "Could not check Telegram bot login" });
   }
+}
+
+async function linkTelegramToUser(db, uid, session) {
+  const usersRef = db.collection("users");
+  const telegramId = String(session.telegramId || "");
+  const telegramChatId = String(session.telegramChatId || telegramId);
+  const targetRef = usersRef.doc(uid);
+  const targetDoc = await targetRef.get();
+  if (!targetDoc.exists) {
+    return { ok: false, status: "user_not_found", error: "User profile was not found" };
+  }
+
+  const [telegramOwner, chatOwner] = await Promise.all([
+    usersRef.where("telegramId", "==", telegramId).limit(1).get(),
+    usersRef.where("telegramChatId", "==", telegramChatId).limit(1).get(),
+  ]);
+  const conflictingOwner = [telegramOwner, chatOwner]
+    .flatMap(snapshot => snapshot.docs || [])
+    .find(doc => doc.id !== uid);
+  if (conflictingOwner) {
+    return {
+      ok: false,
+      status: "conflict",
+      error: "This Telegram account is already linked to another ProjectMan account",
+    };
+  }
+
+  const now = new Date().toISOString();
+  const reservationRef = db.collection("telegramAccountLinks").doc(telegramId);
+  try {
+    await db.runTransaction(async transaction => {
+      const reservation = await transaction.get(reservationRef);
+      const ownerUid = reservation.exists ? String(reservation.data()?.uid || "") : "";
+      if (ownerUid && ownerUid !== uid) {
+        const conflict = new Error("telegram-link-conflict");
+        conflict.code = "telegram-link-conflict";
+        throw conflict;
+      }
+      transaction.set(reservationRef, { uid, telegramId, updatedAt: now }, { merge: true });
+      transaction.set(targetRef, {
+        telegramId,
+        telegramChatId,
+        telegramUsername: session.telegramUsername || null,
+        telegramLinkedAt: now,
+      }, { merge: true });
+    });
+  } catch (error) {
+    if (error?.code === "telegram-link-conflict" || error?.message === "telegram-link-conflict") {
+      return {
+        ok: false,
+        status: "conflict",
+        error: "This Telegram account is already linked to another ProjectMan account",
+      };
+    }
+    throw error;
+  }
+  return { ok: true };
 }
 
 async function parseJsonBody(request) {

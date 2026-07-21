@@ -44,22 +44,28 @@ export default async function handler(req, res) {
             const rawText = (message.text || '').trim();
             const text = rawText.toUpperCase();
             const firstName = message.from?.first_name || 'друг';
-            const botLoginMatch = rawText.match(/^\/start(?:@[A-Za-z0-9_]+)?\s+login_([A-Za-z0-9_-]{16,64})$/i);
+            const botSessionMatch = rawText.match(/^\/start(?:@[A-Za-z0-9_]+)?\s+(login|link)_([A-Za-z0-9_-]{16,64})$/i);
 
             let replyText = '';
 
-            if (botLoginMatch) {
+            if (botSessionMatch) {
+                const sessionMode = botSessionMatch[1].toLowerCase();
                 const loginResult = hasVerifiedWebhookSecret
-                    ? await confirmBotLoginSession(botLoginMatch[1], message)
+                    ? await confirmBotLoginSession(botSessionMatch[2], message, sessionMode)
                     : { ok: false, reason: 'webhook_secret_missing' };
                 if (loginResult.ok) {
-                    replyText = `✅ Вход подтвержден.\n\nВернитесь в ProjectMan — окно входа завершится автоматически.`;
+                    replyText = sessionMode === 'link'
+                        ? `✅ Подтверждение получено.\n\nВернитесь в ProjectMan — подключение Telegram завершится автоматически.`
+                        : `✅ Вход подтвержден.\n\nВернитесь в ProjectMan — окно входа завершится автоматически.`;
                 } else {
-                    replyText = loginResult.reason === 'server'
-                        ? `❌ Не удалось подтвердить вход: сервер временно недоступен. Попробуйте ещё раз.`
+                    const actionName = sessionMode === 'link' ? 'подключение' : 'вход';
+                    replyText = loginResult.reason === 'mode_mismatch'
+                        ? `❌ Эта ссылка предназначена для другого действия. Вернитесь в ProjectMan и создайте новую ссылку.`
+                        : loginResult.reason === 'server'
+                        ? `❌ Не удалось подтвердить ${actionName}: сервер временно недоступен. Попробуйте ещё раз.`
                         : loginResult.reason === 'webhook_secret_missing'
                             ? `❌ Вход через бота ещё не настроен на сервере. Сообщите администратору: нужен Telegram webhook secret.`
-                        : `❌ Ссылка для входа устарела или уже использована.\n\nВернитесь в ProjectMan и нажмите «Войти через бота» ещё раз.`;
+                        : `❌ Ссылка устарела или уже использована.\n\nВернитесь в ProjectMan и повторите действие.`;
                 }
             } else if (text === '/START') {
                 replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectMan. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
@@ -98,7 +104,7 @@ export default async function handler(req, res) {
     return res.status(200).send('Bot is running');
 }
 
-async function confirmBotLoginSession(code, message) {
+async function confirmBotLoginSession(code, message, requestedMode = 'login') {
     if (!isValidTelegramLoginCode(code)) return { ok: false, reason: 'invalid' };
 
     const from = message.from || {};
@@ -112,7 +118,9 @@ async function confirmBotLoginSession(code, message) {
         if (!doc.exists) return { ok: false, reason: 'missing' };
 
         const session = doc.data() || {};
+        const sessionMode = session.mode === 'link' ? 'link' : 'login';
         const expiresAtMs = Date.parse(session.expiresAt || '');
+        if (sessionMode !== requestedMode) return { ok: false, reason: 'mode_mismatch' };
         if (session.status !== 'pending') return { ok: false, reason: session.status || 'used' };
         if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
             await ref.set({ status: 'expired', expiredAt: new Date().toISOString() }, { merge: true });
