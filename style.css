@@ -831,6 +831,14 @@ body.light-mode .project-info h1 {
     background: rgba(234, 179, 8, 0.12);
 }
 
+/* Yellow needs a darker foreground on the light theme to stay readable. */
+body.light-mode .column-header.col-review,
+body.light-mode .my-tasks-col-header.col-review {
+    color: #92400e;
+    background: rgba(250, 204, 21, 0.2);
+    border-bottom-color: rgba(180, 83, 9, 0.24);
+}
+
 .column-header h2 {
     font-size: 0.9rem;
     font-weight: 700;
