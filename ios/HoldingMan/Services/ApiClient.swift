@@ -7,15 +7,12 @@ import FirebaseAuth
 enum ApiError: LocalizedError {
     case notAuthenticated
     case server(String)
-    case edgeChallenge
     case network
 
     var errorDescription: String? {
         switch self {
         case .notAuthenticated: return "Не авторизован"
         case .server(let message): return message
-        case .edgeChallenge:
-            return "Vercel временно заблокировал текущую сеть. Отключите VPN или смените сеть и попробуйте снова."
         case .network: return "Ошибка сети. Попробуйте ещё раз."
         }
     }
@@ -29,8 +26,6 @@ struct ApiClient {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("ProjectMan-iOS", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 75
 
         if authorized {
@@ -48,13 +43,8 @@ struct ApiClient {
         }
 
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        let httpResponse = response as? HTTPURLResponse
-        let status = httpResponse?.statusCode ?? 0
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status < 200 || status >= 300 {
-            if status == 403,
-               httpResponse?.value(forHTTPHeaderField: "x-vercel-mitigated")?.lowercased() == "challenge" {
-                throw ApiError.edgeChallenge
-            }
             throw ApiError.server(json["error"] as? String ?? "Ошибка сервера (\(status))")
         }
         return json

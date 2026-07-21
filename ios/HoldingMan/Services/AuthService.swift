@@ -310,18 +310,8 @@ final class AuthService: ObservableObject {
     private func bootstrapOrSignOut() async throws {
         do {
             try await ApiClient.bootstrapAuthProfile()
-        } catch ApiError.notAuthenticated {
-            try? Auth.auth().signOut()
-            throw ApiError.notAuthenticated
-        } catch ApiError.server(let message)
-                    where message == "Unauthorized" || message.contains("другой способ входа") {
-            try? Auth.auth().signOut()
-            throw ApiError.server(message)
         } catch {
-            // Не уничтожаем корректную Firebase-сессию из-за временной сети,
-            // Vercel challenge или недоступности bootstrap API. AppState всё
-            // равно откроет существующий профиль из Firestore, а bootstrap
-            // повторится при следующем восстановлении сессии.
+            try? Auth.auth().signOut()
             throw error
         }
     }
