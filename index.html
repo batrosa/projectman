@@ -19,9 +19,9 @@
     <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=77.0" as="style">
-    <link rel="stylesheet" href="style.css?v=77.0">
-    <link rel="stylesheet" href="mobile-additions.css?v=17.0">
+    <link rel="preload" href="style.css?v=78.0" as="style">
+    <link rel="stylesheet" href="style.css?v=78.0">
+    <link rel="stylesheet" href="mobile-additions.css?v=18.0">
 
     <!-- Preconnect to external resources for faster loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=92.0" defer></script>
+    <script src="script.js?v=93.0" defer></script>
 </head>
 
 <body>
@@ -972,6 +972,10 @@
                     <p id="project-desc">или создайте новый, чтобы начать работу</p>
                 </div>
                 <div class="actions">
+                    <button id="task-archive-btn" class="secondary-btn" style="display: none;" title="Архив завершённых задач">
+                        <i class="fa-solid fa-box-archive"></i> <span>Архив задач</span>
+                        <span id="task-archive-count" class="task-archive-count">0</span>
+                    </button>
                     <button id="project-files-btn" class="secondary-btn" style="display: none;" title="Файлы проекта">
                         <i class="fa-solid fa-folder-open"></i> <span>Файлы проекта</span>
                     </button>
@@ -996,66 +1000,38 @@
                     </button>
                 </div>
 
-                <div class="board-tabs" id="board-tabs">
-                    <button class="board-tab active" type="button" data-view="assigned">
-                        <span class="board-tab-label">Назначенные</span>
-                        <span class="board-tab-count" id="tab-count-assigned">0</span>
-                    </button>
-                    <button class="board-tab" type="button" data-view="in-progress">
-                        <span class="board-tab-label">В работе</span>
-                        <span class="board-tab-count" id="tab-count-in-progress">0</span>
-                    </button>
-                    <button class="board-tab" type="button" data-view="review">
-                        <span class="board-tab-label">На проверке</span>
-                        <span class="board-tab-count" id="tab-count-review">0</span>
-                    </button>
-                    <button class="board-tab" type="button" data-view="done">
-                        <span class="board-tab-label">Готово</span>
-                        <span class="board-tab-count" id="tab-count-done">0</span>
-                    </button>
-                </div>
+                <div class="kanban-columns" id="kanban-columns">
+                    <div class="column active" id="column-assigned" data-view="assigned">
+                        <div class="column-header col-assigned">
+                            <i class="fa-solid fa-circle-exclamation"></i>
+                            <h2>Назначенные</h2>
+                            <span class="count" id="count-assigned">0</span>
+                        </div>
+                        <div class="task-list" id="list-assigned">
+                            <!-- Tasks -->
+                        </div>
+                    </div>
 
-                <div class="column active" id="column-assigned" data-view="assigned">
-                    <div class="column-header">
-                        <span class="status-indicator todo"></span>
-                        <h2>Назначенные</h2>
-                        <span class="count" id="count-assigned">0</span>
+                    <div class="column active" id="column-in-progress" data-view="in-progress">
+                        <div class="column-header col-in-progress">
+                            <i class="fa-solid fa-person-digging"></i>
+                            <h2>В работе</h2>
+                            <span class="count" id="count-in-progress">0</span>
+                        </div>
+                        <div class="task-list" id="list-in-progress">
+                            <!-- Tasks -->
+                        </div>
                     </div>
-                    <div class="task-list" id="list-assigned">
-                        <!-- Tasks -->
-                    </div>
-                </div>
 
-                <div class="column" id="column-in-progress" data-view="in-progress">
-                    <div class="column-header">
-                        <span class="status-indicator in-progress"></span>
-                        <h2>В работе</h2>
-                        <span class="count" id="count-in-progress">0</span>
-                    </div>
-                    <div class="task-list" id="list-in-progress">
-                        <!-- Tasks -->
-                    </div>
-                </div>
-
-                <div class="column" id="column-review" data-view="review">
-                    <div class="column-header">
-                        <span class="status-indicator review"></span>
-                        <h2>На проверке</h2>
-                        <span class="count" id="count-review">0</span>
-                    </div>
-                    <div class="task-list" id="list-review">
-                        <!-- Tasks -->
-                    </div>
-                </div>
-
-                <div class="column" id="column-done" data-view="done">
-                    <div class="column-header">
-                        <span class="status-indicator done"></span>
-                        <h2>Готово</h2>
-                        <span class="count" id="count-done">0</span>
-                    </div>
-                    <div class="task-list" id="list-done">
-                        <!-- Tasks -->
+                    <div class="column active" id="column-review" data-view="review">
+                        <div class="column-header col-review">
+                            <i class="fa-solid fa-clock"></i>
+                            <h2>На проверке</h2>
+                            <span class="count" id="count-review">0</span>
+                        </div>
+                        <div class="task-list" id="list-review">
+                            <!-- Tasks -->
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1621,8 +1597,9 @@
                     <h3><i class="fa-solid fa-table-columns"></i> Виды проекта: Канбан, Гант, Календарь</h3>
                     <p>Под активным проектом в боковом меню — переключатель из трёх видов:</p>
                     <ul>
-                        <li><strong>Канбан:</strong> Колонки по статусам (Назначенные, В работе, На проверке, Готово).
-                            Перетаскивайте карточки или меняйте статус через клик по бейджу статуса</li>
+                        <li><strong>Канбан:</strong> Три активные колонки одновременно: «Назначенные», «В работе» и
+                            «На проверке». Завершённые задачи находятся в кнопке «Архив задач» над доской. Меняйте
+                            статус через клик по бейджу статуса</li>
                         <li><strong>Гант:</strong> Дорожная карта — полосы задач по датам (от создания до дедлайна),
                             год по месяцам. Клик по названию месяца — детализация по дням, «Весь год» — назад</li>
                         <li><strong>Календарь:</strong> Задачи проекта по дедлайнам на месячной сетке. Клик по дню —
@@ -1906,6 +1883,22 @@
         </div>
     </div>
 
+    <!-- Completed tasks are kept outside the active Kanban workflow. -->
+    <div id="task-archive-modal" class="modal">
+        <div class="modal-content task-archive-modal-content">
+            <div class="modal-header task-archive-header">
+                <div>
+                    <h2><i class="fa-solid fa-box-archive"></i> Архив задач</h2>
+                    <p id="task-archive-subtitle">Завершённые задачи проекта</p>
+                </div>
+                <button class="close-modal" aria-label="Закрыть архив"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="task-archive-list" class="task-archive-list">
+                <!-- Completed task cards are rendered here -->
+            </div>
+        </div>
+    </div>
+
     <!-- Completion Proof Modal (when executor completes task) -->
     <div id="completion-proof-modal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
@@ -2184,11 +2177,6 @@
                 style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
                 <i class="fa-solid fa-clock" style="color:#eab308;width:20px;"></i>
                 <span>На проверке</span>
-            </button>
-            <button type="button" data-view="done"
-                style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 18px;border:none;border-radius:14px;background:transparent;color:var(--text-primary,#f8fafc);font-size:16px;font-weight:500;cursor:pointer;">
-                <i class="fa-solid fa-check" style="color:#6366f1;width:20px;"></i>
-                <span>Готово</span>
             </button>
         </div>
     </div>

@@ -69,12 +69,21 @@
         min-height: 50px;
     }
 
+    #task-archive-btn,
     #project-files-btn {
         flex: 1 1 auto;
         justify-content: center;
         min-height: 50px;
         padding: 0.875rem 1rem;
         margin-right: 0.75rem;
+    }
+
+    #task-archive-btn {
+        flex-basis: calc(50% - 0.5rem);
+    }
+
+    #project-files-btn {
+        flex-basis: calc(50% - 0.5rem);
     }
 
     #help-btn {
@@ -143,6 +152,21 @@
     }
 
     .board-container.active {
+        display: flex !important;
+    }
+
+    .kanban-columns {
+        display: block;
+        flex: 0 0 auto;
+        min-height: auto;
+        overflow: visible;
+    }
+
+    .kanban-columns .column {
+        display: none !important;
+    }
+
+    .kanban-columns .column.active {
         display: flex !important;
     }
 
