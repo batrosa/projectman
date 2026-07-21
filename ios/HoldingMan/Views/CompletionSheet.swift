@@ -140,7 +140,12 @@ struct CompletionSheet: View {
                     return
                 }
                 let name = "photo-\(Int(Date().timeIntervalSince1970)).jpg"
-                let ref = try await CloudinaryService.upload(data: data, filename: name)
+                let ref = try await CloudinaryService.upload(
+                    data: data,
+                    filename: name,
+                    projectId: task.projectId,
+                    purpose: "completion_proof"
+                )
                 proofs.append(ref)
             } catch {
                 errorMessage = (error as? ApiError)?.errorDescription ?? "Не удалось загрузить фото"
@@ -158,7 +163,12 @@ struct CompletionSheet: View {
                 let accessing = url.startAccessingSecurityScopedResource()
                 defer { if accessing { url.stopAccessingSecurityScopedResource() } }
                 let data = try Data(contentsOf: url)
-                let ref = try await CloudinaryService.upload(data: data, filename: url.lastPathComponent)
+                let ref = try await CloudinaryService.upload(
+                    data: data,
+                    filename: url.lastPathComponent,
+                    projectId: task.projectId,
+                    purpose: "completion_proof"
+                )
                 proofs.append(ref)
             } catch {
                 errorMessage = (error as? ApiError)?.errorDescription ?? "Не удалось загрузить файл"

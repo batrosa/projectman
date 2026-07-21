@@ -8,10 +8,9 @@ const firebaseConfig = {
     appId: "1:52414300696:web:8dd04516cfd1c9668b796d"
 };
 
-// Cloudinary Config for file uploads
+// File limits are mirrored by /api/files. Cloudinary credentials and signing
+// live exclusively on the server; the browser never receives api_secret.
 const cloudinaryConfig = {
-    cloudName: "dwoa1lqz1",
-    uploadPreset: "projectman",
     maxFileSize: 10 * 1024 * 1024, // 10 MB
     maxFiles: 2
 };
@@ -289,12 +288,48 @@ function sanitizeAttachmentUrl(url) {
     return '#';
 }
 
-// Upload file to Cloudinary
-async function uploadToCloudinary(file) {
+async function callFilesApi(action, payload = {}) {
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) throw new Error('Не авторизован');
+    const idToken = await currentUser.getIdToken();
+    const response = await fetch('/api/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ action, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Ошибка файлового хранилища');
+    return result;
+}
+
+function attachmentIsReady(attachment) {
+    return Boolean(attachment && !attachment.uploading && (attachment.url || attachment.publicId));
+}
+
+async function getAttachmentDownloadUrl(attachment) {
+    if (attachment?.storageProvider === 'cloudinary' && attachment.publicId) {
+        const result = await callFilesApi('download', { file: attachment });
+        return sanitizeAttachmentUrl(result.url);
+    }
+    return sanitizeAttachmentUrl(attachment?.url);
+}
+
+// Request a short-lived signature from our API, upload directly to Cloudinary,
+// then let the API verify the real asset before returning a safe file reference.
+async function uploadToCloudinary(file, purpose, projectId) {
+    if (!projectId) throw new Error('Проект не выбран');
+    const signed = await callFilesApi('signUpload', {
+        purpose,
+        projectId,
+        filename: file.name,
+        mimeType: file.type || null,
+        sizeBytes: file.size,
+        fileType: getFileType(file.name),
+    });
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-    // Folder is already defined in the Preset settings
+    Object.entries(signed.fields || {}).forEach(([key, value]) => formData.append(key, String(value)));
+    formData.append('api_key', signed.apiKey);
 
     // Create abort controller for timeout
     const controller = new AbortController();
@@ -305,7 +340,7 @@ async function uploadToCloudinary(file) {
         const startTime = Date.now();
 
         const response = await fetch(
-            `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`,
+            signed.uploadUrl,
             {
                 method: 'POST',
                 body: formData,
@@ -330,8 +365,8 @@ async function uploadToCloudinary(file) {
         }
 
         const result = await response.json();
-        console.log('Upload complete:', result.secure_url);
-        return result;
+        const finalized = await callFilesApi('finalizeUpload', { intentId: signed.intentId });
+        return finalized.file;
     } catch (error) {
         clearTimeout(timeoutId);
         console.error('Upload fetch error:', error);
@@ -391,7 +426,7 @@ async function handleFileSelect(event) {
     try {
         console.log('Uploading to Cloudinary...');
         // Upload to Cloudinary
-        const result = await uploadToCloudinary(file);
+        const result = await uploadToCloudinary(file, 'task_attachment', state.activeProjectId);
         console.log('Upload result:', result);
 
         // Update attachment with real data
@@ -399,11 +434,9 @@ async function handleFileSelect(event) {
         if (index !== -1) {
             pendingAttachments[index] = {
                 name: file.name,
-                url: result.secure_url,
-                type: fileType,
-                size: file.size,
-                publicId: result.public_id,
-                uploadedAt: new Date().toISOString()
+                ...result,
+                type: result.type || fileType,
+                size: result.size || file.size
             };
         }
 
@@ -479,31 +512,36 @@ function updateAddAttachmentBtn() {
 }
 
 // Open file preview
-function openFilePreview(attachment) {
+async function openFilePreview(attachment) {
     console.log('Opening file preview:', attachment);
 
-    if (!attachment || !attachment.url) {
-        console.error('Invalid attachment or missing URL:', attachment);
+    if (!attachment || (!attachment.url && !attachment.publicId)) {
+        console.error('Invalid attachment or missing storage reference:', attachment);
         alert('Ошибка: файл не найден');
         return;
     }
 
     const fileType = attachment.type || getFileType(attachment.name);
     console.log('File type:', fileType);
-    console.log('File URL:', attachment.url);
-
-    const safeUrl = sanitizeAttachmentUrl(attachment.url);
+    const pendingWindow = window.open('', '_blank');
+    let safeUrl;
+    try {
+        safeUrl = await getAttachmentDownloadUrl(attachment);
+    } catch (error) {
+        if (pendingWindow) pendingWindow.close();
+        alert('Не удалось получить файл: ' + error.message);
+        return;
+    }
+    if (!safeUrl || safeUrl === '#') {
+        if (pendingWindow) pendingWindow.close();
+        alert('Некорректная ссылка на файл');
+        return;
+    }
 
     // 1. OFFICE DOCUMENTS (Word, Excel) -> Download directly (most reliable)
     if (['word', 'excel'].includes(fileType)) {
-        // Create download link
-        const link = document.createElement('a');
-        link.href = safeUrl;
-        link.download = attachment.name || 'file';
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (pendingWindow) pendingWindow.location.href = safeUrl;
+        else window.location.href = safeUrl;
         playClickSound();
         return;
     }
@@ -512,9 +550,8 @@ function openFilePreview(attachment) {
     // 3. ARCHIVES/OTHERS -> Direct (will trigger download)
 
     // Try opening directly
-    const newWindow = window.open(safeUrl, '_blank');
-
-    if (!newWindow) {
+    if (pendingWindow) pendingWindow.location.href = safeUrl;
+    else {
         alert('Не удалось открыть файл. Возможно, заблокировано всплывающее окно.');
     }
 
@@ -563,17 +600,10 @@ function openFilesListModal(attachments) {
 
         const item = document.createElement('div');
         item.className = 'file-list-item';
-        // Force download URL (clean), guarding against non-http(s) schemes
-        // (e.g. javascript:) in a Firestore-sourced attachment.url.
-        let downloadUrl = sanitizeAttachmentUrl(attachment.url);
-
-        // Google Docs Viewer URL for Office files
-        let viewUrl = downloadUrl;
+        const legacyDownloadUrl = sanitizeAttachmentUrl(attachment.url);
         let isViewable = true;
 
-        if (['word', 'excel', 'ppt'].includes(fileType)) {
-            viewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(downloadUrl)}&embedded=false`;
-        } else if (!['pdf', 'image'].includes(fileType)) {
+        if (!['pdf', 'image', 'word', 'excel', 'ppt'].includes(fileType)) {
             // For archives etc, view acts same as download
             isViewable = false;
         }
@@ -591,17 +621,18 @@ function openFilesListModal(attachments) {
                 <div class="action-btn view-btn" title="Просмотреть">
                     <i class="fa-solid fa-eye"></i>
                 </div>` : ''}
-                <a href="${escapeHtml(downloadUrl)}" target="_blank" download="${escapeHtml(attachment.name)}" class="action-btn download-link" title="Скачать">
+                <a href="${escapeHtml(legacyDownloadUrl)}" target="_blank" download="${escapeHtml(attachment.name)}" class="action-btn download-link" title="Скачать">
                     <i class="fa-solid fa-download"></i>
                 </a>
             </div>
         `;
 
         // Click handler
-        item.onclick = (e) => {
-            // Handle download link click - stop propagation
+        item.onclick = async (e) => {
             if (e.target.closest('.download-link')) {
+                e.preventDefault();
                 e.stopPropagation();
+                await openFilePreview(attachment);
                 return;
             }
 
@@ -609,8 +640,7 @@ function openFilesListModal(attachments) {
             if (isViewable) {
                 e.stopPropagation();
                 modal.classList.remove('active');
-                window.open(viewUrl, '_blank');
-                playClickSound();
+                await openFilePreview(attachment);
             }
         };
 
@@ -2398,11 +2428,15 @@ function renderProjectFilesList() {
 
         const item = document.createElement('div');
         item.className = 'file-list-item';
-        if (file.url) {
+        if (file.url || file.storage?.publicId) {
             item.style.cursor = 'pointer';
-            item.onclick = () => {
-                const safeUrl = sanitizeAttachmentUrl(file.url);
-                if (safeUrl) window.open(safeUrl, '_blank', 'noopener');
+            item.onclick = async () => {
+                await openFilePreview(file.storage || {
+                    name: file.filename,
+                    type: fileType,
+                    size: file.sizeBytes,
+                    url: file.url,
+                });
             };
         }
 
@@ -2497,56 +2531,10 @@ async function deleteProjectFile(fileId, filename) {
     }
 }
 
-// Upload a project-level document to Cloudinary as a raw resource (not the
-// per-task attachment picker), then register it via POST /api/project-files
-// so the server can create the Firestore doc and run background text
-// extraction. Kept separate from uploadToCloudinary()/handleFileSelect()
-// (which power task attachments) since project files use resource_type=raw
-// and a different set of allowed extensions.
+// Project-level documents use the same signed pipeline, with a stricter
+// server-side allow-list and manager-only authorization.
 const PROJECT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const PROJECT_FILE_ALLOWED_EXTENSIONS = ['md', 'xlsx', 'xlsm', 'pdf', 'docx'];
-
-async function uploadProjectFileToCloudinary(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-    try {
-        const response = await fetch(
-            `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/raw/upload`,
-            {
-                method: 'POST',
-                body: formData,
-                mode: 'cors',
-                signal: controller.signal
-            }
-        );
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            let errorMsg = response.statusText;
-            try {
-                const errorData = await response.json();
-                errorMsg = errorData.error?.message || response.statusText;
-            } catch (e) { /* ignore parse failure */ }
-            throw new Error(errorMsg);
-        }
-
-        return await response.json();
-    } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            throw new Error('Загрузка слишком долгая. Проверьте интернет или попробуйте файл меньшего размера');
-        }
-        if (error.message === 'Failed to fetch' || error.message === 'Load failed') {
-            throw new Error('Ошибка сети. Проверьте подключение к интернету');
-        }
-        throw error;
-    }
-}
 
 async function handleProjectFileSelect(event) {
     const file = event.target.files[0];
@@ -2583,7 +2571,7 @@ async function handleProjectFileSelect(event) {
         }
         const idToken = await currentUser.getIdToken();
 
-        const uploadResult = await uploadProjectFileToCloudinary(file);
+        const uploadResult = await uploadToCloudinary(file, 'project_file', projectId);
 
         const response = await fetch('/api/project-files', {
             method: 'POST',
@@ -2591,7 +2579,7 @@ async function handleProjectFileSelect(event) {
             body: JSON.stringify({
                 projectId,
                 filename: file.name,
-                url: uploadResult.secure_url,
+                storage: uploadResult,
                 mimeType: file.type || null,
                 sizeBytes: file.size,
                 uploadedBy: state.currentUser?.uid || null,
@@ -4011,15 +3999,14 @@ async function handleCompletionFileSelect(event) {
     renderCompletionAttachments();
 
     try {
-        const result = await uploadToCloudinary(file);
+        const taskId = document.getElementById('completion-task-id')?.value;
+        const task = findLoadedTask(taskId);
+        const result = await uploadToCloudinary(file, 'completion_proof', task?.projectId);
 
         completionProofAttachments[tempIndex] = {
-            name: file.name,
-            url: result.secure_url,
-            type: fileType,
-            size: file.size,
-            publicId: result.public_id,
-            uploadedAt: new Date().toISOString()
+            ...result,
+            type: result.type || fileType,
+            size: result.size || file.size
         };
 
         renderCompletionAttachments();
@@ -4044,7 +4031,7 @@ function submitCompletionProof(e) {
     }
 
     // Check that at least one file is uploaded and all files are done uploading
-    const uploadedFiles = completionProofAttachments.filter(a => a.url && !a.uploading);
+    const uploadedFiles = completionProofAttachments.filter(attachmentIsReady);
     const isUploading = completionProofAttachments.some(a => a.uploading);
 
     if (isUploading) {
@@ -5566,7 +5553,7 @@ function setupEventListeners() {
 
         try {
             // Prepare attachments (filter out any still uploading)
-            const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
+            const attachments = pendingAttachments.filter(attachmentIsReady);
 
             // Get creator name
             const createdBy = state.currentUser ?
@@ -5662,7 +5649,7 @@ function setupEventListeners() {
 
             if (taskId) {
                 // Prepare attachments (filter out any still uploading)
-                const attachments = pendingAttachments.filter(a => !a.uploading && a.url);
+                const attachments = pendingAttachments.filter(attachmentIsReady);
 
                 // Update existing task
                 const previousTask = findLoadedTask(taskId);

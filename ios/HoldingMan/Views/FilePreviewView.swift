@@ -82,7 +82,22 @@ private enum RemoteFilePreviewLoader {
     static let maxBytes = 25 * 1024 * 1024
 
     static func download(file: FileRef) async throws -> URL {
-        guard let remoteURL = URL(string: file.url), remoteURL.scheme?.lowercased() == "https" else {
+        let remoteURL: URL
+        if file.storageProvider == "cloudinary", file.publicId != nil {
+            let json = try await ApiClient.post("api/files", body: [
+                "action": "download",
+                "file": file.dict,
+            ])
+            guard let urlString = json["url"] as? String, let signedURL = URL(string: urlString) else {
+                throw ApiError.server("Сервер не выдал ссылку на файл.")
+            }
+            remoteURL = signedURL
+        } else if let legacyURL = URL(string: file.url) {
+            remoteURL = legacyURL
+        } else {
+            throw ApiError.server("Некорректная или небезопасная ссылка на файл.")
+        }
+        guard remoteURL.scheme?.lowercased() == "https" else {
             throw ApiError.server("Некорректная или небезопасная ссылка на файл.")
         }
 

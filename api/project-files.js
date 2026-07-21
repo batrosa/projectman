@@ -9,6 +9,11 @@ import { waitUntil } from "@vercel/functions";
 import { adminDb, adminAuth } from "../lib/firebase-admin.js";
 import { extractMaterialText } from "../lib/material-parser.js";
 import { buildProjectKnowledgeIndex, PROJECT_KNOWLEDGE_VERSION } from "../lib/project-knowledge.js";
+import {
+  createPrivateDownloadUrl,
+  destroyAsset,
+  isSecureStorageRef,
+} from "../lib/cloudinary-files.js";
 
 export const ALLOWED_EXTENSIONS = ["md", "xlsx", "xlsm", "pdf", "docx"];
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -28,9 +33,9 @@ export function isAllowedFileUrl(url) {
 
 // Pure validation logic, extracted so it can be unit tested without touching
 // Firestore/network. Returns { ok: true } or { ok: false, status, error }.
-export function validateUpload({ projectId, filename, url, sizeBytes }) {
-  if (!projectId || !filename || !url) {
-    return { ok: false, status: 400, error: "projectId, filename and url are required" };
+export function validateUpload({ projectId, filename, url, storage, sizeBytes }) {
+  if (!projectId || !filename || (!url && !storage)) {
+    return { ok: false, status: 400, error: "projectId, filename and file storage are required" };
   }
 
   const ext = extensionOf(filename);
@@ -113,11 +118,9 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "Invalid JSON body" });
   }
 
-  // DELETE removes a project file's Firestore doc (which is what the AI agent
-  // reads and what the UI lists). We intentionally do not delete the underlying
-  // Cloudinary raw asset: unsigned uploads give us no api_secret to sign a
-  // destroy call, and the orphaned blob is unreferenced/harmless once its
-  // Firestore doc is gone. Same org-scope + manage-rights bar as upload —
+  // DELETE removes both the authenticated Cloudinary asset and its Firestore
+  // metadata. Legacy public files remain metadata-only until the one-time
+  // migration converts them to authenticated resources. Same authorization —
   // owner/admin (or a moderator with access to this project) may remove a
   // file; employees/readers cannot (see callerCanManageProjectFiles below).
   if (request.method === "DELETE") {
@@ -146,8 +149,19 @@ export default async function handler(request, response) {
       return response.status(403).json({ error: "Forbidden — no access to this project" });
     }
 
+    const fileRef = db.collection("projects").doc(projectId).collection("files").doc(fileId);
+    let fileData;
     try {
-      await db.collection("projects").doc(projectId).collection("files").doc(fileId).delete();
+      const fileDoc = await fileRef.get();
+      if (!fileDoc.exists) return response.status(404).json({ error: "File not found" });
+      fileData = fileDoc.data();
+      if (fileData.storage && isSecureStorageRef(fileData.storage)) {
+        const deletion = await destroyAsset(fileData.storage);
+        if (!["ok", "not found"].includes(deletion.result)) {
+          return response.status(502).json({ error: "Cloud storage deletion failed" });
+        }
+      }
+      await fileRef.delete();
     } catch (error) {
       console.error("project-files: failed to delete file doc", error);
       return response.status(500).json({ error: "Failed to delete file" });
@@ -164,14 +178,17 @@ export default async function handler(request, response) {
     return handleRetry({ response, callerOrgId, callerOrgRole, callerAllowedProjects, body });
   }
 
-  const { projectId, filename, url, mimeType, sizeBytes } = body;
+  const { projectId, filename, url, storage, mimeType, sizeBytes } = body;
 
-  const validation = validateUpload({ projectId, filename, url, sizeBytes });
+  const validation = validateUpload({ projectId, filename, url, storage, sizeBytes });
   if (!validation.ok) {
     return response.status(validation.status).json({ error: validation.error });
   }
 
-  if (!isAllowedFileUrl(url)) {
+  if (storage && (!isSecureStorageRef(storage) || storage.projectId !== projectId)) {
+    return response.status(400).json({ error: "Invalid secure file reference" });
+  }
+  if (!storage && !isAllowedFileUrl(url)) {
     return response.status(400).json({ error: "Invalid file URL" });
   }
 
@@ -219,7 +236,7 @@ export default async function handler(request, response) {
     fileRef = db.collection("projects").doc(projectId).collection("files").doc();
     await fileRef.set({
       filename,
-      url,
+      ...(storage ? { storage } : { url }),
       mimeType: mimeType || null,
       sizeBytes: sizeBytes || null,
       uploadedBy: decoded.uid, // from the verified token, never client-supplied (was spoofable)
@@ -247,7 +264,7 @@ export default async function handler(request, response) {
   // verify actual serverless behavior in this sandbox (no live Vercel
   // deploy), so we add waitUntil proactively rather than shipping a known,
   // plan-acknowledged reliability gap.
-  const extraction = extractInBackground(fileRef, { filename, url, mimeType }).catch((error) => {
+  const extraction = extractInBackground(fileRef, { filename, url, storage, mimeType }).catch((error) => {
     console.error("background extraction failed", error);
   });
   try {
@@ -318,6 +335,7 @@ async function handleRetry({ response, callerOrgId, callerOrgRole, callerAllowed
   const extraction = extractInBackground(fileRef, {
     filename: fileData.filename,
     url: fileData.url,
+    storage: fileData.storage,
     mimeType: fileData.mimeType,
   }).catch((error) => {
     console.error("background extraction failed (retry)", error);
@@ -332,20 +350,23 @@ async function handleRetry({ response, callerOrgId, callerOrgRole, callerAllowed
   return response.status(200).json({ ok: true, fileId });
 }
 
-async function extractInBackground(fileRef, { filename, url, mimeType }) {
+async function extractInBackground(fileRef, { filename, url, storage, mimeType }) {
   try {
     // Defense in depth: extractInBackground is only ever invoked right after
     // the request-time isAllowedFileUrl() check below, but re-checking here
     // means this function is safe to fetch() from even if a future caller
     // wires it up without going through the handler's guard.
-    if (!isAllowedFileUrl(url)) {
+    if (!storage && !isAllowedFileUrl(url)) {
       throw new Error("Blocked non-Cloudinary file URL");
     }
     // Enforce the REAL file size server-side. validateUpload() only sees the
     // client-declared sizeBytes; the actual Cloudinary asset could be larger.
     // downloadCapped streams with a hard cap and aborts once exceeded, so an
     // oversized asset can't exhaust the function's memory.
-    const buffer = await downloadCapped(url, MAX_FILE_BYTES);
+    const downloadUrl = storage && isSecureStorageRef(storage)
+      ? createPrivateDownloadUrl({ ...storage, filename })
+      : url;
+    const buffer = await downloadCapped(downloadUrl, MAX_FILE_BYTES);
     const base64 = buffer.toString("base64");
 
     const result = await extractMaterialText({ filename, contentType: mimeType || "", base64 });
