@@ -49,7 +49,7 @@ final class AuthService: ObservableObject {
             let result = try await Auth.auth().createUser(withEmail: normalizedEmail, password: password)
             pendingVerificationEmail = result.user.email ?? normalizedEmail
             try await result.user.sendEmailVerification()
-            setStatus("Письмо отправлено. Подтвердите email, чтобы продолжить.", success: true)
+            setStatus("Письмо отправлено. Подтвердите email, чтобы продолжить. Если его нет во входящих, проверьте папку «Спам».", success: true)
         } catch {
             setStatus(Self.ruAuthError(error))
         }
@@ -92,7 +92,7 @@ final class AuthService: ObservableObject {
         do {
             Auth.auth().languageCode = "ru"
             try await Auth.auth().sendPasswordReset(withEmail: normalizedEmail)
-            setStatus("Ссылка для восстановления пароля отправлена на почту.", success: true)
+            setStatus("Ссылка для восстановления пароля отправлена. Если письма нет во входящих, проверьте папку «Спам».", success: true)
         } catch {
             setStatus(Self.ruAuthError(error))
         }
@@ -143,7 +143,7 @@ final class AuthService: ObservableObject {
         do {
             Auth.auth().languageCode = "ru"
             try await user.sendEmailVerification()
-            setStatus("Новое письмо отправлено.", success: true)
+            setStatus("Новое письмо отправлено. Проверьте входящие и папку «Спам».", success: true)
         } catch {
             setStatus(Self.ruAuthError(error))
         }

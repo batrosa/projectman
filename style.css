@@ -1680,6 +1680,20 @@ body.light-mode .login-overlay {
     line-height: 1.55;
 }
 
+.email-verification-panel .email-verification-spam-note {
+    width: 100%;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    border: 1px solid rgba(245, 158, 11, 0.24);
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+    font-weight: 600;
+}
+
+.email-verification-spam-note i {
+    margin-right: 0.35rem;
+}
+
 .email-verification-panel strong {
     color: var(--text-primary);
     overflow-wrap: anywhere;

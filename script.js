@@ -5219,7 +5219,7 @@ function setupEventListeners() {
         setButtonLoading(button, true, 'Отправляем…');
         try {
             await auth.sendPasswordResetEmail(email);
-            setLoginErrorMessage('Письмо для восстановления пароля отправлено.', 'success');
+            setLoginErrorMessage('Письмо для восстановления пароля отправлено. Если его нет во входящих, проверьте папку «Спам».', 'success');
         } catch (error) {
             setLoginErrorMessage(emailAuthErrorMessage(error));
         } finally {

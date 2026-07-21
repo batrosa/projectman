@@ -19,8 +19,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=80.0" as="style">
-    <link rel="stylesheet" href="style.css?v=80.0">
+    <link rel="preload" href="style.css?v=81.0" as="style">
+    <link rel="stylesheet" href="style.css?v=81.0">
     <link rel="stylesheet" href="mobile-additions.css?v=18.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=94.0" defer></script>
+    <script src="script.js?v=95.0" defer></script>
 </head>
 
 <body>
@@ -634,6 +634,7 @@
                 <h3>Подтвердите регистрацию</h3>
                 <p>Мы отправили письмо на <strong id="email-verification-address"></strong>.</p>
                 <p>Перейдите по ссылке в письме. После подтверждения откроется окно, где нужно указать имя и фамилию.</p>
+                <p class="email-verification-spam-note"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Если письма нет во входящих, обязательно проверьте папку «Спам».</p>
                 <button id="email-verification-check" class="auth-submit-btn" type="button">
                     <i class="fa-solid fa-rotate" aria-hidden="true"></i>
                     <span>Я подтвердил почту</span>

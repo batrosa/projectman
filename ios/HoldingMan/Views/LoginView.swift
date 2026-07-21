@@ -149,7 +149,7 @@ struct LoginView: View {
                 .foregroundStyle(Theme.primary)
                 .disabled(auth.isBusy)
             } else {
-                Label("После регистрации мы отправим письмо. Подтвердите email — затем откроется ввод имени и фамилии.", systemImage: "info.circle")
+                Label("После регистрации мы отправим письмо. Подтвердите email — затем откроется ввод имени и фамилии. Если письма нет во входящих, проверьте папку «Спам».", systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -234,7 +234,7 @@ struct LoginView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Text("Перейдите по ссылке в письме, вернитесь в приложение и нажмите кнопку ниже. После подтверждения откроется ввод имени и фамилии.")
+            Text("Перейдите по ссылке в письме, вернитесь в приложение и нажмите кнопку ниже. После подтверждения откроется ввод имени и фамилии. Если письма нет во входящих, обязательно проверьте папку «Спам».")
                 .font(.footnote)
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
