@@ -8690,13 +8690,18 @@ body.light-mode .gantt-container {
     backdrop-filter: blur(8px);
 }
 
-.gantt-year-nav {
+.gantt-toolbar-controls,
+.gantt-period-nav {
     display: flex;
     align-items: center;
     gap: 0.4rem;
 }
 
-.gantt-year-btn {
+.gantt-toolbar-controls {
+    gap: 0.65rem;
+}
+
+.gantt-period-btn {
     width: 34px;
     height: 34px;
     border-radius: 10px;
@@ -8710,13 +8715,14 @@ body.light-mode .gantt-container {
     transition: all 0.15s ease;
 }
 
-.gantt-year-btn:hover {
+.gantt-period-btn:hover {
     border-color: rgba(148, 163, 184, 0.35);
     color: var(--text-primary);
     background: rgba(148, 163, 184, 0.08);
 }
 
-.gantt-year-select {
+.gantt-period-select {
+    min-width: 118px;
     padding: 0.45rem 0.9rem;
     border-radius: 10px;
     border: 1px solid var(--border);
@@ -8727,32 +8733,49 @@ body.light-mode .gantt-container {
     cursor: pointer;
 }
 
-/* Back-to-year button, visible only inside a month drill-down */
-.gantt-back-btn {
+.gantt-period-select.month-mode {
+    min-width: 142px;
+}
+
+.gantt-scale-switch {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    white-space: nowrap;
-    height: 34px;
-    padding: 0 0.9rem;
-    border-radius: 10px;
-    border: 1px solid rgba(99, 102, 241, 0.45);
-    background: rgba(99, 102, 241, 0.2);
-    color: var(--primary);
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--gantt-surface);
+}
+
+.gantt-scale-btn {
+    min-width: 76px;
+    height: 28px;
+    padding: 0 0.75rem;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
     font-weight: 700;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.gantt-back-btn:hover {
-    background: rgba(99, 102, 241, 0.32);
-}
-
-.gantt-period-label {
-    font-weight: 700;
-    font-size: 0.95rem;
+.gantt-scale-btn:hover:not(.active) {
     color: var(--text-primary);
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.gantt-scale-btn.active {
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.35);
+}
+
+.gantt-period-btn:focus-visible,
+.gantt-period-select:focus-visible,
+.gantt-scale-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .gantt-legend {
@@ -8921,17 +8944,6 @@ body.light-mode .gantt-container {
 }
 
 .gantt-month.today {
-    color: var(--primary);
-}
-
-/* Year mode: month headers are the drill-down entry points */
-.gantt-month[data-month] {
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-}
-
-.gantt-month[data-month]:hover {
-    background: rgba(99, 102, 241, 0.16);
     color: var(--primary);
 }
 
@@ -9132,6 +9144,8 @@ body.light-mode .gantt-container {
 @media (max-width: 768px) {
     .gantt-container {
         --gantt-label-w: 120px;
+        width: 100%;
+        min-width: 0;
         padding: 0 0.75rem 0.9rem;
         gap: 0.6rem;
         flex: 1 1 auto;
@@ -9139,33 +9153,52 @@ body.light-mode .gantt-container {
     }
 
     .gantt-toolbar {
+        width: 100%;
+        min-width: 0;
         padding: 0.45rem 0.5rem;
         gap: 0.5rem;
     }
 
-    .gantt-year-btn {
+    .gantt-toolbar-controls {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    .gantt-period-nav,
+    .gantt-scale-switch {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .gantt-period-select,
+    .gantt-scale-btn {
+        flex: 1;
+    }
+
+    .gantt-period-btn {
         width: 30px;
         height: 30px;
         border-radius: 8px;
         font-size: 0.8rem;
     }
 
-    .gantt-year-select {
+    .gantt-period-select {
+        width: 0;
+        min-width: 0;
         padding: 0.35rem 0.55rem;
         font-size: 0.85rem;
         border-radius: 8px;
-        max-width: 46vw;
+        max-width: none;
     }
 
-    .gantt-back-btn {
-        height: 30px;
-        padding: 0 0.7rem;
-        font-size: 0.78rem;
-        border-radius: 8px;
-    }
-
-    .gantt-period-label {
-        font-size: 0.85rem;
+    .gantt-scale-btn {
+        min-width: 66px;
+        height: 26px;
+        padding: 0 0.55rem;
+        font-size: 0.76rem;
     }
 
     .gantt-legend {

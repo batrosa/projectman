@@ -19,8 +19,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=82.0" as="style">
-    <link rel="stylesheet" href="style.css?v=82.0">
+    <link rel="preload" href="style.css?v=83.0" as="style">
+    <link rel="stylesheet" href="style.css?v=83.0">
     <link rel="stylesheet" href="mobile-additions.css?v=18.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=95.0" defer></script>
+    <script src="script.js?v=96.0" defer></script>
 </head>
 
 <body>
@@ -1039,20 +1039,20 @@
                  #board-container / #gantt-container is .active at a time. -->
             <div class="gantt-container" id="gantt-container">
                 <div class="gantt-toolbar">
-                    <div class="gantt-year-nav">
-                        <button type="button" id="gantt-prev-year" class="gantt-year-btn" title="Предыдущий год">
-                            <i class="fa-solid fa-chevron-left"></i>
-                        </button>
-                        <select id="gantt-year-select" class="gantt-year-select" title="Год"></select>
-                        <button type="button" id="gantt-next-year" class="gantt-year-btn" title="Следующий год">
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
-                        <!-- Month drill-down: click a month name in the chart header
-                             to open it; this button (visible only then) goes back -->
-                        <button type="button" id="gantt-back-year" class="gantt-back-btn" style="display: none;">
-                            <i class="fa-solid fa-arrow-left"></i> <span>Весь год</span>
-                        </button>
-                        <span id="gantt-period-label" class="gantt-period-label" style="display: none;"></span>
+                    <div class="gantt-toolbar-controls">
+                        <div class="gantt-period-nav">
+                            <button type="button" id="gantt-prev-period" class="gantt-period-btn" title="Предыдущий год" aria-label="Предыдущий год">
+                                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                            </button>
+                            <select id="gantt-period-select" class="gantt-period-select" title="Год" aria-label="Год"></select>
+                            <button type="button" id="gantt-next-period" class="gantt-period-btn" title="Следующий год" aria-label="Следующий год">
+                                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <div class="gantt-scale-switch" role="group" aria-label="Масштаб диаграммы">
+                            <button type="button" id="gantt-year-mode" class="gantt-scale-btn active" aria-pressed="true">Год</button>
+                            <button type="button" id="gantt-month-mode" class="gantt-scale-btn" aria-pressed="false">Месяц</button>
+                        </div>
                     </div>
                     <div class="gantt-legend">
                         <span class="gantt-legend-item"><span class="gantt-legend-dot assigned"></span>Назначенные</span>
@@ -1607,8 +1607,8 @@
                         <li><strong>Канбан:</strong> Три активные колонки одновременно: «Назначенные», «В работе» и
                             «На проверке». Завершённые задачи находятся в кнопке «Архив задач» над доской. Меняйте
                             статус через клик по бейджу статуса</li>
-                        <li><strong>Гант:</strong> Дорожная карта — полосы задач по датам (от создания до дедлайна),
-                            год по месяцам. Клик по названию месяца — детализация по дням, «Весь год» — назад</li>
+                        <li><strong>Гант:</strong> Дорожная карта — полосы задач по датам (от создания до дедлайна).
+                            Переключатель «Год / Месяц» меняет масштаб, а селектор и стрелки слева выбирают период</li>
                         <li><strong>Календарь:</strong> Задачи проекта по дедлайнам на месячной сетке. Клик по дню —
                             список задач с переходом к карточке</li>
                     </ul>

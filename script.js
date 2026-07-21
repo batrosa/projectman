@@ -1788,7 +1788,7 @@ let state = {
     boardView: 'assigned', // Mobile-only active column: assigned | in-progress | review
     projectView: 'kanban', // 'kanban' | 'gantt' — main-area view for the active project
     ganttYear: null, // Selected Gantt year; null = current year on first render
-    ganttMonth: null, // null = whole year (month columns), 0-11 = that month (day columns)
+    ganttMonth: null, // null = year scale, 0-11 = month scale for that month
     role: 'guest', // Legacy role, now use orgRole
     orgRole: 'employee', // owner / admin / moderator / employee
     initialLoadDone: false, // To prevent selecting first project on every update
@@ -1803,11 +1803,11 @@ const elements = {
     boardContainer: document.getElementById('board-container'),
     ganttContainer: document.getElementById('gantt-container'),
     ganttScroll: document.getElementById('gantt-scroll'),
-    ganttYearSelect: document.getElementById('gantt-year-select'),
-    ganttBackYear: document.getElementById('gantt-back-year'),
-    ganttPeriodLabel: document.getElementById('gantt-period-label'),
-    ganttPrevYear: document.getElementById('gantt-prev-year'),
-    ganttNextYear: document.getElementById('gantt-next-year'),
+    ganttPeriodSelect: document.getElementById('gantt-period-select'),
+    ganttYearMode: document.getElementById('gantt-year-mode'),
+    ganttMonthMode: document.getElementById('gantt-month-mode'),
+    ganttPrevPeriod: document.getElementById('gantt-prev-period'),
+    ganttNextPeriod: document.getElementById('gantt-next-period'),
     ganttNoDeadlineNote: document.getElementById('gantt-no-deadline-note'),
     emptyState: document.getElementById('empty-state'),
     projectTitle: document.getElementById('project-title'),
@@ -2295,7 +2295,8 @@ function generateId() {
 function selectProject(id) {
     state.activeProjectId = id;
     state.boardView = 'assigned'; // Always open "Assigned" first
-    state.ganttMonth = null; // Gantt always opens on the whole year
+    state.ganttYear = new Date().getFullYear();
+    state.ganttMonth = null; // Gantt always opens on the current year
     renderProjects(); // To update active class
     subscribeToProjectTasks(id); // Fetch tasks for this project only
     subscribeToProjectFiles(id); // Fetch project-level files (distinct from task attachments)
@@ -4736,7 +4737,10 @@ function setProjectView(view) {
     const next = ['gantt', 'calendar'].includes(view) ? view : 'kanban';
     if (state.projectView === next) return;
     state.projectView = next;
-    if (next === 'gantt') state.ganttMonth = null; // always start from the year
+    if (next === 'gantt') {
+        state.ganttYear = new Date().getFullYear();
+        state.ganttMonth = null; // always start from the current year
+    }
     if (next === 'calendar') calendarState.currentDate = new Date(); // open on the current month
     renderProjects(); // refresh switcher active state under the project
     renderBoard();    // toggles containers; renders gantt/calendar if needed
@@ -4751,10 +4755,9 @@ let ganttLastScrollKey = null; // "projectId:year" of the last render — keeps
 // scroll position across live task-snapshot re-renders
 let ganttEnterAnim = null; // enter-animation class for the NEXT renderGantt (zoom transitions)
 
-// Year <-> month drill-down with a zoom transition: the current table zooms
-// toward the clicked month (or shrinks back) and fades, then the re-rendered
-// view animates in from the opposite scale. nextMonth null = back to the year.
-function ganttSwitchPeriod(nextMonth, originX) {
+// Year <-> month scale switch with a short zoom transition. nextMonth null =
+// year scale; 0-11 = month scale. The toolbar is the only scale control.
+function ganttSwitchPeriod(nextMonth) {
     const zoomingIn = nextMonth !== null;
     ganttEnterAnim = zoomingIn ? 'gantt-enter-in' : 'gantt-enter-out';
     const apply = () => {
@@ -4768,7 +4771,7 @@ function ganttSwitchPeriod(nextMonth, originX) {
     }
     const scrollEl = elements.ganttScroll;
     const defaultOrigin = scrollEl.scrollLeft + scrollEl.clientWidth / 2;
-    table.style.transformOrigin = `${originX != null ? originX : defaultOrigin}px center`;
+    table.style.transformOrigin = `${defaultOrigin}px center`;
     table.classList.add(zoomingIn ? 'gantt-leave-in' : 'gantt-leave-out');
     setTimeout(apply, 170); // matches the .17s leave transition in style.css
 }
@@ -4789,34 +4792,56 @@ function wireGanttControls() {
     if (ganttUiWired) return;
     ganttUiWired = true;
 
-    if (elements.ganttYearSelect) {
-        elements.ganttYearSelect.addEventListener('change', () => {
+    if (elements.ganttPeriodSelect) {
+        elements.ganttPeriodSelect.addEventListener('change', () => {
             playClickSound();
-            const y = parseInt(elements.ganttYearSelect.value, 10);
-            if (!Number.isNaN(y)) {
-                state.ganttYear = y;
-                renderGantt();
+            const value = parseInt(elements.ganttPeriodSelect.value, 10);
+            if (Number.isNaN(value)) return;
+            if (Number.isInteger(state.ganttMonth)) state.ganttMonth = value;
+            else state.ganttYear = value;
+            renderGantt();
+        });
+    }
+    if (elements.ganttPrevPeriod) {
+        elements.ganttPrevPeriod.addEventListener('click', () => {
+            playClickSound();
+            if (Number.isInteger(state.ganttMonth)) {
+                const previous = new Date(state.ganttYear, state.ganttMonth - 1, 1);
+                state.ganttYear = previous.getFullYear();
+                state.ganttMonth = previous.getMonth();
+            } else {
+                state.ganttYear = (state.ganttYear || new Date().getFullYear()) - 1;
             }
-        });
-    }
-    if (elements.ganttPrevYear) {
-        elements.ganttPrevYear.addEventListener('click', () => {
-            playClickSound();
-            state.ganttYear = (state.ganttYear || new Date().getFullYear()) - 1;
             renderGantt();
         });
     }
-    if (elements.ganttNextYear) {
-        elements.ganttNextYear.addEventListener('click', () => {
+    if (elements.ganttNextPeriod) {
+        elements.ganttNextPeriod.addEventListener('click', () => {
             playClickSound();
-            state.ganttYear = (state.ganttYear || new Date().getFullYear()) + 1;
+            if (Number.isInteger(state.ganttMonth)) {
+                const next = new Date(state.ganttYear, state.ganttMonth + 1, 1);
+                state.ganttYear = next.getFullYear();
+                state.ganttMonth = next.getMonth();
+            } else {
+                state.ganttYear = (state.ganttYear || new Date().getFullYear()) + 1;
+            }
             renderGantt();
         });
     }
-    if (elements.ganttBackYear) {
-        elements.ganttBackYear.addEventListener('click', () => {
+    if (elements.ganttYearMode) {
+        elements.ganttYearMode.addEventListener('click', () => {
+            if (!Number.isInteger(state.ganttMonth)) return;
             playClickSound();
             ganttSwitchPeriod(null);
+        });
+    }
+    if (elements.ganttMonthMode) {
+        elements.ganttMonthMode.addEventListener('click', () => {
+            if (Number.isInteger(state.ganttMonth)) return;
+            playClickSound();
+            const now = new Date();
+            state.ganttYear = now.getFullYear();
+            ganttSwitchPeriod(now.getMonth());
         });
     }
     // Column widths derive from the window width — re-render on resize
@@ -4827,20 +4852,9 @@ function wireGanttControls() {
         ganttResizeTimer = setTimeout(renderGantt, 150);
     });
     if (elements.ganttScroll) {
-        // One delegated handler: a month header cell drills into that month,
-        // a row label or its bar opens the task
+        // A row label or its bar opens the task. Month headers are intentionally
+        // static: scale changes only through the explicit toolbar buttons.
         elements.ganttScroll.addEventListener('click', (e) => {
-            const monthCell = e.target.closest('.gantt-month[data-month]');
-            if (monthCell) {
-                playClickSound();
-                // offsetLeft is relative to .gantt-table (position: relative),
-                // so the zoom originates from the clicked month column
-                ganttSwitchPeriod(
-                    parseInt(monthCell.dataset.month, 10),
-                    monthCell.offsetLeft + monthCell.offsetWidth / 2
-                );
-                return;
-            }
             const row = e.target.closest('[data-gantt-task]');
             if (!row) return;
             const task = state.tasks.find(t => t.id === row.dataset.ganttTask);
@@ -4875,7 +4889,7 @@ function renderGantt() {
         items.push({ task, startMs, endMs });
     });
 
-    // --- year selector: years covered by tasks + current + selected ---
+    // --- toolbar period selector + scale buttons ---
     const currentYear = new Date().getFullYear();
     if (!state.ganttYear) state.ganttYear = currentYear;
     const year = state.ganttYear;
@@ -4884,25 +4898,49 @@ function renderGantt() {
         yearsSet.add(new Date(it.startMs).getFullYear());
         yearsSet.add(new Date(it.endMs).getFullYear());
     });
-    if (elements.ganttYearSelect) {
-        elements.ganttYearSelect.textContent = '';
-        [...yearsSet].sort((a, b) => a - b).forEach(y => {
-            const opt = document.createElement('option');
-            opt.value = String(y);
-            opt.textContent = String(y);
-            if (y === year) opt.selected = true;
-            elements.ganttYearSelect.appendChild(opt);
-        });
-    }
-    // Drill-down state: whole year by default; a month opens by clicking its
-    // name in the chart header, the «Весь год» button goes back
     const monthMode = Number.isInteger(state.ganttMonth);
-    if (elements.ganttBackYear) {
-        elements.ganttBackYear.style.display = monthMode ? 'inline-flex' : 'none';
+    if (elements.ganttPeriodSelect) {
+        elements.ganttPeriodSelect.textContent = '';
+        elements.ganttPeriodSelect.classList.toggle('month-mode', monthMode);
+        if (monthMode) {
+            GANTT_MONTH_NAMES.forEach((name, month) => {
+                const opt = document.createElement('option');
+                opt.value = String(month);
+                opt.textContent = `${name} ${year}`;
+                if (month === state.ganttMonth) opt.selected = true;
+                elements.ganttPeriodSelect.appendChild(opt);
+            });
+            elements.ganttPeriodSelect.title = `Месяц, ${year} год`;
+            elements.ganttPeriodSelect.setAttribute('aria-label', `Месяц, ${year} год`);
+        } else {
+            [...yearsSet].sort((a, b) => a - b).forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = String(y);
+                opt.textContent = String(y);
+                if (y === year) opt.selected = true;
+                elements.ganttPeriodSelect.appendChild(opt);
+            });
+            elements.ganttPeriodSelect.title = 'Год';
+            elements.ganttPeriodSelect.setAttribute('aria-label', 'Год');
+        }
     }
-    if (elements.ganttPeriodLabel) {
-        elements.ganttPeriodLabel.style.display = monthMode ? 'inline' : 'none';
-        if (monthMode) elements.ganttPeriodLabel.textContent = GANTT_MONTH_NAMES[state.ganttMonth];
+    if (elements.ganttPrevPeriod) {
+        const label = monthMode ? 'Предыдущий месяц' : 'Предыдущий год';
+        elements.ganttPrevPeriod.title = label;
+        elements.ganttPrevPeriod.setAttribute('aria-label', label);
+    }
+    if (elements.ganttNextPeriod) {
+        const label = monthMode ? 'Следующий месяц' : 'Следующий год';
+        elements.ganttNextPeriod.title = label;
+        elements.ganttNextPeriod.setAttribute('aria-label', label);
+    }
+    if (elements.ganttYearMode) {
+        elements.ganttYearMode.classList.toggle('active', !monthMode);
+        elements.ganttYearMode.setAttribute('aria-pressed', String(!monthMode));
+    }
+    if (elements.ganttMonthMode) {
+        elements.ganttMonthMode.classList.toggle('active', monthMode);
+        elements.ganttMonthMode.setAttribute('aria-pressed', String(monthMode));
     }
     if (elements.ganttNoDeadlineNote) {
         elements.ganttNoDeadlineNote.textContent = noDeadlineCount
@@ -4998,8 +5036,6 @@ function renderGantt() {
             const mCell = document.createElement('div');
             mCell.className = 'gantt-month'
                 + (year === now.getFullYear() && m === now.getMonth() ? ' today' : '');
-            mCell.dataset.month = String(m); // clickable: drills into this month
-            mCell.title = `Открыть ${GANTT_MONTH_NAMES[m].toLowerCase()} по дням`;
             mCell.style.width = colW + 'px';
             mCell.textContent = colW < 70 ? GANTT_MONTH_NAMES[m].slice(0, 3) : GANTT_MONTH_NAMES[m];
             unitsRow.appendChild(mCell);
