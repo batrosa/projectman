@@ -49,11 +49,7 @@ struct NameSetupView: View {
                             .onSubmit { save() }
 
                         Button(action: save) {
-                            if isSaving {
-                                ProgressView().tint(.white)
-                            } else {
-                                Text("Продолжить")
-                            }
+                            AsyncButtonLabel(title: "Продолжить", isLoading: isSaving)
                         }
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(!isValid || isSaving)

@@ -8,9 +8,11 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var passwordConfirmation = ""
+    @State private var activeAction: AuthAction?
     @FocusState private var focusedField: Field?
 
     private enum EmailMode: Equatable { case login, register }
+    private enum AuthAction: Equatable { case email, passwordReset, apple, google, telegram, verificationCheck, verificationResend }
     private enum Field { case email, password, confirmation }
 
     var body: some View {
@@ -28,11 +30,6 @@ struct LoginView: View {
                         } else {
                             emailCard
                             providerSection
-                        }
-
-                        if auth.isBusy {
-                            ProgressView()
-                                .tint(Theme.primary)
                         }
 
                         statusBanner
@@ -135,19 +132,29 @@ struct LoginView: View {
             }
 
             Button(action: submitEmailForm) {
-                Text(mode == .login ? "Войти" : "Создать аккаунт")
+                AsyncButtonLabel(
+                    title: mode == .login ? "Войти" : "Создать аккаунт",
+                    isLoading: activeAction == .email
+                )
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(auth.isBusy)
+            .disabled(auth.isBusy || activeAction != nil)
 
             if mode == .login {
-                Button("Забыли пароль?") {
+                Button {
                     focusedField = nil
-                    Task { await auth.sendPasswordReset(email: email) }
+                    perform(.passwordReset) { await auth.sendPasswordReset(email: email) }
+                } label: {
+                    HStack(spacing: 6) {
+                        if activeAction == .passwordReset {
+                            ProgressView().controlSize(.small).tint(Theme.primary)
+                        }
+                        Text("Забыли пароль?")
+                    }
                 }
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.primary)
-                .disabled(auth.isBusy)
+                .disabled(auth.isBusy || activeAction != nil)
             } else {
                 Label("После регистрации мы отправим письмо. Подтвердите email — затем откроется ввод имени и фамилии.", systemImage: "info.circle")
                     .font(.caption)
@@ -172,41 +179,66 @@ struct LoginView: View {
             }
 
             SignInWithAppleButton(.signIn) { request in
+                activeAction = .apple
                 auth.prepareAppleRequest(request)
             } onCompletion: { result in
-                Task { await auth.completeAppleSignIn(result) }
+                Task {
+                    await auth.completeAppleSignIn(result)
+                    if activeAction == .apple { activeAction = nil }
+                }
             }
             .environment(\.locale, Locale(identifier: "ru_RU"))
             .signInWithAppleButtonStyle(.whiteOutline)
             .frame(height: 54)
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .disabled(auth.isBusy)
+            .overlay {
+                if activeAction == .apple {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(Theme.surface)
+                    AsyncButtonLabel(
+                        title: "Входим через Apple…",
+                        isLoading: true,
+                        progressTint: Theme.textPrimary
+                    )
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 16)
+                }
+            }
+            .disabled(auth.isBusy || activeAction != nil)
             .accessibilityLabel("Войти через Apple")
 
             Button {
-                Task { await auth.signInWithGoogle() }
+                perform(.google) { await auth.signInWithGoogle() }
             } label: {
                 HStack(spacing: 10) {
-                    GoogleLogoView().frame(width: 22, height: 22)
-                    Text("Войти через Google")
+                    if activeAction == .google {
+                        ProgressView().controlSize(.small).tint(Color(hex: 0x4285F4))
+                    } else {
+                        GoogleLogoView().frame(width: 22, height: 22)
+                    }
+                    Text(activeAction == .google ? "Входим через Google…" : "Войти через Google")
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(ProviderButtonStyle(tint: Color(hex: 0x4285F4)))
-            .disabled(auth.isBusy)
+            .disabled(auth.isBusy || activeAction != nil)
 
             Button {
-                Task { await auth.startTelegramLogin() }
+                perform(.telegram) { await auth.startTelegramLogin() }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("Войти через Telegram")
+                    if activeAction == .telegram {
+                        ProgressView().controlSize(.small).tint(Color(hex: 0x229ED9))
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    Text(activeAction == .telegram ? "Проверяем Telegram…" : "Войти через Telegram")
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(ProviderButtonStyle(tint: Color(hex: 0x229ED9)))
-            .disabled(auth.isBusy)
+            .disabled(auth.isBusy || activeAction != nil)
         }
     }
 
@@ -240,15 +272,27 @@ struct LoginView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("Я подтвердил email") {
-                Task { await auth.checkEmailVerification() }
+            Button {
+                perform(.verificationCheck) { await auth.checkEmailVerification() }
+            } label: {
+                AsyncButtonLabel(
+                    title: "Я подтвердил email",
+                    isLoading: activeAction == .verificationCheck
+                )
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(auth.isBusy)
+            .disabled(auth.isBusy || activeAction != nil)
 
             HStack(spacing: 18) {
-                Button("Отправить ещё раз") {
-                    Task { await auth.resendEmailVerification() }
+                Button {
+                    perform(.verificationResend) { await auth.resendEmailVerification() }
+                } label: {
+                    HStack(spacing: 5) {
+                        if activeAction == .verificationResend {
+                            ProgressView().controlSize(.small).tint(Theme.primary)
+                        }
+                        Text("Отправить ещё раз")
+                    }
                 }
                 Button("Другой email") {
                     auth.useDifferentEmail()
@@ -258,7 +302,7 @@ struct LoginView: View {
             }
             .font(.footnote.weight(.semibold))
             .foregroundStyle(Theme.primary)
-            .disabled(auth.isBusy)
+            .disabled(auth.isBusy || activeAction != nil)
         }
         .padding(22)
         .card(cornerRadius: 20)
@@ -283,6 +327,7 @@ struct LoginView: View {
                 .shadow(color: mode == target ? Color.black.opacity(0.06) : .clear, radius: 6, y: 2)
         }
         .buttonStyle(.plain)
+        .disabled(auth.isBusy || activeAction != nil)
     }
 
     private func authField(
@@ -319,7 +364,7 @@ struct LoginView: View {
 
     private func submitEmailForm() {
         focusedField = nil
-        Task {
+        perform(.email) {
             if mode == .login {
                 await auth.signInWithEmail(email: email, password: password)
             } else {
@@ -329,6 +374,15 @@ struct LoginView: View {
                     confirmation: passwordConfirmation
                 )
             }
+        }
+    }
+
+    private func perform(_ action: AuthAction, operation: @escaping @MainActor () async -> Void) {
+        guard activeAction == nil, !auth.isBusy else { return }
+        activeAction = action
+        Task { @MainActor in
+            await operation()
+            if activeAction == action { activeAction = nil }
         }
     }
 

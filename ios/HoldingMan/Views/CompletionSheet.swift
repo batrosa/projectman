@@ -98,13 +98,17 @@ struct CompletionSheet: View {
                         .disabled(isUploading || isSubmitting)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if isSubmitting {
-                        ProgressView().tint(Theme.primary)
-                    } else {
-                        Button("На проверку") { submit() }
-                            .disabled(comment.trimmingCharacters(in: .whitespaces).isEmpty
-                                      || proofs.isEmpty || isUploading)
+                    Button(action: submit) {
+                        AsyncButtonLabel(
+                            title: "На проверку",
+                            isLoading: isSubmitting,
+                            progressTint: Theme.primary,
+                            fillsWidth: false
+                        )
                     }
+                    .disabled(isSubmitting
+                              || comment.trimmingCharacters(in: .whitespaces).isEmpty
+                              || proofs.isEmpty || isUploading)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()

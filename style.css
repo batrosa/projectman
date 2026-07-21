@@ -1418,6 +1418,43 @@ body.light-mode .auth-card {
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
 }
 
+/* Единая реакция кнопок: короткий press-state для любого действия и
+   встроенный индикатор для операций, которые ждут сеть/Firestore. */
+button.button-press-feedback:not(:disabled) {
+    filter: brightness(0.9);
+    opacity: 0.86;
+}
+
+button.is-loading {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+    cursor: wait !important;
+}
+
+button.is-loading .btn-spinner {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 1.05em;
+    height: 1.05em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: projectman-button-spin 0.72s linear infinite;
+}
+
+@keyframes projectman-button-spin {
+    to { transform: rotate(360deg); }
+}
+
+button.is-loading .btn-loading-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 body.light-mode .login-overlay {
     background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #f8fafc 100%);
 }

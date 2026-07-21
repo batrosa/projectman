@@ -54,10 +54,18 @@ struct NotificationsView: View {
                         }
                         .disabled(notificationsStore.notifications.isEmpty || isDeletingAll)
                     } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(Theme.primary)
+                        Group {
+                            if isDeletingAll {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                    .font(.title3)
+                            }
+                        }
+                        .foregroundStyle(Theme.primary)
                     }
+                    .disabled(isDeletingAll)
                     .accessibilityLabel("Действия с уведомлениями")
                 }
             }

@@ -126,12 +126,15 @@ struct NewTaskView: View {
                     Button("Отмена") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if isBusy {
-                        ProgressView().tint(Theme.primary)
-                    } else {
-                        Button("Создать") { create() }
-                            .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button(action: create) {
+                        AsyncButtonLabel(
+                            title: "Создать",
+                            isLoading: isBusy,
+                            progressTint: Theme.primary,
+                            fillsWidth: false
+                        )
                     }
+                    .disabled(isBusy || title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }

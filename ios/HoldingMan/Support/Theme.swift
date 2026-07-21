@@ -207,6 +207,35 @@ struct SoftButtonStyle: ButtonStyle {
     }
 }
 
+// Общая подпись асинхронной кнопки: индикатор остаётся внутри той же кнопки,
+// поэтому интерфейс мгновенно подтверждает нажатие и не «прыгает» между
+// отдельной кнопкой и внешним ProgressView.
+struct AsyncButtonLabel: View {
+    let title: String
+    let isLoading: Bool
+    var systemImage: String? = nil
+    var progressTint: Color = .white
+    var fillsWidth = true
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(progressTint)
+            } else if let systemImage {
+                Image(systemName: systemImage)
+            }
+            Text(title)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: fillsWidth ? .infinity : nil)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue(isLoading ? "Выполняется" : "")
+    }
+}
+
 // Чип статуса задачи
 struct StatusChip: View {
     let status: BoardStatus

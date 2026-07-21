@@ -33,17 +33,73 @@ function proceedToApp() {
     initFirebase();
 }
 
-// Button loading state helper
-function setButtonLoading(button, isLoading, originalText) {
+// Unified async-button feedback. Preserve the exact original markup (icons,
+// spans and accessible text), then place the spinner inside the pressed button
+// until its operation finishes. WeakMap avoids serialising user-controlled
+// labels into data attributes or rebuilding them through unsafe innerHTML.
+const buttonLoadingStates = new WeakMap();
+
+function setButtonLoading(button, isLoading, loadingText = '') {
+    if (!button) return;
+
     if (isLoading) {
+        if (!buttonLoadingStates.has(button)) {
+            buttonLoadingStates.set(button, {
+                html: button.innerHTML,
+                disabled: button.disabled,
+            });
+        }
+        const label = String(loadingText || button.textContent || '').trim();
+        const spinner = document.createElement('span');
+        spinner.className = 'btn-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        button.replaceChildren(spinner);
+        if (label) {
+            const text = document.createElement('span');
+            text.className = 'btn-loading-label';
+            text.textContent = label;
+            button.appendChild(text);
+        }
         button.disabled = true;
-        button.dataset.originalText = originalText;
-        button.innerHTML = '<span class="btn-spinner"></span>';
-    } else {
-        button.disabled = false;
-        button.innerHTML = originalText || button.dataset.originalText;
+        button.classList.add('is-loading');
+        button.setAttribute('aria-busy', 'true');
+        return;
     }
+
+    const state = buttonLoadingStates.get(button);
+    if (state) {
+        button.innerHTML = state.html;
+        button.disabled = state.disabled;
+        buttonLoadingStates.delete(button);
+    }
+    button.classList.remove('is-loading');
+    button.removeAttribute('aria-busy');
 }
+
+// Synchronous controls also acknowledge touch/mouse input immediately. Async
+// controls keep the stronger .is-loading state above until completion.
+function installGlobalButtonPressFeedback() {
+    let pressedButton = null;
+    const release = (button) => {
+        if (!button) return;
+        window.setTimeout(() => button.classList.remove('button-press-feedback'), 90);
+    };
+    document.addEventListener('pointerdown', (event) => {
+        const button = event.target.closest?.('button');
+        if (!button || button.disabled) return;
+        if (pressedButton && pressedButton !== button) release(pressedButton);
+        pressedButton = button;
+        button.classList.add('button-press-feedback');
+    }, { passive: true });
+    const releasePressed = () => {
+        release(pressedButton);
+        pressedButton = null;
+    };
+    document.addEventListener('pointerup', releasePressed, { passive: true });
+    document.addEventListener('pointercancel', releasePressed, { passive: true });
+}
+
+installGlobalButtonPressFeedback();
 
 // ========== LOADING SCREEN ==========
 const loadingTips = [
@@ -869,11 +925,7 @@ function resetWorkspaceState() {
 }
 
 async function enterOrganization(organizationId, button = null) {
-    const originalHtml = button?.innerHTML;
-    if (button) {
-        button.disabled = true;
-        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Вход...';
-    }
+    setButtonLoading(button, true, 'Входим…');
     try {
         resetAgentChatForOrganizationChange();
         stopOrgWorkspaceSubscriptions();
@@ -884,10 +936,7 @@ async function enterOrganization(organizationId, button = null) {
     } catch (error) {
         console.error('Error entering organization:', error);
         alert(error.message || 'Не удалось войти в организацию');
-        if (button) {
-            button.disabled = false;
-            button.innerHTML = originalHtml;
-        }
+        setButtonLoading(button, false);
     }
 }
 
@@ -1077,8 +1126,7 @@ function setupOrgEventListeners() {
             if (!name) return;
 
             const submitBtn = elements.orgCreateForm.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание...';
+            setButtonLoading(submitBtn, true, 'Создаём…');
             elements.orgCreateError.style.display = 'none';
 
             try {
@@ -1095,8 +1143,7 @@ function setupOrgEventListeners() {
                 elements.orgCreateError.textContent = error.message;
                 elements.orgCreateError.style.display = 'block';
             } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Создать организацию';
+                setButtonLoading(submitBtn, false);
             }
         });
     }
@@ -1117,9 +1164,7 @@ function setupOrgEventListeners() {
             });
             if (!submitBtn) submitBtn = allBtns[0];
 
-            const originalHtml = submitBtn.innerHTML;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Вход...';
+            setButtonLoading(submitBtn, true, 'Присоединяем…');
 
             const joinError = document.getElementById('org-join-error');
             if (joinError) joinError.style.display = 'none';
@@ -1141,8 +1186,7 @@ function setupOrgEventListeners() {
                     joinError.textContent = error.message;
                     joinError.style.display = 'block';
                 }
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalHtml;
+                setButtonLoading(submitBtn, false);
             }
         });
     }
@@ -1260,12 +1304,14 @@ function setupOrgEventListeners() {
 
             if (!confirm('Вы уверены, что хотите покинуть организацию?\n\nВы потеряете доступ ко всем проектам и задачам.')) return;
 
+            setButtonLoading(elements.orgLeaveBtn, true, 'Выходим…');
             try {
                 await leaveOrganization();
                 elements.orgDropdown.style.display = 'none';
                 elements.orgHeader.classList.remove('open');
                 showOrgSelectionScreen(true);
             } catch (error) {
+                setButtonLoading(elements.orgLeaveBtn, false);
                 alert(error.message);
             }
         });
@@ -1287,8 +1333,7 @@ function setupOrgEventListeners() {
 
             try {
                 const btn = elements.orgDeleteBtn;
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Удаление...';
+                setButtonLoading(btn, true, 'Удаляем…');
 
                 await deleteOrganization();
 
@@ -1300,8 +1345,7 @@ function setupOrgEventListeners() {
             } catch (error) {
                 console.error('Error deleting organization:', error);
                 alert('Ошибка: ' + error.message);
-                elements.orgDeleteBtn.disabled = false;
-                elements.orgDeleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Удалить организацию';
+                setButtonLoading(elements.orgDeleteBtn, false);
             }
         });
     }
@@ -1312,14 +1356,14 @@ function setupOrgEventListeners() {
             if (!confirm('Сменить код приглашения?\n\nСтарый код перестанет работать.')) return;
 
             const btn = elements.orgRegenerateCode;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Смена...';
+            setButtonLoading(btn, true, 'Меняем…');
 
             try {
                 const newCode = await regenerateInviteCode();
                 if (elements.orgInviteCodeDisplay) {
                     elements.orgInviteCodeDisplay.textContent = newCode;
                 }
+                setButtonLoading(btn, false);
                 btn.innerHTML = '<i class="fa-solid fa-check"></i> Готово!';
                 setTimeout(() => {
                     btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Сменить код';
@@ -1327,8 +1371,7 @@ function setupOrgEventListeners() {
                 }, 2000);
             } catch (error) {
                 alert(error.message);
-                btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Сменить код';
-                btn.disabled = false;
+                setButtonLoading(btn, false);
             }
         });
     }
@@ -2442,11 +2485,7 @@ async function handleProjectFileSelect(event) {
     }
 
     const btn = elements.addProjectFileBtn;
-    const originalHtml = btn ? btn.innerHTML : null;
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
-    }
+    setButtonLoading(btn, true, 'Загружаем…');
 
     try {
         const currentUser = firebase.auth().currentUser;
@@ -2480,10 +2519,7 @@ async function handleProjectFileSelect(event) {
         console.error('Project file upload error:', error);
         alert('Ошибка при загрузке файла: ' + error.message);
     } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-        }
+        setButtonLoading(btn, false);
     }
 }
 
@@ -4292,13 +4328,13 @@ function openTaskDetailsModal(task) {
         button.addEventListener('click', async () => {
             const decision = button.dataset.deadlineDecision;
             const requestId = button.dataset.requestId;
-            button.disabled = true;
+            setButtonLoading(button, true, 'Обрабатываем…');
             try {
                 await callDeadlineChangeApi({ action: 'decide', requestId, decision });
                 modal.classList.remove('active');
                 await refreshMyTasksModalIfOpen();
             } catch (error) {
-                button.disabled = false;
+                setButtonLoading(button, false);
                 alert(error.message || 'Не удалось обработать запрос');
             }
         });
@@ -5036,14 +5072,14 @@ function setupEventListeners() {
             return;
         }
         const button = document.getElementById('auth-password-reset');
-        if (button) button.disabled = true;
+        setButtonLoading(button, true, 'Отправляем…');
         try {
             await auth.sendPasswordResetEmail(email);
             setLoginErrorMessage('Письмо для восстановления пароля отправлено.', 'success');
         } catch (error) {
             setLoginErrorMessage(emailAuthErrorMessage(error));
         } finally {
-            if (button) button.disabled = false;
+            setButtonLoading(button, false);
         }
     });
     document.getElementById('email-verification-check')?.addEventListener('click', () => checkEmailVerification());
@@ -5075,7 +5111,7 @@ function setupEventListeners() {
             const comment = document.getElementById('deadline-change-comment')?.value.trim() || '';
             if (!taskId || !requestedDeadline || !comment) return;
             const submit = document.getElementById('deadline-change-submit');
-            if (submit) submit.disabled = true;
+            setButtonLoading(submit, true, 'Отправляем…');
             try {
                 await callDeadlineChangeApi({ action: 'request', taskId, requestedDeadline, comment });
                 closeModalElement(document.getElementById('deadline-change-modal'));
@@ -5083,7 +5119,7 @@ function setupEventListeners() {
             } catch (error) {
                 alert(error.message || 'Не удалось отправить запрос');
             } finally {
-                if (submit) submit.disabled = false;
+                setButtonLoading(submit, false);
             }
         });
     }
@@ -5740,7 +5776,18 @@ function showEmailAuthContent() {
 }
 
 function setEmailAuthBusy(busy) {
-    ['email-auth-submit', 'auth-mode-toggle', 'auth-password-reset'].forEach(id => {
+    const submit = document.getElementById('email-auth-submit');
+    if (busy) {
+        setButtonLoading(
+            submit,
+            true,
+            emailAuthMode === 'register' ? 'Регистрируем…' : 'Входим…'
+        );
+    } else {
+        setButtonLoading(submit, false);
+    }
+
+    ['auth-mode-toggle', 'auth-password-reset', 'google-login-btn', 'apple-login-btn', 'telegram-login-btn'].forEach(id => {
         const control = document.getElementById(id);
         if (control) control.disabled = busy;
     });
@@ -5823,14 +5870,14 @@ async function resendEmailVerification() {
     const user = auth?.currentUser;
     if (!user || !isPasswordAuthUser(user)) return;
     const button = document.getElementById('email-verification-resend');
-    if (button) button.disabled = true;
+    setButtonLoading(button, true, 'Отправляем…');
     try {
         await user.sendEmailVerification();
         setLoginErrorMessage('Письмо отправлено повторно. Проверьте также папку «Спам».', 'success');
     } catch (error) {
         setLoginErrorMessage(emailAuthErrorMessage(error));
     } finally {
-        if (button) button.disabled = false;
+        setButtonLoading(button, false);
     }
 }
 
@@ -5839,7 +5886,7 @@ async function checkEmailVerification({ silent = false } = {}) {
     if (!user || !isPasswordAuthUser(user) || emailVerificationCheckInFlight) return;
     emailVerificationCheckInFlight = true;
     const button = document.getElementById('email-verification-check');
-    if (button) button.disabled = true;
+    if (!silent) setButtonLoading(button, true, 'Проверяем…');
     try {
         await user.reload();
         if (!user.emailVerified) {
@@ -5856,7 +5903,7 @@ async function checkEmailVerification({ silent = false } = {}) {
         if (!silent) setLoginErrorMessage(emailAuthErrorMessage(error));
     } finally {
         emailVerificationCheckInFlight = false;
-        if (button) button.disabled = false;
+        if (!silent) setButtonLoading(button, false);
     }
 }
 
@@ -5925,7 +5972,12 @@ function setLoginErrorMessage(message, type = 'error') {
 
 function setTelegramBotLoginBusy(isBusy) {
     const primaryBtn = document.getElementById('telegram-login-btn');
-    if (primaryBtn) primaryBtn.disabled = isBusy;
+    if (isBusy) setButtonLoading(primaryBtn, true, 'Проверяем Telegram…');
+    else setButtonLoading(primaryBtn, false);
+    ['google-login-btn', 'apple-login-btn', 'email-auth-submit', 'auth-mode-toggle', 'auth-password-reset'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = isBusy;
+    });
     if (elements.telegramBotLoginBtn) elements.telegramBotLoginBtn.disabled = isBusy;
 }
 
@@ -6134,10 +6186,19 @@ function federatedProvider(providerId) {
     throw new Error('Неизвестный способ входа.');
 }
 
-function setFederatedLoginBusy(busy) {
+function setFederatedLoginBusy(busy, activeButtonId = '') {
     ['google-login-btn', 'apple-login-btn', 'telegram-login-btn'].forEach(id => {
         const button = document.getElementById(id);
-        if (button) button.disabled = busy;
+        if (!button) return;
+        if (busy && id === activeButtonId) {
+            const label = id === 'google-login-btn' ? 'Входим через Google…' : 'Входим через Apple…';
+            setButtonLoading(button, true, label);
+        } else if (!busy) {
+            setButtonLoading(button, false);
+            button.disabled = false;
+        } else {
+            button.disabled = true;
+        }
     });
 }
 
@@ -6145,7 +6206,8 @@ async function startFederatedLogin(providerId) {
     if (!auth) return;
     playClickSound();
     setLoginErrorMessage('');
-    setFederatedLoginBusy(true);
+    const activeButtonId = providerId === 'google.com' ? 'google-login-btn' : 'apple-login-btn';
+    setFederatedLoginBusy(true, activeButtonId);
     try {
         await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
         const provider = federatedProvider(providerId);
@@ -6474,11 +6536,7 @@ async function handleNameSetupSubmit(e) {
     const uid = nameSetupUid || firebase.auth().currentUser?.uid;
     if (!uid) return;
 
-    const originalBtnHtml = submitBtn ? submitBtn.innerHTML : null;
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
-    }
+    setButtonLoading(submitBtn, true, 'Сохраняем…');
 
     try {
         await db.collection('users').doc(uid).set({
@@ -6506,10 +6564,7 @@ async function handleNameSetupSubmit(e) {
             errorEl.style.display = 'block';
         }
     } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            if (originalBtnHtml) submitBtn.innerHTML = originalBtnHtml;
-        }
+        setButtonLoading(submitBtn, false);
     }
 }
 
@@ -8879,11 +8934,7 @@ async function handleProfileNameSubmit(event) {
         return;
     }
 
-    const originalButton = saveButton?.innerHTML || '';
-    if (saveButton) {
-        saveButton.disabled = true;
-        saveButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение';
-    }
+    setButtonLoading(saveButton, true, 'Сохраняем…');
     if (error) error.hidden = true;
     if (message) message.hidden = true;
 
@@ -8926,10 +8977,7 @@ async function handleProfileNameSubmit(event) {
             error.hidden = false;
         }
     } finally {
-        if (saveButton) {
-            saveButton.disabled = false;
-            saveButton.innerHTML = originalButton;
-        }
+        setButtonLoading(saveButton, false);
     }
 }
 
@@ -9192,6 +9240,7 @@ function initPhotoCrop() {
     // Save button
     if (cropSave) {
         cropSave.addEventListener('click', async () => {
+            setButtonLoading(cropSave, true, 'Сохраняем…');
             try {
                 const croppedImage = await cropImageToCircle();
 
@@ -9213,6 +9262,8 @@ function initPhotoCrop() {
             } catch (error) {
                 console.error('Error saving cropped photo:', error);
                 alert('Ошибка сохранения фото');
+            } finally {
+                setButtonLoading(cropSave, false);
             }
         });
     }
@@ -10645,9 +10696,8 @@ function appendAgentActionProposal(proposal) {
 }
 
 async function confirmAgentActionProposal(proposal, btn, actions) {
-    const original = btn?.textContent || 'Подтвердить';
     try {
-        if (btn) { btn.disabled = true; btn.textContent = 'Выполняю…'; }
+        setButtonLoading(btn, true, 'Выполняем…');
         const currentUser = firebase.auth().currentUser;
         if (!currentUser) throw new Error('Не авторизован');
         const idToken = await currentUser.getIdToken();
@@ -10672,7 +10722,7 @@ async function confirmAgentActionProposal(proposal, btn, actions) {
         agentChatState.history.push({ role: 'assistant', content: resultText });
         agentChatState.history = truncateAgentChatHistory(agentChatState.history);
     } catch (error) {
-        if (btn) { btn.disabled = false; btn.textContent = original; }
+        setButtonLoading(btn, false);
         setAgentProposalActionsEnabled(actions, true);
         const failText = `Не удалось выполнить действие: ${error.message || 'попробуйте ещё раз'}`;
         if (actions) showAgentProposalCardError(actions, failText);
