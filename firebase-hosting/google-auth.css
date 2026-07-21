@@ -1,0 +1,68 @@
+:root {
+    color-scheme: light;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #eef2ff;
+    color: #182038;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    min-height: 100vh;
+    margin: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: radial-gradient(circle at top, #f8faff 0, #eef2ff 58%, #e5e7ff 100%);
+}
+
+.auth-card {
+    width: min(100%, 390px);
+    padding: 36px 28px;
+    border: 1px solid rgba(99, 102, 241, 0.16);
+    border-radius: 24px;
+    background: #fff;
+    box-shadow: 0 20px 54px rgba(30, 41, 90, 0.16);
+    text-align: center;
+}
+
+.brand-mark {
+    width: 58px;
+    height: 58px;
+    margin: 0 auto 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 17px;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: #fff;
+    font-size: 28px;
+    font-weight: 800;
+}
+
+h1 {
+    margin: 0 0 10px;
+    font-size: 24px;
+}
+
+p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+#google-auth-status.error {
+    color: #dc2626;
+}
+
+.google-auth-button {
+    min-height: 44px;
+    margin: 24px auto 18px;
+    display: flex;
+    justify-content: center;
+}
+
+.hint {
+    font-size: 13px;
+}

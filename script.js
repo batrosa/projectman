@@ -2047,7 +2047,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.20'; // Google sign-in request cleanup
+    const CURRENT_VERSION = '6.21'; // Google Identity Services sign-in
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -5235,7 +5235,7 @@ function setupEventListeners() {
             window.startTelegramBotLogin();
         });
     }
-    document.getElementById('google-login-btn')?.addEventListener('click', () => startFederatedLogin('google.com'));
+    document.getElementById('google-login-btn')?.addEventListener('click', startGoogleIdentityLogin);
     document.getElementById('apple-login-btn')?.addEventListener('click', () => startFederatedLogin('apple.com'));
     document.getElementById('email-auth-form')?.addEventListener('submit', handleEmailAuthSubmit);
     document.getElementById('auth-mode-toggle')?.addEventListener('click', () => {
@@ -6549,14 +6549,6 @@ async function onAuthStateChanged(user) {
 }
 
 function federatedProvider(providerId) {
-    if (providerId === 'google.com') {
-        // Firebase requests the basic Google identity scopes automatically.
-        // Keep this provider on the documented default flow: forcing
-        // select_account sent some existing Google sessions through an
-        // additional ServiceLogin round-trip that could end on Google's
-        // generic Error 400 page before Firebase received a result.
-        return new firebase.auth.GoogleAuthProvider();
-    }
     if (providerId === 'apple.com') {
         const provider = new firebase.auth.OAuthProvider('apple.com');
         provider.addScope('email');
@@ -6565,6 +6557,125 @@ function federatedProvider(providerId) {
         return provider;
     }
     throw new Error('Неизвестный способ входа.');
+}
+
+const GOOGLE_AUTH_HELPER_URL = 'https://projectman-96d3c.firebaseapp.com/google-auth.html';
+const GOOGLE_AUTH_HELPER_ORIGIN = 'https://projectman-96d3c.firebaseapp.com';
+
+function parseGoogleIdentityMessage(event, popup) {
+    if (!event || event.origin !== GOOGLE_AUTH_HELPER_ORIGIN || event.source !== popup) return null;
+    const data = event.data;
+    if (!data || typeof data !== 'object') return null;
+    if (data.type === 'projectman-google-auth-ready') return { type: 'ready' };
+    if (data.type === 'projectman-google-auth-success') {
+        if (typeof data.credential !== 'string' || data.credential.length < 20) {
+            return { type: 'error', message: 'Google вернул некорректный токен.' };
+        }
+        return { type: 'success', credential: data.credential };
+    }
+    if (data.type === 'projectman-google-auth-error') {
+        return {
+            type: 'error',
+            message: typeof data.message === 'string' && data.message.trim()
+                ? data.message.trim()
+                : 'Не удалось получить подтверждение Google.',
+        };
+    }
+    return null;
+}
+
+function googleIdentityError(message, code = 'auth/google-identity-error') {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+}
+
+function waitForGoogleIdentityCredential(popup) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let closeTimer = null;
+        let timeoutTimer = null;
+
+        const cleanup = () => {
+            window.removeEventListener('message', onMessage);
+            if (closeTimer !== null) window.clearInterval(closeTimer);
+            if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
+        };
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            callback(value);
+        };
+        const onMessage = (event) => {
+            const message = parseGoogleIdentityMessage(event, popup);
+            if (!message) return;
+            if (message.type === 'ready') {
+                setLoginErrorMessage('Выберите Google-аккаунт в открывшемся окне.');
+                return;
+            }
+            if (message.type === 'success') {
+                finish(resolve, message.credential);
+                return;
+            }
+            finish(reject, googleIdentityError(message.message));
+        };
+
+        window.addEventListener('message', onMessage);
+        closeTimer = window.setInterval(() => {
+            let closed = false;
+            try {
+                closed = popup.closed;
+            } catch (_) {
+                closed = false;
+            }
+            if (closed) {
+                finish(reject, googleIdentityError('Вход через Google отменён.', 'auth/popup-closed-by-user'));
+            }
+        }, 500);
+        timeoutTimer = window.setTimeout(() => {
+            finish(reject, googleIdentityError('Время ожидания Google истекло. Попробуйте ещё раз.'));
+        }, 2 * 60 * 1000);
+    });
+}
+
+async function startGoogleIdentityLogin() {
+    if (!auth) return;
+    playClickSound();
+    setLoginErrorMessage('');
+    setFederatedLoginBusy(true, 'google-login-btn');
+
+    // Open synchronously from the click handler so popup blockers do not
+    // mistake it for a background window. Google Identity Services runs on
+    // our Firebase Hosting origin and returns only a short-lived ID token.
+    const popup = window.open(
+        GOOGLE_AUTH_HELPER_URL,
+        'projectman-google-auth',
+        'popup=yes,width=460,height=680,resizable=yes,scrollbars=yes',
+    );
+
+    try {
+        if (!popup) {
+            throw googleIdentityError(
+                'Браузер заблокировал окно Google. Разрешите всплывающие окна для ProjectMan.',
+                'auth/popup-blocked',
+            );
+        }
+        const credentialPromise = waitForGoogleIdentityCredential(popup);
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        const googleIdToken = await credentialPromise;
+        const credential = firebase.auth.GoogleAuthProvider.credential(googleIdToken);
+        await auth.signInWithCredential(credential);
+    } catch (error) {
+        handleFederatedAuthError(error);
+    } finally {
+        try {
+            if (popup && !popup.closed) popup.close();
+        } catch (_) {
+            // A cross-origin window may already have been torn down.
+        }
+        setFederatedLoginBusy(false);
+    }
 }
 
 function setFederatedLoginBusy(busy, activeButtonId = '') {

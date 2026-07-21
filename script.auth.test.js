@@ -8,7 +8,7 @@ import { JSDOM } from "jsdom";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_SOURCE = fs.readFileSync(path.join(__dirname, "script.js"), "utf8");
 
-function loadFederatedProvider() {
+function loadScriptEnv() {
   const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
     url: "https://projectman.online/",
   });
@@ -76,22 +76,66 @@ function loadFederatedProvider() {
   vm.createContext(context);
   vm.runInContext(SCRIPT_SOURCE, context, { filename: "script.js" });
 
-  return vm.runInContext("(federatedProvider)", context);
+  return context;
 }
 
 describe("federatedProvider", () => {
-  it("uses Firebase's default Google scopes and parameters", () => {
-    const provider = loadFederatedProvider()("google.com");
-
-    expect(provider.scopes).toEqual([]);
-    expect(provider.customParameters).toBeNull();
-  });
-
   it("keeps the required Apple scopes and locale", () => {
-    const provider = loadFederatedProvider()("apple.com");
+    const context = loadScriptEnv();
+    const provider = vm.runInContext("(federatedProvider)", context)("apple.com");
 
     expect(provider.providerId).toBe("apple.com");
     expect(provider.scopes).toEqual(["email", "name"]);
     expect(provider.customParameters).toEqual({ locale: "ru" });
+  });
+});
+
+describe("Google Identity Services message validation", () => {
+  it("accepts an ID token only from the exact Firebase helper window and origin", () => {
+    const context = loadScriptEnv();
+    const parse = vm.runInContext("(parseGoogleIdentityMessage)", context);
+    const popup = {};
+    const result = parse({
+      origin: "https://projectman-96d3c.firebaseapp.com",
+      source: popup,
+      data: {
+        type: "projectman-google-auth-success",
+        credential: "header.payload.signature",
+      },
+    }, popup);
+
+    expect(result.type).toBe("success");
+    expect(result.credential).toBe("header.payload.signature");
+  });
+
+  it("ignores messages from another origin or another window", () => {
+    const context = loadScriptEnv();
+    const parse = vm.runInContext("(parseGoogleIdentityMessage)", context);
+    const popup = {};
+    const payload = {
+      type: "projectman-google-auth-success",
+      credential: "header.payload.signature",
+    };
+
+    expect(parse({ origin: "https://evil.example", source: popup, data: payload }, popup)).toBeNull();
+    expect(parse({
+      origin: "https://projectman-96d3c.firebaseapp.com",
+      source: {},
+      data: payload,
+    }, popup)).toBeNull();
+  });
+
+  it("rejects an empty or malformed credential", () => {
+    const context = loadScriptEnv();
+    const parse = vm.runInContext("(parseGoogleIdentityMessage)", context);
+    const popup = {};
+    const result = parse({
+      origin: "https://projectman-96d3c.firebaseapp.com",
+      source: popup,
+      data: { type: "projectman-google-auth-success", credential: "bad" },
+    }, popup);
+
+    expect(result.type).toBe("error");
+    expect(result.message).toContain("некорректный токен");
   });
 });
