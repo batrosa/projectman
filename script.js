@@ -1735,6 +1735,9 @@ function initFirebase() {
         isFirebaseInitialized = true;
         db = firebase.firestore();
         auth = firebase.auth();
+        // Firebase uses this language both for authentication emails and for
+        // the hosted action page opened from verification/reset links.
+        auth.languageCode = 'ru';
 
         // Enable Offline Persistence (Critical for slow networks)
         db.enablePersistence({ synchronizeTabs: true })
@@ -5348,6 +5351,7 @@ function setupEventListeners() {
     if (elements.helpBtn && elements.helpModal) {
         elements.helpBtn.addEventListener('click', () => {
             playClickSound();
+            document.getElementById('settings-modal')?.classList.remove('active');
             elements.helpModal.classList.add('active');
         });
     }

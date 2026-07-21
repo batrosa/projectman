@@ -16,6 +16,7 @@ struct NewTaskView: View {
     @State private var deadline = Date()
     @State private var selectedAssignees: [OrgUser] = []
     @State private var selectedCoCreators: [OrgUser] = []
+    @State private var activePeoplePicker: TaskPeoplePickerKind?
     @State private var isBusy = false
     @State private var errorMessage: String?
 
@@ -48,25 +49,13 @@ struct NewTaskView: View {
                             .font(.footnote)
                             .foregroundStyle(Theme.textSecondary)
                             .listRowBackground(Theme.surface)
-                    }
-                    ForEach(assignableUsers) { user in
-                        let isSelected = selectedAssignees.contains { $0.id == user.id }
-                        Button {
-                            if isSelected {
-                                selectedAssignees.removeAll { $0.id == user.id }
-                            } else {
-                                selectedAssignees.append(user)
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                AvatarView(name: user.displayName, size: 30)
-                                Text(user.displayName)
-                                    .foregroundStyle(Theme.textPrimary)
-                                Spacer()
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(isSelected ? Theme.primary : Theme.textSecondary.opacity(0.5))
-                            }
+                    } else {
+                        PeopleSelectionRow(
+                            title: "Выбрать исполнителей",
+                            systemImage: "person.2.fill",
+                            selectedUsers: selectedAssignees
+                        ) {
+                            activePeoplePicker = .assignees
                         }
                         .listRowBackground(Theme.surface)
                     }
@@ -78,25 +67,13 @@ struct NewTaskView: View {
                             .font(.footnote)
                             .foregroundStyle(Theme.textSecondary)
                             .listRowBackground(Theme.surface)
-                    }
-                    ForEach(coCreatorCandidates) { user in
-                        let isSelected = selectedCoCreators.contains { $0.id == user.id }
-                        Button {
-                            if isSelected {
-                                selectedCoCreators.removeAll { $0.id == user.id }
-                            } else {
-                                selectedCoCreators.append(user)
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                AvatarView(name: user.displayName, size: 30)
-                                Text(user.displayName)
-                                    .foregroundStyle(Theme.textPrimary)
-                                Spacer()
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(isSelected ? Theme.primary : Theme.textSecondary.opacity(0.5))
-                            }
+                    } else {
+                        PeopleSelectionRow(
+                            title: "Выбрать постановщиков",
+                            systemImage: "person.badge.plus",
+                            selectedUsers: selectedCoCreators
+                        ) {
+                            activePeoplePicker = .coCreators
                         }
                         .listRowBackground(Theme.surface)
                     }
@@ -135,6 +112,22 @@ struct NewTaskView: View {
                 }
             }
         }
+        .sheet(item: $activePeoplePicker) { picker in
+            switch picker {
+            case .assignees:
+                TaskPeoplePickerView(
+                    title: "Ответственные",
+                    users: assignableUsers,
+                    selectedUsers: $selectedAssignees
+                )
+            case .coCreators:
+                TaskPeoplePickerView(
+                    title: "Доп. постановщики",
+                    users: coCreatorCandidates,
+                    selectedUsers: $selectedCoCreators
+                )
+            }
+        }
     }
 
     private func create() {
@@ -165,6 +158,172 @@ struct NewTaskView: View {
             } catch {
                 errorMessage = "Не удалось создать задачу: \(error.localizedDescription)"
             }
+        }
+    }
+}
+
+private enum TaskPeoplePickerKind: String, Identifiable {
+    case assignees
+    case coCreators
+
+    var id: String { rawValue }
+}
+
+private struct PeopleSelectionRow: View {
+    let title: String
+    let systemImage: String
+    let selectedUsers: [OrgUser]
+    let action: () -> Void
+
+    private var selectionSummary: String {
+        guard !selectedUsers.isEmpty else { return "Нажмите, чтобы выбрать" }
+
+        let visibleNames = selectedUsers.prefix(2).map(\.displayName).joined(separator: ", ")
+        let remainingCount = selectedUsers.count - min(selectedUsers.count, 2)
+        return remainingCount > 0 ? "\(visibleNames) и ещё \(remainingCount)" : visibleNames
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Theme.primary)
+                    .frame(width: 38, height: 38)
+                    .background(Theme.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(selectionSummary)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                if !selectedUsers.isEmpty {
+                    Text("\(selectedUsers.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.primary, in: Capsule())
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(selectedUsers.isEmpty ? "Ничего не выбрано" : "Выбрано: \(selectedUsers.count)")
+    }
+}
+
+private struct TaskPeoplePickerView: View {
+    let title: String
+    let users: [OrgUser]
+    @Binding var selectedUsers: [OrgUser]
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    private var filteredUsers: [OrgUser] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return users }
+
+        return users.filter { user in
+            user.displayName.localizedCaseInsensitiveContains(query)
+                || user.email.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if filteredUsers.isEmpty {
+                    ContentUnavailableView(
+                        searchText.isEmpty ? "Нет доступных участников" : "Ничего не найдено",
+                        systemImage: searchText.isEmpty ? "person.2.slash" : "magnifyingglass",
+                        description: Text(searchText.isEmpty
+                            ? "Для этого проекта нет доступных участников."
+                            : "Попробуйте изменить поисковый запрос.")
+                    )
+                    .listRowBackground(Color.clear)
+                } else {
+                    Section("Выбрано: \(selectedUsers.count)") {
+                        ForEach(filteredUsers) { user in
+                            let isSelected = selectedUsers.contains { $0.id == user.id }
+                            Button {
+                                toggle(user)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    AvatarView(name: user.displayName, size: 36)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(user.displayName)
+                                            .font(.body.weight(.medium))
+                                            .foregroundStyle(Theme.textPrimary)
+                                        if !user.email.isEmpty {
+                                            Text(user.email)
+                                                .font(.caption)
+                                                .foregroundStyle(Theme.textSecondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer(minLength: 8)
+
+                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                        .font(.title2)
+                                        .foregroundStyle(isSelected ? Theme.primary : Theme.textSecondary.opacity(0.5))
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .listRowBackground(Theme.surface)
+                            .accessibilityLabel(user.displayName)
+                            .accessibilityValue(isSelected ? "Выбран" : "Не выбран")
+                        }
+                    }
+                }
+            }
+            .screenBackground()
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Поиск по имени или почте"
+            )
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if !selectedUsers.isEmpty {
+                        Button("Очистить", role: .destructive) {
+                            selectedUsers.removeAll()
+                        }
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Готово") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func toggle(_ user: OrgUser) {
+        if selectedUsers.contains(where: { $0.id == user.id }) {
+            selectedUsers.removeAll { $0.id == user.id }
+        } else {
+            selectedUsers.append(user)
         }
     }
 }

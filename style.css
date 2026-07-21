@@ -2738,20 +2738,6 @@ body:not(.light-mode) .agent-md-pre { background: rgba(0, 0, 0, 0.28); }
     transform: none;
 }
 
-/* Основная кнопка справки «?» над доской — заметная, в фирменном цвете */
-#help-btn {
-    color: var(--primary);
-    border-color: rgba(99, 102, 241, 0.45);
-    background: rgba(99, 102, 241, 0.12);
-    font-size: 1.15rem;
-}
-
-#help-btn:hover {
-    background: rgba(99, 102, 241, 0.22);
-    border-color: var(--primary);
-    color: var(--primary);
-}
-
 .agent-chat-attach-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
@@ -2967,11 +2953,6 @@ body:not(.light-mode) .agent-md-pre { background: rgba(0, 0, 0, 0.28); }
     .actions button {
         min-height: 48px;
         /* Larger touch target */
-    }
-
-    #help-btn {
-        width: 48px;
-        justify-content: center;
     }
 
     #active-project-info h1 {
@@ -6534,6 +6515,10 @@ body.light-mode .settings-modal-content {
     gap: 0.9rem;
 }
 
+.settings-option-wide {
+    grid-column: 1 / -1;
+}
+
 .settings-option {
     display: flex;
     align-items: center;
@@ -6791,6 +6776,11 @@ body.keyboard-nav .task-card.keyboard-focus {
 .settings-option-icon.leaderboard {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2));
     color: var(--warning);
+}
+
+.settings-option-icon.help {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(99, 102, 241, 0.2));
+    color: #4f7df3;
 }
 
 .profile-modal-content {

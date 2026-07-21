@@ -45,6 +45,7 @@ final class AuthService: ObservableObject {
         setStatus(nil)
         defer { isBusy = false }
         do {
+            Auth.auth().languageCode = "ru"
             let result = try await Auth.auth().createUser(withEmail: normalizedEmail, password: password)
             pendingVerificationEmail = result.user.email ?? normalizedEmail
             try await result.user.sendEmailVerification()
@@ -89,6 +90,7 @@ final class AuthService: ObservableObject {
         setStatus(nil)
         defer { isBusy = false }
         do {
+            Auth.auth().languageCode = "ru"
             try await Auth.auth().sendPasswordReset(withEmail: normalizedEmail)
             setStatus("Ссылка для восстановления пароля отправлена на почту.", success: true)
         } catch {
@@ -139,6 +141,7 @@ final class AuthService: ObservableObject {
         setStatus(nil)
         defer { isBusy = false }
         do {
+            Auth.auth().languageCode = "ru"
             try await user.sendEmailVerification()
             setStatus("Новое письмо отправлено.", success: true)
         } catch {

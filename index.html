@@ -19,8 +19,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=79.0" as="style">
-    <link rel="stylesheet" href="style.css?v=79.0">
+    <link rel="preload" href="style.css?v=80.0" as="style">
+    <link rel="stylesheet" href="style.css?v=80.0">
     <link rel="stylesheet" href="mobile-additions.css?v=18.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=93.0" defer></script>
+    <script src="script.js?v=94.0" defer></script>
 </head>
 
 <body>
@@ -979,9 +979,6 @@
                     <button id="project-files-btn" class="secondary-btn" style="display: none;" title="Файлы проекта">
                         <i class="fa-solid fa-folder-open"></i> <span>Файлы проекта</span>
                     </button>
-                    <button id="help-btn" class="secondary-btn" title="Помощь">
-                        <i class="fa-solid fa-circle-question"></i>
-                    </button>
                     <button id="add-task-btn" class="primary-btn" disabled>
                         <i class="fa-solid fa-plus"></i> Новая задача
                     </button>
@@ -1218,7 +1215,16 @@
                     <i class="fa-solid fa-chevron-right"></i>
                 </button>
 
-
+                <button id="help-btn" class="settings-option settings-option-wide">
+                    <div class="settings-option-icon help">
+                        <i class="fa-solid fa-circle-question"></i>
+                    </div>
+                    <div class="settings-option-info">
+                        <span class="settings-option-title">Помощь</span>
+                        <span class="settings-option-desc">Информация о ProjectMan и работе с приложением</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
 
             </div>
         </div>
