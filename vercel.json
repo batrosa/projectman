@@ -15,6 +15,9 @@
     },
     "api/notify-telegram.js": {
       "maxDuration": 30
+    },
+    "api/project-files.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

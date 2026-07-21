@@ -302,6 +302,12 @@ async function callFilesApi(action, payload = {}) {
     return result;
 }
 
+// One-time production maintenance hook. The server additionally requires the
+// authenticated caller to be an organization owner and an exact confirmation.
+window.__purgeLegacyCloudinaryFiles = () => callFilesApi('purgeLegacyFiles', {
+    confirm: 'DELETE_ALL_LEGACY_CLOUDINARY_ASSETS'
+});
+
 function attachmentIsReady(attachment) {
     return Boolean(attachment && !attachment.uploading && (attachment.url || attachment.publicId));
 }
@@ -2608,7 +2614,7 @@ async function deleteTask(id) {
     }
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     try {
-        await db.collection('tasks').doc(id).delete();
+        await callFilesApi('deleteTask', { taskId: id });
         await refreshMyTasksModalIfOpen();
     } catch (error) {
         console.error('Error deleting task:', error);

@@ -163,10 +163,12 @@ final class TasksStore: ObservableObject {
         try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
     }
 
-    // Удаление задачи менеджером — как в web deleteTask(): просто удаление
-    // документа, правила проверяют canManageProject.
+    // Сервер каскадно удаляет Cloudinary-вложения и только затем задачу.
     func delete(task: TaskItem) async throws {
-        try await Firestore.firestore().collection("tasks").document(task.id).delete()
+        _ = try await ApiClient.post("api/project-files", body: [
+            "action": "deleteTask",
+            "taskId": task.id,
+        ])
     }
 
     // Создание задачи менеджером — форма полей ровно как createTask() в web
