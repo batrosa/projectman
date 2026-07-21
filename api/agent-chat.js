@@ -45,6 +45,15 @@ const OFF_TOPIC_RESPONSE =
   "Я отвечаю только по ProjectMan: проектам, задачам, срокам, исполнителям, файлам, уведомлениям и работе внутри вашей организации. По этому вопросу вне системы ответить не могу.";
 const TEXT_TASK_SOURCE_NAME = "текстовый запрос";
 
+function escapeTelegramHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 const PROJECTMAN_CAPABILITY_GUIDE = [
   "Карта реального функционала ProjectMan важнее общих знаний о системах управления проектами.",
   "Основные разделы: список проектов слева, доска выбранного проекта (виды «Канбан», «Гант» и «Календарь» — переключатель под активным проектом), «Мои задачи», «Уведомления», «ИИ-агент», «Панель управления», «Админ панель», «Личный кабинет», «Рейтинг сотрудников», «Файлы проекта», модалки задачи/подтверждения/возврата/информации о задаче.",
@@ -2608,6 +2617,7 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     // Уведомления доп. постановщикам: лента + Telegram + push + email.
     coCreatorEntries.forEach((entry) => {
       const ccText = `👤 Вы добавлены постановщиком задачи «${t.title}» (проект «${projectName}»). Вы получаете уведомления по задаче и можете принять её или вернуть на доработку.`;
+      const ccTelegramText = `👤 <b>Вы добавлены постановщиком задачи</b>\n\n<b>Задача:</b> ${escapeTelegramHtml(t.title)}\n<b>Проект:</b> ${escapeTelegramHtml(projectName)}\n\nВы будете получать уведомления по задаче и сможете принять её или вернуть на доработку.`;
       const ccNoteRef = db.collection("agentNotifications").doc();
       batch.set(ccNoteRef, {
         uid: entry.uid,
@@ -2619,7 +2629,13 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
         createdAt: FieldValue.serverTimestamp(),
         readAt: null,
       });
-      if (entry.data.telegramChatId) telegramQueue.push({ chatId: entry.data.telegramChatId, text: ccText });
+      if (entry.data.telegramChatId) telegramQueue.push({
+        chatId: entry.data.telegramChatId,
+        text: ccTelegramText,
+        taskId: taskRef.id,
+        projectId: taskProjectId,
+        organizationId,
+      });
       pushQueue.push({
         uid: entry.uid,
         user: entry.data,
@@ -2636,6 +2652,16 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
     if (!user) continue;
     const deadlinePart = t.deadline ? ` Срок: ${formatIsoDayRu(t.deadline)}.` : "";
     const text = `🆕 Новая задача: «${t.title}». Ответственный: ${assigneeDisplay}.${deadlinePart} Проект «${projectName}». Поставлена ИИ-агентом по поручению: ${createdByName}.`;
+    const telegramText = [
+      `📋 <b>Новая задача</b>`,
+      "",
+      `<b>Задача:</b> ${escapeTelegramHtml(t.title)}`,
+      `<b>Проект:</b> ${escapeTelegramHtml(projectName)}`,
+      `<b>Ответственный:</b> ${escapeTelegramHtml(assigneeDisplay)}`,
+      t.deadline ? `<b>Срок:</b> ${escapeTelegramHtml(formatIsoDayRu(t.deadline))}` : null,
+      "",
+      `<b>Постановщик:</b> ${escapeTelegramHtml(createdByName)}`,
+    ].filter(line => line !== null).join("\n");
     const noteRef = db.collection("agentNotifications").doc();
     batch.set(noteRef, {
       uid: t.assigneeUid,
@@ -2647,7 +2673,13 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
       createdAt: FieldValue.serverTimestamp(),
       readAt: null,
     });
-    if (user.telegramChatId) telegramQueue.push({ chatId: user.telegramChatId, text });
+    if (user.telegramChatId) telegramQueue.push({
+      chatId: user.telegramChatId,
+      text: telegramText,
+      taskId: taskRef.id,
+      projectId: taskProjectId,
+      organizationId,
+    });
     pushQueue.push({
       uid: t.assigneeUid,
       user,
@@ -2684,7 +2716,13 @@ async function handleCreateTasks({ db, response, decoded, body, callerData, orga
   // Parallel + logged (sendTelegramMessage has its own timeout) — a slow or
   // refused Telegram must neither delay the HTTP response nor fail silently.
   const sendResults = await Promise.allSettled(
-    telegramQueue.map((message) => sendTelegramMessage(message.chatId, message.text))
+    telegramQueue.map((message) => sendTelegramMessage(message.chatId, message.text, {
+      parseMode: "HTML",
+      taskId: message.taskId,
+      projectId: message.projectId,
+      organizationId: message.organizationId,
+      linkToProjectMan: true,
+    }))
   );
   sendResults.forEach((result, index) => {
     const value = result.status === "fulfilled" ? result.value : null;

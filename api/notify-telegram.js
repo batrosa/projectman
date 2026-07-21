@@ -188,7 +188,13 @@ export default async function handler(request, response) {
     // keep the exact response semantics it always had: transport failure →
     // 502; Telegram logical refusal on HTTP 200 → 502; Telegram HTTP error →
     // proxy the upstream status; success → 200 with messageId.
-    const result = await sendTelegramMessage(targetChatId, text, { parseMode });
+    const result = await sendTelegramMessage(targetChatId, text, {
+        parseMode,
+        taskId,
+        projectId,
+        organizationId: callerOrgId,
+        linkToProjectMan: true,
+    });
 
     if (result.ok) {
         return response.status(200).json({ ok: true, messageId: result.messageId || null });

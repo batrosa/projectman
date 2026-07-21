@@ -30,7 +30,15 @@
 // таймаут, лимит вызовов и шаблонный fallback гарантируют доставку без LLM.
 import { adminDb } from "../lib/firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
-import { classifyTask, buildEventText, buildDigestText, mskDateString } from "../lib/agent-monitor-core.js";
+import {
+  classifyTask,
+  buildEventText,
+  buildDigestText,
+  buildTelegramEventText,
+  buildTelegramDigestText,
+  appendTelegramAdvice,
+  mskDateString,
+} from "../lib/agent-monitor-core.js";
 import { sendTelegramMessage } from "../lib/telegram-send.js";
 import { sendPushToUser } from "../lib/push-send.js";
 import { sendEmailNotification } from "../lib/email-send.js";
@@ -301,10 +309,20 @@ export default async function handler(request, response) {
             assigneeNames: assigneesUnchanged ? assigneeNames : [],
             today: mskDateString(now),
           });
+          const telegramBaseText = buildTelegramEventText(event.type, {
+            title: taskTitle,
+            projectName,
+            deadline: freshTask.deadline || task.deadline,
+            assigneeNames: assigneesUnchanged ? assigneeNames : [],
+            today: mskDateString(now),
+          });
           const adviceResult = preparedAdvice.get(event.type);
           const text = adviceResult
             ? appendAgentAdvice(baseText, adviceResult.advice)
             : baseText;
+          const telegramText = adviceResult
+            ? appendTelegramAdvice(telegramBaseText, adviceResult.advice)
+            : telegramBaseText;
           if (adviceResult?.source === "ai") claimedAiMessages += 1;
 
           for (const recipient of recipients) {
@@ -322,7 +340,16 @@ export default async function handler(request, response) {
             });
             notes.push({ noteId: noteRef.id, uid: recipient.uid, type: event.type });
             if (recipient.telegramChatId) {
-              telegramQueue.push({ chatId: recipient.telegramChatId, text, type: event.type, title: taskTitle, noteId: noteRef.id });
+              telegramQueue.push({
+                chatId: recipient.telegramChatId,
+                text: telegramText,
+                type: event.type,
+                title: taskTitle,
+                taskId: taskDoc.id,
+                projectId: freshTask.projectId || task.projectId || null,
+                organizationId: taskOrgId,
+                noteId: noteRef.id,
+              });
             }
             pushQueue.push({
               uid: recipient.uid,
@@ -366,8 +393,11 @@ export default async function handler(request, response) {
     return {
       chatId: first.chatId,
       text: entry.digest
-        ? buildDigestText(first.type, { count: entry.items.length, titles: entry.items.map((i) => i.title) })
+        ? buildTelegramDigestText(first.type, { count: entry.items.length, titles: entry.items.map((i) => i.title) })
         : first.text,
+      taskId: entry.digest ? null : first.taskId,
+      projectId: entry.digest ? null : first.projectId,
+      organizationId: first.organizationId,
       items: entry.items,
     };
   });
@@ -375,7 +405,13 @@ export default async function handler(request, response) {
   // прогон (у sendTelegramMessage свой таймаут), ни падать молча.
   for (let i = 0; i < telegramPlan.length; i += TELEGRAM_SEND_POOL) {
     const chunk = telegramPlan.slice(i, i + TELEGRAM_SEND_POOL);
-    const results = await Promise.allSettled(chunk.map((message) => sendTelegramMessage(message.chatId, message.text)));
+    const results = await Promise.allSettled(chunk.map((message) => sendTelegramMessage(message.chatId, message.text, {
+      parseMode: "HTML",
+      taskId: message.taskId,
+      projectId: message.projectId,
+      organizationId: message.organizationId,
+      linkToProjectMan: true,
+    })));
     results.forEach((result, index) => {
       const value = result.status === "fulfilled" ? result.value : null;
       const ok = result.status === "fulfilled" && (!value || value.ok !== false);

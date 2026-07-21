@@ -26,6 +26,10 @@ function playClickSound() {
 
 // ========== APP START ==========
 let pendingInviteCode = null; // Store invite code from URL
+let pendingTaskLink = null; // Telegram/email deep-link, applied after the org projects load
+let pendingTaskLinkInFlight = false;
+let pendingTaskOrgEntryInFlight = false;
+const DEEP_LINK_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 
 function proceedToApp() {
     // DON'T hide loading screen here - let it stay until fully loaded
@@ -876,6 +880,20 @@ async function refreshOrganizationList() {
     try {
         await loadMyOrganizations();
         renderOrganizationList();
+        // A task notification contains the task's organization id. Enter it
+        // automatically only when the authenticated membership list confirms
+        // access; api/org/switch performs the same check server-side again.
+        const targetOrgId = pendingTaskLink?.organizationId;
+        if (!pendingTaskOrgEntryInFlight
+            && targetOrgId
+            && state.organizations.some(org => org.id === targetOrgId)) {
+            pendingTaskOrgEntryInFlight = true;
+            try {
+                await enterOrganization(targetOrgId);
+            } finally {
+                pendingTaskOrgEntryInFlight = false;
+            }
+        }
     } catch (error) {
         console.error('Error loading organizations:', error);
         state.organizations = [];
@@ -1003,19 +1021,91 @@ function showOrgSelectionScreen(clearOrg = false) {
 function captureInviteCodeFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
     const inviteCode = urlParams.get('invite');
+    const taskId = urlParams.get('task');
+    const projectId = urlParams.get('project');
+    const organizationId = urlParams.get('org');
 
     if (inviteCode) {
         pendingInviteCode = inviteCode.toUpperCase();
         // Store in sessionStorage as backup
         sessionStorage.setItem('pendingInviteCode', pendingInviteCode);
-        // Clean URL without reload
-        window.history.replaceState({}, document.title, window.location.pathname);
     } else {
         // Check sessionStorage for pending code
         const stored = sessionStorage.getItem('pendingInviteCode');
         if (stored) {
             pendingInviteCode = stored;
         }
+    }
+
+    if (DEEP_LINK_ID_RE.test(String(taskId || ''))) {
+        pendingTaskLink = {
+            taskId: String(taskId),
+            projectId: DEEP_LINK_ID_RE.test(String(projectId || '')) ? String(projectId) : null,
+            organizationId: DEEP_LINK_ID_RE.test(String(organizationId || '')) ? String(organizationId) : null,
+        };
+        sessionStorage.setItem('pendingTaskLink', JSON.stringify(pendingTaskLink));
+    } else {
+        try {
+            const stored = JSON.parse(sessionStorage.getItem('pendingTaskLink') || 'null');
+            if (stored && DEEP_LINK_ID_RE.test(String(stored.taskId || ''))) {
+                pendingTaskLink = {
+                    taskId: String(stored.taskId),
+                    projectId: DEEP_LINK_ID_RE.test(String(stored.projectId || '')) ? String(stored.projectId) : null,
+                    organizationId: DEEP_LINK_ID_RE.test(String(stored.organizationId || '')) ? String(stored.organizationId) : null,
+                };
+            }
+        } catch {
+            sessionStorage.removeItem('pendingTaskLink');
+        }
+    }
+
+    // Remove only ProjectMan routing params. Other query parameters may belong
+    // to an auth provider and must survive until Firebase consumes them.
+    if (inviteCode || taskId || projectId || organizationId) {
+        const cleanUrl = new URL(window.location.href);
+        ['invite', 'task', 'project', 'org'].forEach(key => cleanUrl.searchParams.delete(key));
+        window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+    }
+}
+
+function clearPendingTaskLink() {
+    pendingTaskLink = null;
+    sessionStorage.removeItem('pendingTaskLink');
+}
+
+// Resolve the task from Firestore only after the selected organization's
+// project list is available. A URL never bypasses tenant/project permissions:
+// Firestore rules and the accessible-project list remain authoritative.
+async function applyPendingTaskLink() {
+    if (pendingTaskLinkInFlight || !pendingTaskLink || !db || !state.currentUser || !state.organization) return;
+    const link = pendingTaskLink;
+    if (link.organizationId && link.organizationId !== getCurrentOrganizationId()) return;
+    if (link.projectId && !state.projects.some(project => project.id === link.projectId)) return;
+
+    pendingTaskLinkInFlight = true;
+    try {
+        const doc = await db.collection('tasks').doc(link.taskId).get();
+        if (!doc.exists) {
+            clearPendingTaskLink();
+            return;
+        }
+        const task = { id: doc.id, ...doc.data() };
+        const projectId = String(task.projectId || '');
+        const accessibleProject = getFilteredProjects().some(project => project.id === projectId);
+        if (!DEEP_LINK_ID_RE.test(projectId) || !accessibleProject) return;
+
+        clearPendingTaskLink();
+        navigateToTask(projectId, task.id, boardViewForTask(task));
+    } catch (error) {
+        // A denied/nonexistent task cannot become accessible by retrying in the
+        // same organization. Network failures remain pending for the next live
+        // projects snapshot/reload.
+        if (error?.code === 'permission-denied' || error?.code === 'not-found') {
+            clearPendingTaskLink();
+        }
+        console.warn('Task deep-link could not be opened:', error?.message || error);
+    } finally {
+        pendingTaskLinkInFlight = false;
     }
 }
 
@@ -2098,6 +2188,7 @@ function setupRealtimeListeners() {
 
         renderProjects();
         renderBoard();
+        void applyPendingTaskLink();
 
         // Re-scope the "My Tasks" badge to the now-loaded/updated accessible
         // projects (its listeners query by projectId, so they need the project
