@@ -3854,7 +3854,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
 <b>Проект:</b> ${escapeHtmlForTelegram(project?.name || 'Проект')}
 <b>Задача:</b> ${escapeHtmlForTelegram(doneTask.title)}
 
-Руководитель принял выполнение. Отличная работа!`;
+Постановщик принял выполнение. Отличная работа!`;
                     const doneEvent = { type: 'task_done', taskId, projectId: doneTask.projectId || null };
                     doneTask.assigneeIds.forEach(uid => sendTaskEventToUid(uid, doneMessage, doneEvent));
                 }
@@ -4266,7 +4266,7 @@ function openTaskDetailsModal(task) {
                 <h3><i class="fa-solid fa-rotate-left" style="color: #f59e0b;"></i> Возвращено на доработку</h3>
                 <div class="revision-reason-box">
                     <div class="revision-reason-header">
-                        <i class="fa-solid fa-comment-dots"></i> Комментарий руководителя
+                        <i class="fa-solid fa-comment-dots"></i> Комментарий постановщика
                     </div>
                     <div class="revision-reason-text">${escapeHtml(task.revisionReason)}</div>
                     <div class="revision-reason-meta">

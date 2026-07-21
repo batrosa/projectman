@@ -1188,6 +1188,12 @@ select {
     transition: border-color 0.2s;
 }
 
+textarea {
+    resize: none;
+    overflow-y: auto;
+    max-width: 100%;
+}
+
 input:focus,
 textarea:focus,
 select:focus {

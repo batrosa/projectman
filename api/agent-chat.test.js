@@ -2055,7 +2055,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
   it("returns a task proposal for a plain-text create-task request", async () => {
     state.db = makeFakeDb({
-      userDoc: { organizationId: "org-1", orgRole: "admin", firstName: "Руководитель", lastName: "Проекта" },
+      userDoc: { organizationId: "org-1", orgRole: "admin", firstName: "Постановщик", lastName: "Проекта" },
       orgUsers: [
         { id: "u-eldar", organizationId: "org-1", firstName: "Эльдар", lastName: "Исаев", displayName: "Эльдар Исаев" },
       ],

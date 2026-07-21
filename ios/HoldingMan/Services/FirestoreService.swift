@@ -303,7 +303,7 @@ final class TasksStore: ObservableObject {
         <b>Проект:</b> \(telegramHTML(projectName))
         <b>Задача:</b> \(telegramHTML(task.title))
 
-        Руководитель принял выполнение. Отличная работа!
+        Постановщик принял выполнение. Отличная работа!
         """
         for uid in task.assigneeIds {
             Task {
