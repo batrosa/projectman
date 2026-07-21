@@ -2047,7 +2047,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.19'; // My Tasks fullscreen mini-board
+    const CURRENT_VERSION = '6.20'; // Google sign-in request cleanup
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -6550,11 +6550,12 @@ async function onAuthStateChanged(user) {
 
 function federatedProvider(providerId) {
     if (providerId === 'google.com') {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        provider.addScope('profile');
-        provider.addScope('email');
-        provider.setCustomParameters({ prompt: 'select_account' });
-        return provider;
+        // Firebase requests the basic Google identity scopes automatically.
+        // Keep this provider on the documented default flow: forcing
+        // select_account sent some existing Google sessions through an
+        // additional ServiceLogin round-trip that could end on Google's
+        // generic Error 400 page before Firebase received a result.
+        return new firebase.auth.GoogleAuthProvider();
     }
     if (providerId === 'apple.com') {
         const provider = new firebase.auth.OAuthProvider('apple.com');
