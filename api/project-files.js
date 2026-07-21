@@ -14,6 +14,7 @@ import {
   destroyAsset,
   isSecureStorageRef,
 } from "../lib/cloudinary-files.js";
+import secureFilesHandler from "../lib/files-endpoint.js";
 
 export const ALLOWED_EXTENSIONS = ["md", "xlsx", "xlsm", "pdf", "docx"];
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -76,6 +77,14 @@ export function callerCanManageProjectFiles(orgRole, allowedProjects, projectId)
 }
 
 export default async function handler(request, response) {
+  // Keep all file operations in one Vercel Function: the Hobby deployment has
+  // a hard 12-function limit. The action contract remains isolated in lib.
+  if (request.method === "POST"
+    && request.body
+    && typeof request.body === "object"
+    && ["signUpload", "finalizeUpload", "download", "delete"].includes(request.body.action)) {
+    return secureFilesHandler(request, response);
+  }
   if (request.method !== "POST" && request.method !== "DELETE") {
     response.setHeader("Allow", "POST, DELETE");
     return response.status(405).json({ error: "Method not allowed" });

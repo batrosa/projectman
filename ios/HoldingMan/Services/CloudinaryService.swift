@@ -77,7 +77,7 @@ enum CloudinaryService {
             throw ApiError.server("Файл слишком большой. Максимум 10 МБ.")
         }
 
-        let signed = try await ApiClient.post("api/files", body: [
+        let signed = try await ApiClient.post("api/project-files", body: [
             "action": "signUpload",
             "purpose": purpose,
             "projectId": projectId,
@@ -133,7 +133,7 @@ enum CloudinaryService {
             let message = (json["error"] as? [String: Any])?["message"] as? String
             throw ApiError.server(message ?? "Не удалось загрузить файл")
         }
-        let finalized = try await ApiClient.post("api/files", body: [
+        let finalized = try await ApiClient.post("api/project-files", body: [
             "action": "finalizeUpload",
             "intentId": intentId,
         ])

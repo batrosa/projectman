@@ -84,7 +84,7 @@ private enum RemoteFilePreviewLoader {
     static func download(file: FileRef) async throws -> URL {
         let remoteURL: URL
         if file.storageProvider == "cloudinary", file.publicId != nil {
-            let json = try await ApiClient.post("api/files", body: [
+            let json = try await ApiClient.post("api/project-files", body: [
                 "action": "download",
                 "file": file.dict,
             ])

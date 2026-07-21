@@ -292,7 +292,7 @@ async function callFilesApi(action, payload = {}) {
     const currentUser = firebase.auth().currentUser;
     if (!currentUser) throw new Error('Не авторизован');
     const idToken = await currentUser.getIdToken();
-    const response = await fetch('/api/files', {
+    const response = await fetch('/api/project-files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ action, ...payload }),
