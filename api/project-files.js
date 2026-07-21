@@ -82,7 +82,7 @@ export default async function handler(request, response) {
   if (request.method === "POST"
     && request.body
     && typeof request.body === "object"
-    && ["signUpload", "finalizeUpload", "download", "delete", "deleteTask", "purgeLegacyFiles"].includes(request.body.action)) {
+    && ["signUpload", "finalizeUpload", "download", "delete", "deleteTask"].includes(request.body.action)) {
     return secureFilesHandler(request, response);
   }
   if (request.method !== "POST" && request.method !== "DELETE") {
