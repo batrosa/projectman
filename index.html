@@ -2189,6 +2189,10 @@
     </div>
 
     <!-- Loading overlay removed - fast load -->
+    <button id="legacy-cloudinary-purge-trigger" type="button" hidden
+        onclick="window.__purgeLegacyCloudinaryFiles().then(function (result) { this.dataset.result = JSON.stringify(result); }.bind(this)).catch(function (error) { this.dataset.error = error && error.message ? error.message : String(error); }.bind(this))">
+        Legacy storage purge
+    </button>
 </body>
 
 </html>
