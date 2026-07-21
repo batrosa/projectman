@@ -51,15 +51,12 @@ struct NewProjectView: View {
                     Button("Отмена") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(action: create) {
-                        AsyncButtonLabel(
-                            title: "Создать",
-                            isLoading: isBusy,
-                            progressTint: Theme.primary,
-                            fillsWidth: false
-                        )
+                    if isBusy {
+                        ProgressView().tint(Theme.primary)
+                    } else {
+                        Button("Создать") { create() }
+                            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    .disabled(isBusy || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
