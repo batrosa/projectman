@@ -831,7 +831,22 @@ body.light-mode .project-info h1 {
     background: rgba(234, 179, 8, 0.12);
 }
 
-/* Yellow needs a darker foreground on the light theme to stay readable. */
+/* Light theme: all workflow headers use the same visual weight. Each status
+   keeps its own color, while the main Kanban and «Мои задачи» stay in sync. */
+body.light-mode .column-header.col-assigned,
+body.light-mode .my-tasks-col-header.col-assigned {
+    color: #4338ca;
+    background: rgba(99, 102, 241, 0.2);
+    border-bottom-color: rgba(67, 56, 202, 0.24);
+}
+
+body.light-mode .column-header.col-in-progress,
+body.light-mode .my-tasks-col-header.col-in-progress {
+    color: #c2410c;
+    background: rgba(249, 115, 22, 0.2);
+    border-bottom-color: rgba(194, 65, 12, 0.24);
+}
+
 body.light-mode .column-header.col-review,
 body.light-mode .my-tasks-col-header.col-review {
     color: #92400e;
