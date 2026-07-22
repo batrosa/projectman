@@ -2,13 +2,21 @@
   "name": "projectman",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "test": "vitest run --exclude 'firestore-tests/**'",
+    "test:unit": "vitest run lib",
+    "test:api": "vitest run api",
+    "test:web": "vitest run script",
     "test:rules": "firebase emulators:exec --only firestore \"vitest run firestore-tests\"",
-    "test:all": "npm test && npm run test:rules"
+    "test:all": "npm test && npm run test:rules",
+    "build": "node scripts/verify-build.mjs && node scripts/smoke-firebase-admin.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase-tools": "15.24.0",
     "jsdom": "^29.1.1",
     "vitest": "^3.0.0"
   },
@@ -16,7 +24,7 @@
     "@vercel/functions": "^3.7.5",
     "cloudinary": "2.10.0",
     "fflate": "^0.8.3",
-    "firebase-admin": "13.5.0",
+    "firebase-admin": "14.2.0",
     "unpdf": "^1.6.2"
   }
 }

@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Unit, API and web tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:unit
+      - run: npm run test:api
+      - run: npm run test:web
+
+  firestore:
+    name: Firestore emulator tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run test:rules
+
+  audit-build:
+    name: Dependency audit and deploy build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run build
+
+  ios:
+    name: iOS XcodeGen build
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned XcodeGen
+        run: |
+          install_dir="$(mktemp -d)"
+          curl -fsSL https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip -o "${install_dir}/xcodegen.zip"
+          echo "090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef  ${install_dir}/xcodegen.zip" | shasum -a 256 -c -
+          ditto -xk "${install_dir}/xcodegen.zip" "${install_dir}"
+          sudo "${install_dir}/xcodegen/install.sh"
+          test "$(xcodegen --version)" = "Version: 2.45.4"
+      - name: Generate project and restore SwiftPM lock
+        run: |
+          xcodegen generate
+          lock_dir="HoldingMan.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+          mkdir -p "${lock_dir}"
+          cp Package.resolved "${lock_dir}/Package.resolved"
+      - name: Resolve locked packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project HoldingMan.xcodeproj \
+            -scheme HoldingMan \
+            -onlyUsePackageVersionsFromResolvedFile
+      - name: Build iOS app without signing
+        run: |
+          xcodebuild \
+            -project HoldingMan.xcodeproj \
+            -scheme HoldingMan \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -disableAutomaticPackageResolution \
+            -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build

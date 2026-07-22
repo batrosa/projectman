@@ -8,11 +8,10 @@ options:
 packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    minVersion: 11.0.0
-    maxVersion: 99.0.0
+    exactVersion: 12.15.0
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
-    from: 9.0.0
+    exactVersion: 9.2.0
 
 targets:
   HoldingMan:
