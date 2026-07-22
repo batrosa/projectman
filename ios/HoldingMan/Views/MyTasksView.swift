@@ -232,6 +232,7 @@ private struct MyTaskDetailWrapper: View {
     let task: TaskItem
     let project: Project?
     @EnvironmentObject private var myTasksStore: MyTasksStore
+    @EnvironmentObject private var appState: AppState
     @StateObject private var tasksStore = TasksStore()
 
     var body: some View {
@@ -241,7 +242,14 @@ private struct MyTaskDetailWrapper: View {
             onLocalTaskChange: { myTasksStore.replaceLocal($0) }
         )
         .environmentObject(tasksStore)
-        .onAppear { tasksStore.subscribe(projectId: task.projectId) }
+        .onAppear {
+            tasksStore.subscribe(
+                projectId: task.projectId,
+                organizationId: appState.user?.organizationId ?? "",
+                uid: appState.user?.uid ?? "",
+                isOwner: appState.user?.orgRole == "owner"
+            )
+        }
         .onDisappear { tasksStore.stop() }
     }
 }

@@ -78,7 +78,7 @@ struct NotificationsView: View {
                 Text(deleteError ?? "Неизвестная ошибка")
             }
             .sheet(item: $route) { route in
-                TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId)
+                TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId, taskCollection: route.taskCollection)
             }
         }
     }
@@ -130,7 +130,7 @@ struct NotificationsView: View {
             notificationsStore.markRead(note)
             // Тап по уведомлению с задачей — открыть её в разделе статуса
             if let taskId = note.taskId, let projectId = note.projectId, note.hasTaskLink {
-                route = TaskRoute(taskId: taskId, projectId: projectId)
+                route = TaskRoute(taskId: taskId, projectId: projectId, taskCollection: note.taskCollection)
             }
         }
         .swipeActions {

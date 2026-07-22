@@ -119,20 +119,24 @@ export default async function handler(request, response) {
   // Paginated sweep (cursor over __name__) instead of a single hard-capped
   // read: with one limit(N) query, task N+1 was silently never checked.
   const taskDocs = [];
+  const taskCollectionByPath = new Map();
   try {
-    let lastDoc = null;
-    for (let page = 0; page < MAX_SWEEP_PAGES; page += 1) {
-      let query = db.collection("tasks")
-        .where("status", "==", "in-progress")
-        .orderBy("__name__")
-        .limit(SWEEP_PAGE_SIZE);
-      if (lastDoc) query = query.startAfter(lastDoc);
-      const snap = await query.get();
-      taskDocs.push(...snap.docs);
-      if (snap.docs.length < SWEEP_PAGE_SIZE) break;
-      lastDoc = snap.docs[snap.docs.length - 1];
-      if (page === MAX_SWEEP_PAGES - 1) {
-        console.warn(`agent-monitor: sweep capped at ${taskDocs.length} tasks`);
+    for (const collectionName of ["tasks", "privateTasks"]) {
+      let lastDoc = null;
+      for (let page = 0; page < MAX_SWEEP_PAGES; page += 1) {
+        let query = db.collection(collectionName)
+          .where("status", "==", "in-progress")
+          .orderBy("__name__")
+          .limit(SWEEP_PAGE_SIZE);
+        if (lastDoc) query = query.startAfter(lastDoc);
+        const snap = await query.get();
+        taskDocs.push(...snap.docs);
+        snap.docs.forEach((doc) => taskCollectionByPath.set(doc.ref.path, collectionName));
+        if (snap.docs.length < SWEEP_PAGE_SIZE) break;
+        lastDoc = snap.docs[snap.docs.length - 1];
+        if (page === MAX_SWEEP_PAGES - 1) {
+          console.warn(`agent-monitor: ${collectionName} sweep capped at ${taskDocs.length} tasks`);
+        }
       }
     }
   } catch (error) {
@@ -207,6 +211,7 @@ export default async function handler(request, response) {
     scanned += 1;
     try {
       const task = taskDoc.data();
+      const taskCollection = taskCollectionByPath.get(taskDoc.ref.path) || "tasks";
       const events = classifyTask(task, now);
       if (events.length === 0) continue;
 
@@ -332,6 +337,7 @@ export default async function handler(request, response) {
               organizationId: taskOrgId,
               taskId: taskDoc.id,
               projectId: freshTask.projectId || task.projectId || null,
+              taskCollection,
               type: event.type,
               text,
               generatedBy: adviceResult?.source === "ai" ? "ai_agent" : "rules",
@@ -348,6 +354,7 @@ export default async function handler(request, response) {
                 taskId: taskDoc.id,
                 projectId: freshTask.projectId || task.projectId || null,
                 organizationId: taskOrgId,
+                taskCollection,
                 noteId: noteRef.id,
               });
             }
@@ -359,6 +366,7 @@ export default async function handler(request, response) {
               title: taskTitle,
               taskId: taskDoc.id,
               projectId: freshTask.projectId || task.projectId || null,
+              taskCollection,
               noteId: noteRef.id,
             });
           }
@@ -398,6 +406,7 @@ export default async function handler(request, response) {
       taskId: entry.digest ? null : first.taskId,
       projectId: entry.digest ? null : first.projectId,
       organizationId: first.organizationId,
+      taskCollection: entry.digest ? null : first.taskCollection,
       items: entry.items,
     };
   });
@@ -410,6 +419,7 @@ export default async function handler(request, response) {
       taskId: message.taskId,
       projectId: message.projectId,
       organizationId: message.organizationId,
+      taskCollection: message.taskCollection,
       linkToProjectMan: true,
     })));
     results.forEach((result, index) => {
@@ -436,7 +446,7 @@ export default async function handler(request, response) {
         payload: {
           title: PUSH_TITLES[first.type] || "ProjectMan",
           body: first.text,
-          data: { taskId: first.taskId, projectId: first.projectId },
+          data: { taskId: first.taskId, projectId: first.projectId, taskCollection: first.taskCollection },
         },
         items: entry.items,
       };
