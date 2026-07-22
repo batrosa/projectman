@@ -36,7 +36,11 @@ for (const source of Object.keys(vercel.functions || {})) {
   if (!existsSync(join(root, source))) failures.push(`vercel.json: missing function ${source}`);
 }
 
-const htmlFiles = [join(root, "index.html"), join(root, "landing.html"), join(root, "firebase-hosting/google-auth.html")];
+const htmlFiles = [
+  join(root, "index.html"),
+  join(root, "landing.html"),
+  join(root, "firebase-hosting/google-auth.html"),
+].filter(existsSync);
 for (const htmlPath of htmlFiles) {
   const html = readFileSync(htmlPath, "utf8").replace(/<!--[\s\S]*?-->/gu, "");
   const deployRoot = htmlPath.startsWith(join(root, "firebase-hosting"))
