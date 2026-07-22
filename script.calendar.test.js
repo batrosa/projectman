@@ -109,4 +109,11 @@ describe("Calendar month grid", () => {
     expect(STYLE_SOURCE).toMatch(/\.calendar-day\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;/);
     expect(STYLE_SOURCE).toMatch(/\.calendar-task-title\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/);
   });
+
+  it("draws grid borders only around dates and keeps empty slots borderless", () => {
+    expect(STYLE_SOURCE).toMatch(/\.calendar-grid\s*\{[\s\S]*?gap:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?border:\s*0;/);
+    expect(STYLE_SOURCE).toMatch(/\.calendar-day:not\(\.calendar-day-empty\)\s*\{[\s\S]*?box-shadow:\s*inset 0 0 0 1px var\(--border\);/);
+    expect(STYLE_SOURCE).toMatch(/\.calendar-day\.calendar-day-empty\s*\{[\s\S]*?background:\s*rgba\(15, 23, 42, 0\.035\);[\s\S]*?box-shadow:\s*none;/);
+    expect(STYLE_SOURCE).toMatch(/body:not\(\.light-mode\) \.calendar-day\.calendar-day-empty\s*\{[\s\S]*?background:\s*#202c3f;[\s\S]*?box-shadow:\s*none;/);
+  });
 });
