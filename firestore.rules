@@ -124,6 +124,27 @@ service cloud.firestore {
           && requestTaskOrgMatchesCurrentOrg());
     }
 
+    // A private task has one canonical audience derived from its business
+    // roles. Keeping viewerIds derived (rather than client-defined) prevents a
+    // creator from silently granting access to an unrelated account or
+    // forgetting one of the assignees/co-creators.
+    function hasValidPrivateTaskAudience(data) {
+      return data.isPrivate == true
+        && data.createdByUid is string
+        && data.createdByUid.size() > 0
+        && data.assigneeIds is list
+        && data.coCreatorIds is list
+        && data.viewerIds is list
+        && data.viewerIds.size() <= 100
+        && data.viewerIds.toSet()
+          == data.assigneeIds.concat(data.coCreatorIds).concat([data.createdByUid]).toSet();
+    }
+
+    function isPrivateTaskParticipant(data) {
+      return request.auth != null
+        && request.auth.uid in data.viewerIds;
+    }
+
     // (isOrgUserStatsUpdate removed — XP/stats are server-only now; see api/award-xp.)
 
     // Коллекция Users
@@ -349,6 +370,95 @@ service cloud.firestore {
                   'completedOnTime', 'xpAwarded', 'assigneeCompleted'
                 ]))
               // На доработку: completed → in_work + причина возврата
+              || (request.resource.data.status == 'in-progress'
+                && request.resource.data.subStatus == 'in_work'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status', 'subStatus', 'takenToWorkAt', 'takenToWorkBy',
+                  'completedAt', 'completionComment', 'completionProof',
+                  'completionProofs', 'completedBy', 'archivedAt', 'archivedBy',
+                  'revisionReason', 'revisionReturnedBy', 'revisionReturnedAt',
+                  'wasReturned', 'assigneeCompleted'
+                ]))
+            ));
+    }
+
+    // Private tasks live separately so existing broad queries against `tasks`
+    // remain valid for old web/iOS releases. Firestore rules are not filters:
+    // mixing public and participant-only documents in one collection would
+    // make those broad queries fail entirely (or require insecure broad read).
+    match /privateTasks/{taskId} {
+      // Organization owner is the explicit oversight exception. Admins,
+      // moderators and employees still need to be task participants.
+      allow read: if hasOrgRole(resource.data.organizationId, ['owner'])
+        || (isPrivateTaskParticipant(resource.data)
+            && isOrgMember(resource.data.organizationId));
+
+      // Client-created private tasks must identify the authenticated creator
+      // and store the exact derived audience.
+      allow create: if request.auth != null
+        && request.resource.data.createdByUid == request.auth.uid
+        && hasValidPrivateTaskAudience(request.resource.data)
+        && canManageProject(request.resource.data.projectId)
+        && requestTaskOrgMatchesCurrentOrg();
+
+      // The organization owner keeps the oversight exception; any other
+      // manager must also be an explicit task participant.
+      allow delete: if hasOrgRole(resource.data.organizationId, ['owner'])
+        || (isPrivateTaskParticipant(resource.data)
+            && canManageProject(resource.data.projectId));
+
+      allow update: if (hasOrgRole(resource.data.organizationId, ['owner'])
+          && request.resource.data.organizationId == resource.data.organizationId
+          && request.resource.data.projectId == resource.data.projectId
+          && request.resource.data.createdByUid == resource.data.createdByUid
+          && hasValidPrivateTaskAudience(request.resource.data))
+        || (
+          isPrivateTaskParticipant(resource.data)
+          && isPrivateTaskParticipant(request.resource.data)
+          && hasValidPrivateTaskAudience(request.resource.data)
+          && request.resource.data.createdByUid == resource.data.createdByUid
+          && request.resource.data.projectId == resource.data.projectId
+          && requestTaskOrgPreservedOrCurrent()
+          && canManageProject(resource.data.projectId)
+        )
+        || (request.auth != null
+            && isPrivateTaskParticipant(resource.data)
+            && canReaderWorkOnTask()
+            && request.resource.data.projectId == resource.data.projectId
+            && request.resource.data.status == 'in-progress'
+            && resource.data.status == 'in-progress'
+            && request.resource.data.subStatus in ['in_work', 'completed']
+            && !(resource.data.subStatus == 'assigned' && request.resource.data.subStatus == 'completed')
+            && (request.resource.data.subStatus != 'completed'
+                || (request.resource.data.completionProofs is list
+                    && request.resource.data.completionProofs.size() > 0
+                    && request.resource.data.completionProofs.size() <= 10))
+            && (!('attachments' in request.resource.data)
+                || !(request.resource.data.attachments is list)
+                || request.resource.data.attachments.size() <= 20)
+            && (request.resource.data.subStatus != 'completed'
+                || request.resource.data.completedAt == request.time)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'assigneeCompleted', 'reminderSent', 'subStatus',
+              'attachments', 'takenToWorkAt', 'takenToWorkBy', 'completedAt',
+              'completionComment', 'completionProof', 'completionProofs',
+              'completedBy', 'revisionReason', 'revisionReturnedBy',
+              'revisionReturnedAt', 'archivedAt', 'archivedBy'
+            ]))
+        || (request.auth != null
+            && isPrivateTaskParticipant(resource.data)
+            && resource.data.coCreatorIds is list
+            && request.auth.uid in resource.data.coCreatorIds
+            && request.resource.data.projectId == resource.data.projectId
+            && resource.data.status == 'in-progress'
+            && resource.data.subStatus == 'completed'
+            && (
+              (request.resource.data.status == 'done'
+                && request.resource.data.subStatus == 'completed'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status', 'subStatus', 'archivedAt', 'archivedBy',
+                  'completedOnTime', 'xpAwarded', 'assigneeCompleted'
+                ]))
               || (request.resource.data.status == 'in-progress'
                 && request.resource.data.subStatus == 'in_work'
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly([

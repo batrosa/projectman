@@ -22,7 +22,7 @@ function mockResponse() {
 // In-memory fake Firestore: users lookup (doc + telegramChatId query), the
 // users/{uid}/devices subcollection push-send reads (empty), and the
 // agentNotifications feed the event path writes into (captured for asserts).
-function makeFakeDb(usersById = {}) {
+function makeFakeDb(usersById = {}, privateTasksById = {}) {
   const users = new Map(Object.entries(usersById));
   const feed = [];
   return {
@@ -33,6 +33,21 @@ function makeFakeDb(usersById = {}) {
           async add(doc) {
             feed.push(doc);
             return { id: `note-${feed.length}` };
+          },
+        };
+      }
+      if (name === "privateTasks") {
+        return {
+          doc(id) {
+            return {
+              async get() {
+                return {
+                  exists: Object.hasOwn(privateTasksById, id),
+                  data: () => privateTasksById[id],
+                  ref: { id },
+                };
+              },
+            };
           },
         };
       }
@@ -90,7 +105,7 @@ describe("POST /api/notify-telegram", () => {
       return { uid: CALLER_UID };
     });
     state.db = makeFakeDb({
-      [CALLER_UID]: { organizationId: CALLER_ORG },
+      [CALLER_UID]: { organizationId: CALLER_ORG, orgRole: "admin" },
       recipient_in_org: { organizationId: CALLER_ORG, telegramChatId: "123" },
       recipient_other_org: { organizationId: "org-b", telegramChatId: "999" },
     });
@@ -358,5 +373,74 @@ describe("POST /api/notify-telegram", () => {
     expect(res.statusCode).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(state.db.feed).toHaveLength(0);
+  });
+
+  it("delivers a private-task notification only between authorized viewers", async () => {
+    state.db = makeFakeDb({
+      [CALLER_UID]: { organizationId: CALLER_ORG, orgRole: "moderator" },
+      assignee: { organizationId: CALLER_ORG, orgRole: "employee" },
+    }, {
+      private_task: {
+        organizationId: CALLER_ORG,
+        projectId: "proj-1",
+        viewerIds: [CALLER_UID, "assignee"],
+      },
+    });
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    const res = mockResponse();
+
+    await handler({
+      method: "POST",
+      headers: AUTH_HEADERS,
+      body: {
+        recipientUid: "assignee",
+        text: "Приватная задача",
+        event: {
+          type: "task_created",
+          taskId: "private_task",
+          projectId: "proj-1",
+          taskCollection: "privateTasks",
+        },
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(state.db.feed).toHaveLength(1);
+    expect(state.db.feed[0]).toMatchObject({ taskCollection: "privateTasks" });
+  });
+
+  it("rejects a private-task notification to an unrelated admin", async () => {
+    state.db = makeFakeDb({
+      [CALLER_UID]: { organizationId: CALLER_ORG, orgRole: "owner" },
+      unrelated_admin: { organizationId: CALLER_ORG, orgRole: "admin" },
+    }, {
+      private_task: {
+        organizationId: CALLER_ORG,
+        projectId: "proj-1",
+        viewerIds: ["creator", "assignee"],
+      },
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = mockResponse();
+
+    await handler({
+      method: "POST",
+      headers: AUTH_HEADERS,
+      body: {
+        recipientUid: "unrelated_admin",
+        text: "Не должно уйти",
+        event: {
+          type: "task_created",
+          taskId: "private_task",
+          projectId: "proj-1",
+          taskCollection: "privateTasks",
+        },
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(state.db.feed).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -33,6 +33,7 @@ import {
   readOrganizationStats,
   XP_CONFIG,
 } from "../lib/organization-stats.js";
+import { loadTaskDocumentForCaller } from "../lib/task-store.js";
 
 export { computeWasOnTime, computeXpDelta, getLevelFromXP, XP_CONFIG };
 
@@ -95,10 +96,17 @@ export default async function handler(request, response) {
 
   // Load the task + its project to check org membership and manage rights.
   let task;
+  let taskRef;
   try {
-    const taskDoc = await db.collection("tasks").doc(taskId).get();
-    if (!taskDoc.exists) return response.status(404).json({ error: "Task not found" });
-    task = taskDoc.data();
+    const loaded = await loadTaskDocumentForCaller(db, taskId, body.taskCollection, {
+      uid: decoded.uid,
+      organizationId: callerOrgId,
+      orgRole: callerOrgRole,
+    });
+    if (!loaded) return response.status(404).json({ error: "Task not found" });
+    if (loaded.forbidden) return response.status(403).json({ error: "Forbidden" });
+    task = loaded.task;
+    taskRef = loaded.ref;
   } catch (error) {
     console.error("award-xp: failed to load task", error);
     return response.status(500).json({ error: "Failed to load task" });
@@ -158,8 +166,6 @@ export default async function handler(request, response) {
     console.error("award-xp: failed to prepare organization stats", error);
     return response.status(500).json({ error: "Failed to prepare organization stats" });
   }
-
-  const taskRef = db.collection("tasks").doc(taskId);
 
   try {
     const result = await db.runTransaction(async (tx) => {

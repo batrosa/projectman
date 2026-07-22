@@ -319,12 +319,16 @@ export default async function handler(request, response) {
     }
     try {
       const userRef = db.collection("users").doc(decoded.uid);
-      const [userSnap, membershipsSnap, assigneeTasks, coCreatorTasks, createdTasks] = await Promise.all([
+      const [userSnap, membershipsSnap, assigneeTasks, coCreatorTasks, createdTasks,
+        privateAssigneeTasks, privateCoCreatorTasks, privateCreatedTasks] = await Promise.all([
         userRef.get(),
         db.collection(MEMBERSHIP_COLLECTION).where("userId", "==", decoded.uid).get(),
         db.collection("tasks").where("assigneeIds", "array-contains", decoded.uid).get(),
         db.collection("tasks").where("coCreatorIds", "array-contains", decoded.uid).get(),
         db.collection("tasks").where("createdByUid", "==", decoded.uid).get(),
+        db.collection("privateTasks").where("assigneeIds", "array-contains", decoded.uid).get(),
+        db.collection("privateTasks").where("coCreatorIds", "array-contains", decoded.uid).get(),
+        db.collection("privateTasks").where("createdByUid", "==", decoded.uid).get(),
       ]);
       if (!userSnap.exists) return response.status(404).json({ error: "Профиль не найден" });
 
@@ -353,7 +357,8 @@ export default async function handler(request, response) {
       // Tasks keep display-name snapshots for fast web/iOS rendering. Refresh
       // those snapshots by UID so existing cards do not retain the old name.
       const taskDocs = new Map();
-      [assigneeTasks, coCreatorTasks, createdTasks].forEach((snapshot) => {
+      [assigneeTasks, coCreatorTasks, createdTasks,
+        privateAssigneeTasks, privateCoCreatorTasks, privateCreatedTasks].forEach((snapshot) => {
         snapshot.docs.forEach((doc) => taskDocs.set(doc.ref.path, doc));
       });
       taskDocs.forEach((doc) => {
@@ -875,6 +880,54 @@ export default async function handler(request, response) {
     }
   }
 
+  if (action === "deleteProject") {
+    const projectId = String(body.projectId || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(projectId)) {
+      return response.status(400).json({ error: "Некорректный проект" });
+    }
+    try {
+      const [userSnap, projectSnap] = await Promise.all([
+        db.collection("users").doc(decoded.uid).get(),
+        db.collection("projects").doc(projectId).get(),
+      ]);
+      if (!userSnap.exists || !projectSnap.exists) return response.status(404).json({ error: "Проект не найден" });
+      const user = userSnap.data() || {};
+      const project = projectSnap.data() || {};
+      if (project.organizationId !== user.organizationId || !["owner", "admin"].includes(user.orgRole)) {
+        return response.status(403).json({ error: "Недостаточно прав для удаления проекта" });
+      }
+
+      const [filesSnap, tasksSnap, privateTasksSnap, notificationsSnap] = await Promise.all([
+        projectSnap.ref.collection("files").get(),
+        db.collection("tasks").where("projectId", "==", projectId).get(),
+        db.collection("privateTasks").where("projectId", "==", projectId).get(),
+        db.collection("agentNotifications").where("projectId", "==", projectId).get(),
+      ]);
+      const refs = [
+        ...filesSnap.docs.map((doc) => doc.ref),
+        ...tasksSnap.docs.map((doc) => doc.ref),
+        ...privateTasksSnap.docs.map((doc) => doc.ref),
+        ...notificationsSnap.docs.map((doc) => doc.ref),
+        projectSnap.ref,
+      ];
+      for (let offset = 0; offset < refs.length; offset += 450) {
+        const batch = db.batch();
+        refs.slice(offset, offset + 450).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+      await writeAuditLog(db, {
+        action: "project.delete",
+        actorUid: decoded.uid,
+        organizationId: user.organizationId,
+        metadata: { projectId, tasks: tasksSnap.size, privateTasks: privateTasksSnap.size },
+      });
+      return response.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("org deleteProject failed", error);
+      return response.status(500).json({ error: "Не удалось удалить проект" });
+    }
+  }
+
   if (action === "deleteOrg") {
     // Owner-only cascade delete. Was client-side (deleteOrganization in
     // script.js) and only cleared users + deleted the org doc, orphaning every
@@ -902,8 +955,12 @@ export default async function handler(request, response) {
       for (const projDoc of projectsSnap.docs) {
         const filesSnap = await projDoc.ref.collection("files").get();
         filesSnap.docs.forEach((d) => deleteRefs.push(d.ref));
-        const tasksSnap = await db.collection("tasks").where("projectId", "==", projDoc.id).get();
+        const [tasksSnap, privateTasksSnap] = await Promise.all([
+          db.collection("tasks").where("projectId", "==", projDoc.id).get(),
+          db.collection("privateTasks").where("projectId", "==", projDoc.id).get(),
+        ]);
         tasksSnap.docs.forEach((d) => deleteRefs.push(d.ref));
+        privateTasksSnap.docs.forEach((d) => deleteRefs.push(d.ref));
         deleteRefs.push(projDoc.ref);
       }
       deleteRefs.push(db.collection("organizations").doc(orgId));

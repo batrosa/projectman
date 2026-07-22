@@ -14,6 +14,12 @@ import { sendPushToUser } from "../lib/push-send.js";
 import { sendEmailNotification } from "../lib/email-send.js";
 import { formatIsoDayRu } from "../lib/date-display.js";
 import { fileHasProjectKnowledge, knowledgeChunksFromFile } from "../lib/project-knowledge.js";
+import {
+  PRIVATE_TASKS_COLLECTION,
+  PUBLIC_TASKS_COLLECTION,
+  canCallerReadPrivateTask,
+  normalizeTaskCollection,
+} from "../lib/task-store.js";
 // Same manage bar as the rules/award flow: owner/admin manage any project in
 // their org; a moderator only projects in their allowedProjects.
 import { callerCanManageProject } from "./award-xp.js";
@@ -66,7 +72,7 @@ const PROJECTMAN_CAPABILITY_GUIDE = [
   "Доступ к проектам: owner/admin видят все проекты. Для moderator/employee можно задать allowedProjects; пустой список означает доступ ко всем, специальный запрет означает отсутствие доступных проектов. Назначать исполнителем можно участников с доступом к текущему проекту.",
   "Проекты: owner/admin создают, переименовывают и удаляют проекты; у проекта может быть дедлайн. У выбранного проекта два вида отображения — переключатель «Канбан / Гант» появляется под активным проектом в списке слева. Канбан — колонки «Назначенные», «В работе», «На проверке», «Готово»; drag-and-drop нет, статус меняют через действия/статус задачи.",
   "Гант (дорожная карта): вид «Гант» показывает задачи проекта полосами на временной шкале — от даты создания задачи до её дедлайна. Цвет полосы совпадает со статусом на доске: фиолетовый — назначена, оранжевый — в работе, жёлтый — на проверке, зелёный — готово; просроченные с красной обводкой; вертикальная линия отмечает сегодняшний день. Сверху есть переключатель масштаба «Год / Месяц»: по умолчанию открыт текущий год, а при выборе «Месяц» — текущий месяц по дням с подсветкой выходных. Селектор и стрелки слева выбирают год или месяц в зависимости от масштаба. Названия месяцев внутри годовой диаграммы не переключают масштаб. Задачи БЕЗ дедлайна на Ганте не отображаются (счётчик «Без срока: N» показан в легенде) — чтобы задача попала на дорожную карту, ей нужно задать срок. Клик по полосе или названию задачи открывает карточку. Отдельной плановой даты начала у задачи нет — начало полосы это дата создания задачи.",
-  "Задача: поля — название, описание/комментарий, ответственные, дедлайн, до 2 прикреплённых файлов до 10 МБ. Новая задача создаётся со статусом «Задача поставлена» / subStatus assigned и попадает в «Назначенные». Можно назначать нескольких ответственных.",
+  "Задача: поля — название, описание/комментарий, ответственные, дедлайн, до 2 прикреплённых файлов до 10 МБ. Новая задача создаётся со статусом «Задача поставлена» / subStatus assigned и попадает в «Назначенные». Можно назначать нескольких ответственных. При создании можно включить «Приватная задача»: владелец организации видит все такие задачи, а admin/moderator/employee — только если он основной или дополнительный постановщик либо исполнитель этой задачи.",
   "Статусы задач: «Задача поставлена»/assigned — ждёт принятия; «В работе»/in_work — исполнитель взял в работу; «На проверке»/completed — исполнитель отправил результат постановщику; «Готово»/done — постановщик принял, задача в архиве. Просрочка в календаре считается по дедлайну для задач, которые ещё не приняты.",
   "Выполнение задачи: исполнитель обязан добавить комментарий о выполнении и 1-3 файла подтверждения; после этого задача идёт на проверку. Постановщик может принять задачу в «Готово» или вернуть на доработку с причиной.",
   "XP и рейтинг: показатели ведутся ОТДЕЛЬНО в каждой организации и не переносятся между ними. Очки начисляются сервером только при финальном принятии задачи в «Готово», транзакционно и один раз. База 10 XP, +5 XP если выполнено в срок, -3 XP если задача возвращалась на доработку, минимум 1 XP. Уровни: 1 Новичок 0 XP, 2 Стажёр 50, 3 Специалист 150, 4 Профессионал 300, 5 Эксперт 500, 6 Мастер 800, 7 Легенда 1200. Личный кабинет показывает XP, уровень, активные задачи, завершено всего, процент в срок и без доработок. Рейтинг доступен с 3 уровня; сортировка по score = 50% «в срок» + 50% «без доработок», затем по числу завершённых задач.",
@@ -235,7 +241,7 @@ export default async function handler(request, response) {
   let callerData = null; // kept for the task-creation permission check (orgRole/allowedProjects)
   try {
     const userDoc = await db.collection("users").doc(decoded.uid).get();
-    callerData = userDoc.exists ? userDoc.data() : null;
+    callerData = userDoc.exists ? { ...userDoc.data(), uid: decoded.uid } : null;
     organizationId = callerData ? callerData.organizationId : null;
     accessibleProjectIds = accessibleProjectIdsFor(callerData);
   } catch (error) {
@@ -280,7 +286,7 @@ export default async function handler(request, response) {
 
   let context;
   try {
-    context = await loadOrganizationContext(db, organizationId, accessibleProjectIds);
+    context = await loadOrganizationContext(db, organizationId, accessibleProjectIds, callerData);
   } catch (error) {
     console.error("agent-chat: failed to load organization context", error);
     return response.status(200).json({ ok: true, answer: "Не удалось загрузить данные организации, попробуйте ещё раз." });
@@ -1050,6 +1056,7 @@ export function resolveAgentNavigation({ message, body = {}, context = {}, calle
           target: "task",
           projectId: taskResult.task.projectId,
           taskId: taskResult.task.id,
+          taskCollection: normalizeTaskCollection(taskResult.task.taskCollection),
         },
         message: `Открываю задачу «${taskResult.task.title || "Без названия"}»${project ? ` в проекте «${project.name || "Без названия"}»` : ""}.`,
       };
@@ -1193,7 +1200,12 @@ export function resolveAgentMutationProposal({ message, body = {}, context = {},
         title: "Переименовать задачу",
         summary: `«${taskResult.task.title}» → «${rename.next}».`,
         confirmLabel: "Переименовать",
-        payload: { projectId: taskResult.task.projectId, taskId: taskResult.task.id, title: rename.next },
+        payload: {
+          projectId: taskResult.task.projectId,
+          taskId: taskResult.task.id,
+          taskCollection: normalizeTaskCollection(taskResult.task.taskCollection),
+          title: rename.next,
+        },
       }),
     };
   }
@@ -1233,7 +1245,12 @@ export function resolveAgentMutationProposal({ message, body = {}, context = {},
         title: "Взять все мои задачи в работу",
         summary: `${matched.length} назначенных вам задач${scopeLabel} перейдут в статус «В работе». Чужие и уже начатые задачи не изменятся.`,
         confirmLabel: `Взять в работу: ${matched.length}`,
-        payload: { taskIds: matched.map((task) => task.id) },
+        payload: {
+          taskTargets: matched.map((task) => ({
+            taskId: task.id,
+            taskCollection: normalizeTaskCollection(task.taskCollection),
+          })),
+        },
       }),
     };
   }
@@ -1256,7 +1273,11 @@ export function resolveAgentMutationProposal({ message, body = {}, context = {},
         title: "Взять задачу в работу",
         summary: `Задача «${task.title}» перейдёт в статус «В работе».`,
         confirmLabel: "Взять в работу",
-        payload: { projectId: task.projectId, taskId: task.id },
+        payload: {
+          projectId: task.projectId,
+          taskId: task.id,
+          taskCollection: normalizeTaskCollection(task.taskCollection),
+        },
       }),
     };
   }
@@ -1476,8 +1497,8 @@ async function handleTaskDeletionProposal({ db, response, body, message, context
 
   const projects = projectResult.projects || (projectResult.project ? [projectResult.project] : []);
   const loaded = allProjects
-    ? await loadProjectsTasksForDeletion(db, projects.map((p) => p.id))
-    : await loadProjectTasksForDeletion(db, projectResult.project.id);
+    ? await loadProjectsTasksForDeletion(db, projects.map((p) => p.id), callerData)
+    : await loadProjectTasksForDeletion(db, projectResult.project.id, callerData);
   if (!loaded.ok) return response.status(200).json({ ok: true, answer: loaded.answer });
 
   const today = isIsoDate(body.clientToday) ? body.clientToday : todayIsoDate();
@@ -1519,44 +1540,67 @@ function resolveAllDeletionProjects({ projects, callerData }) {
   return { projects: allowed };
 }
 
-async function loadProjectTasksForDeletion(db, projectId) {
+async function loadProjectTasksForDeletion(db, projectId, callerData) {
   try {
-    const snap = await db.collection("tasks")
-      .where("projectId", "==", projectId)
-      .limit(MAX_CONTEXT_TASKS)
-      .get();
-    if (snap.size >= MAX_CONTEXT_TASKS) {
+    const [publicSnap, privateSnap] = await Promise.all([
+      db.collection(PUBLIC_TASKS_COLLECTION)
+        .where("projectId", "==", projectId)
+        .limit(MAX_CONTEXT_TASKS)
+        .get(),
+      db.collection(PRIVATE_TASKS_COLLECTION)
+        .where("projectId", "==", projectId)
+        .limit(MAX_CONTEXT_TASKS)
+        .get(),
+    ]);
+    if (publicSnap.size >= MAX_CONTEXT_TASKS || privateSnap.size >= MAX_CONTEXT_TASKS) {
       return {
         ok: false,
         answer: "В проекте слишком много задач для безопасного массового удаления через агента. Уточните фильтр или удалите задачи вручную.",
       };
     }
-    return { ok: true, tasks: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+    const tasks = [
+      ...publicSnap.docs.map((doc) => ({ id: doc.id, ...doc.data(), taskCollection: PUBLIC_TASKS_COLLECTION })),
+      ...privateSnap.docs
+        .map((doc) => ({ id: doc.id, ...doc.data(), taskCollection: PRIVATE_TASKS_COLLECTION }))
+        .filter((task) => canCallerReadPrivateTask(task, callerData)),
+    ];
+    if (tasks.length >= MAX_CONTEXT_TASKS) {
+      return {
+        ok: false,
+        answer: "В проекте слишком много задач для безопасного массового удаления через агента. Уточните фильтр или удалите задачи вручную.",
+      };
+    }
+    return { ok: true, tasks };
   } catch (error) {
     console.error("agent-chat delete_tasks: failed to load project tasks", error);
     return { ok: false, answer: "Не удалось загрузить задачи проекта, попробуйте ещё раз." };
   }
 }
 
-async function loadProjectsTasksForDeletion(db, projectIds) {
+async function loadProjectsTasksForDeletion(db, projectIds, callerData) {
   const ids = [...new Set((Array.isArray(projectIds) ? projectIds : []).filter(Boolean))];
   if (ids.length === 0) return { ok: true, tasks: [] };
   const chunks = [];
   for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
   try {
-    const snaps = await Promise.all(
-      chunks.map((chunk) => db.collection("tasks").where("projectId", "in", chunk).limit(MAX_CONTEXT_TASKS).get())
-    );
+    const snaps = await Promise.all(chunks.flatMap((chunk) => [
+      db.collection(PUBLIC_TASKS_COLLECTION).where("projectId", "in", chunk).limit(MAX_CONTEXT_TASKS).get(),
+      db.collection(PRIVATE_TASKS_COLLECTION).where("projectId", "in", chunk).limit(MAX_CONTEXT_TASKS).get(),
+    ]));
     const tasks = [];
-    for (const snap of snaps) {
+    for (let index = 0; index < snaps.length; index += 1) {
+      const snap = snaps[index];
       if (snap.size >= MAX_CONTEXT_TASKS) {
         return {
           ok: false,
           answer: "В проектах слишком много задач для безопасного массового удаления через агента. Уточните фильтр или удалите задачи вручную.",
         };
       }
+      const collectionName = index % 2 === 0 ? PUBLIC_TASKS_COLLECTION : PRIVATE_TASKS_COLLECTION;
       for (const doc of snap.docs) {
-        tasks.push({ id: doc.id, ...doc.data() });
+        const task = { id: doc.id, ...doc.data(), taskCollection: collectionName };
+        if (collectionName === PRIVATE_TASKS_COLLECTION && !canCallerReadPrivateTask(task, callerData)) continue;
+        tasks.push(task);
         if (tasks.length >= MAX_CONTEXT_TASKS) {
           return {
             ok: false,
@@ -1587,6 +1631,7 @@ function buildDeleteTasksProposal({ project, projects = [], filter, tasks }) {
     canDelete: true,
     tasks: tasks.map((task) => ({
       id: task.id,
+      taskCollection: normalizeTaskCollection(task.taskCollection),
       title: String(task.title || "Без названия").slice(0, 300),
       deadline: task.deadline || null,
       assigneeDisplay: task.assignee || "Не назначен",
@@ -2754,14 +2799,26 @@ function validateDeleteTasksPayload(body) {
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(projectId)) {
     return { ok: false, error: "Некорректный проект" };
   }
-  if (!Array.isArray(body.taskIds)) return { ok: false, error: "Нет списка задач для удаления" };
-  const taskIds = [...new Set(body.taskIds.map((id) => String(id || "").trim()).filter(Boolean))];
-  if (taskIds.length === 0) return { ok: false, error: "Нет задач для удаления" };
-  if (taskIds.length > TASK_DELETE_MAX) return { ok: false, error: `Слишком много задач за один раз. Лимит: ${TASK_DELETE_MAX}` };
-  if (taskIds.some((id) => !/^[A-Za-z0-9_-]{1,160}$/.test(id))) {
+  const rawTargets = Array.isArray(body.taskTargets)
+    ? body.taskTargets
+    : (Array.isArray(body.taskIds) ? body.taskIds.map((taskId) => ({ taskId })) : null);
+  if (!rawTargets) return { ok: false, error: "Нет списка задач для удаления" };
+  const targets = [];
+  const seen = new Set();
+  for (const raw of rawTargets) {
+    const taskId = String(raw?.taskId || "").trim();
+    const taskCollection = normalizeTaskCollection(raw?.taskCollection);
+    const key = `${taskCollection}:${taskId}`;
+    if (!taskId || seen.has(key)) continue;
+    seen.add(key);
+    targets.push({ taskId, taskCollection });
+  }
+  if (targets.length === 0) return { ok: false, error: "Нет задач для удаления" };
+  if (targets.length > TASK_DELETE_MAX) return { ok: false, error: `Слишком много задач за один раз. Лимит: ${TASK_DELETE_MAX}` };
+  if (targets.some(({ taskId }) => !/^[A-Za-z0-9_-]{1,160}$/.test(taskId))) {
     return { ok: false, error: "Некорректный идентификатор задачи" };
   }
-  return { ok: true, projectId, taskIds };
+  return { ok: true, projectId, targets };
 }
 
 async function handleDeleteTasks({ db, response, body, callerData, organizationId, decoded }) {
@@ -2778,7 +2835,7 @@ async function handleDeleteTasks({ db, response, body, callerData, organizationI
   });
   if (answerFromExecutionLookup(response, priorExecution)) return response;
 
-  const refs = payload.taskIds.map((id) => db.collection("tasks").doc(id));
+  const refs = payload.targets.map(({ taskId, taskCollection }) => db.collection(taskCollection).doc(taskId));
   const loaded = [];
   try {
     const taskSnaps = await getDocumentsInBatches(db, refs);
@@ -2790,6 +2847,10 @@ async function handleDeleteTasks({ db, response, body, callerData, organizationI
         return response.status(409).json({ error: "Часть задач уже удалена или изменилась. Запросите карточку удаления заново." });
       }
       const task = snap.data();
+      if (payload.targets[index].taskCollection === PRIVATE_TASKS_COLLECTION
+          && !canCallerReadPrivateTask(task, callerData)) {
+        return response.status(403).json({ error: "Нет доступа к одной из приватных задач" });
+      }
       const taskProjectId = String(task?.projectId || "").trim();
       if (!taskProjectId) {
         return response.status(403).json({ error: "Одна из задач не относится к проекту" });
@@ -2864,10 +2925,20 @@ async function handleAgentAction({ db, response, body, callerData, organizationI
 
   try {
     if (agentAction === "take_tasks") {
-      const taskIds = Array.isArray(payload.taskIds)
-        ? [...new Set(payload.taskIds.map(validDocumentId).filter(Boolean))]
-        : [];
-      if (taskIds.length === 0 || taskIds.length > TASK_DELETE_MAX) {
+      const rawTargets = Array.isArray(payload.taskTargets)
+        ? payload.taskTargets
+        : (Array.isArray(payload.taskIds) ? payload.taskIds.map((taskId) => ({ taskId })) : []);
+      const taskTargets = [];
+      const seenTargets = new Set();
+      for (const raw of rawTargets) {
+        const taskId = validDocumentId(raw?.taskId);
+        const taskCollection = normalizeTaskCollection(raw?.taskCollection);
+        const key = `${taskCollection}:${taskId || ""}`;
+        if (!taskId || seenTargets.has(key)) continue;
+        seenTargets.add(key);
+        taskTargets.push({ taskId, taskCollection });
+      }
+      if (taskTargets.length === 0 || taskTargets.length > TASK_DELETE_MAX) {
         return response.status(400).json({ error: "Некорректный список задач" });
       }
       const priorExecution = await readAgentExecution(db, {
@@ -2878,7 +2949,7 @@ async function handleAgentAction({ db, response, body, callerData, organizationI
       });
       if (answerFromExecutionLookup(response, priorExecution)) return response;
 
-      const taskRefs = taskIds.map((taskId) => db.collection("tasks").doc(taskId));
+      const taskRefs = taskTargets.map(({ taskId, taskCollection }) => db.collection(taskCollection).doc(taskId));
       const loaded = [];
       const taskSnaps = await getDocumentsInBatches(db, taskRefs);
       const projectIds = [];
@@ -2887,6 +2958,10 @@ async function handleAgentAction({ db, response, body, callerData, organizationI
         const snap = taskSnaps[index];
         if (!snap.exists) return response.status(409).json({ error: "Одна из задач уже удалена. Запросите карточку заново." });
         const task = snap.data() || {};
+        if (taskTargets[index].taskCollection === PRIVATE_TASKS_COLLECTION
+            && !canCallerReadPrivateTask(task, callerData)) {
+          return response.status(403).json({ error: "Нет доступа к одной из приватных задач" });
+        }
         const projectId = validDocumentId(task.projectId);
         if (!projectId) return response.status(403).json({ error: "Одна из задач не относится к проекту" });
         prelim.push({ ref: taskRefs[index], task, projectId });
@@ -3043,8 +3118,11 @@ async function handleAgentAction({ db, response, body, callerData, organizationI
       // Keep deletion atomic and within Firestore's 500-write batch limit.
       // A larger project must be deleted through a separately paginated admin
       // job; silently deleting only the first page is forbidden.
-      const tasksSnap = await db.collection("tasks").where("projectId", "==", projectId).limit(451).get();
-      if (tasksSnap.size > 450) {
+      const [tasksSnap, privateTasksSnap] = await Promise.all([
+        db.collection(PUBLIC_TASKS_COLLECTION).where("projectId", "==", projectId).limit(451).get(),
+        db.collection(PRIVATE_TASKS_COLLECTION).where("projectId", "==", projectId).limit(451).get(),
+      ]);
+      if (tasksSnap.size + privateTasksSnap.size > 450) {
         return response.status(409).json({ error: "В проекте больше 450 задач. Для безопасного удаления обратитесь к администратору системы." });
       }
       // Каскад: файлы проекта и уведомления агента по его задачам — иначе после
@@ -3062,6 +3140,7 @@ async function handleAgentAction({ db, response, body, callerData, organizationI
       // с маркером: повтор после частичного сбоя безопасно доудаляет остаток.
       const deleteRefs = [
         ...tasksSnap.docs.map((doc) => doc.ref),
+        ...privateTasksSnap.docs.map((doc) => doc.ref),
         ...filesSnap.docs.map((doc) => doc.ref),
         ...notesSnap.docs.map((doc) => doc.ref),
       ];
@@ -3070,7 +3149,7 @@ async function handleAgentAction({ db, response, body, callerData, organizationI
       if (refChunks.length === 0) refChunks.push([]);
       const successResponse = {
         ok: true,
-        result: `Проект «${project.name || "Без названия"}» удалён вместе с ${tasksSnap.size} задачами, ${filesSnap.size} файлами и ${notesSnap.size} уведомлениями.`,
+        result: `Проект «${project.name || "Без названия"}» удалён вместе с ${tasksSnap.size + privateTasksSnap.size} задачами, ${filesSnap.size} файлами и ${notesSnap.size} уведомлениями.`,
       };
       for (let index = 0; index < refChunks.length; index += 1) {
         const batch = db.batch();
@@ -3119,10 +3198,15 @@ async function handleAgentAction({ db, response, body, callerData, organizationI
     if (!projectSnap.exists || projectSnap.data()?.organizationId !== organizationId) {
       return response.status(403).json({ error: "Задача относится к недоступному проекту" });
     }
-    const taskRef = db.collection("tasks").doc(taskId);
+    const taskCollection = normalizeTaskCollection(payload.taskCollection);
+    const taskRef = db.collection(taskCollection).doc(taskId);
     const taskSnap = await taskRef.get();
     if (!taskSnap.exists) return response.status(409).json({ error: "Задача уже удалена или изменилась" });
     const task = taskSnap.data() || {};
+    if (taskCollection === PRIVATE_TASKS_COLLECTION
+        && !canCallerReadPrivateTask(task, callerData)) {
+      return response.status(403).json({ error: "Нет доступа к приватной задаче" });
+    }
     if (task.projectId !== projectId || (task.organizationId && task.organizationId !== organizationId)) {
       return response.status(403).json({ error: "Задача относится к другому проекту или организации" });
     }
@@ -3466,11 +3550,17 @@ const ORG_CONTEXT_CACHE_TTL_MS = 45_000;
 const ORG_CONTEXT_CACHE_MAX_ENTRIES = 100;
 const organizationContextCache = new Map();
 
-function organizationContextCacheKey(organizationId, accessibleProjectIds) {
+function organizationContextCacheKey(organizationId, accessibleProjectIds, callerData) {
   const scope = accessibleProjectIds === null
     ? "*"
     : [...new Set(accessibleProjectIds)].sort().join(",");
-  return `${organizationId}|${scope}`;
+  // Private-task visibility is user-specific for every role except owner.
+  // Keep the caller identity in the key so a warm serverless instance can
+  // never reuse one moderator's private context for another moderator/admin.
+  const privateScope = callerData?.orgRole === "owner"
+    ? "owner"
+    : `${callerData?.orgRole || "member"}:${callerData?.uid || "anonymous"}`;
+  return `${organizationId}|${scope}|${privateScope}`;
 }
 
 // Экспортируется для тестов (сброс между сценариями).
@@ -3485,12 +3575,12 @@ function invalidateOrganizationContextCache(organizationId) {
   }
 }
 
-async function loadOrganizationContext(db, organizationId, accessibleProjectIds = null) {
-  const cacheKey = organizationContextCacheKey(organizationId, accessibleProjectIds);
+async function loadOrganizationContext(db, organizationId, accessibleProjectIds = null, callerData = null) {
+  const cacheKey = organizationContextCacheKey(organizationId, accessibleProjectIds, callerData);
   const cached = organizationContextCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.context;
   organizationContextCache.delete(cacheKey);
-  const context = await readOrganizationContext(db, organizationId, accessibleProjectIds);
+  const context = await readOrganizationContext(db, organizationId, accessibleProjectIds, callerData);
   if (organizationContextCache.size >= ORG_CONTEXT_CACHE_MAX_ENTRIES) {
     // Map итерируется в порядке вставки — вытесняем самую старую запись.
     organizationContextCache.delete(organizationContextCache.keys().next().value);
@@ -3499,10 +3589,10 @@ async function loadOrganizationContext(db, organizationId, accessibleProjectIds 
   return context;
 }
 
-async function readOrganizationContext(db, organizationId, accessibleProjectIds = null) {
-  // All queries here are single-field (`where(organizationId==)`,
-  // `where(projectId in ...)`) or plain subcollection reads, so Firestore's
-  // automatic per-field index covers them — no firestore.indexes.json needed.
+async function readOrganizationContext(db, organizationId, accessibleProjectIds = null, callerData = null) {
+  // Public-task/project queries use automatic indexes. Participant-scoped
+  // private-task reads use the explicit organizationId + viewerIds composite
+  // index declared in firestore.indexes.json; owners use organizationId only.
   const projectsSnap = await db.collection("projects")
     .where("organizationId", "==", organizationId)
     .limit(MAX_CONTEXT_PROJECTS)
@@ -3541,16 +3631,32 @@ async function readOrganizationContext(db, organizationId, accessibleProjectIds 
   const projectIds = projects.map((p) => p.id);
   const idChunks = [];
   for (let i = 0; i < projectIds.length; i += 10) idChunks.push(projectIds.slice(i, i + 10));
-  const taskSnaps = await Promise.all(
+  const publicTaskSnaps = await Promise.all(
     idChunks.map((chunk) => db.collection("tasks").where("projectId", "in", chunk).limit(MAX_CONTEXT_TASKS).get())
   );
   const tasks = [];
-  for (const snap of taskSnaps) {
+  for (const snap of publicTaskSnaps) {
     for (const doc of snap.docs) {
       if (tasks.length >= MAX_CONTEXT_TASKS) break;
-      tasks.push({ id: doc.id, ...doc.data() });
+      tasks.push({ id: doc.id, ...doc.data(), taskCollection: PUBLIC_TASKS_COLLECTION });
     }
     if (tasks.length >= MAX_CONTEXT_TASKS) break;
+  }
+
+  if (tasks.length < MAX_CONTEXT_TASKS && callerData?.uid) {
+    let privateQuery = db.collection(PRIVATE_TASKS_COLLECTION)
+      .where("organizationId", "==", organizationId);
+    if (callerData.orgRole !== "owner") {
+      privateQuery = privateQuery.where("viewerIds", "array-contains", callerData.uid);
+    }
+    const privateSnap = await privateQuery.limit(MAX_CONTEXT_TASKS).get();
+    const allowedProjectIds = new Set(projectIds);
+    for (const doc of privateSnap.docs) {
+      if (tasks.length >= MAX_CONTEXT_TASKS) break;
+      const task = doc.data() || {};
+      if (!allowedProjectIds.has(task.projectId)) continue;
+      tasks.push({ id: doc.id, ...task, taskCollection: PRIVATE_TASKS_COLLECTION });
+    }
   }
   if (tasks.length >= MAX_CONTEXT_TASKS) {
     console.warn(`agent-chat: task context capped at ${MAX_CONTEXT_TASKS} (org ${organizationId})`);

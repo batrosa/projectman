@@ -359,7 +359,7 @@ describe("appendAgentDeleteProposal / confirmAgentDeleteProposal", () => {
       action: "delete_tasks",
       proposalId: "",
       projectId: "p1",
-      taskIds: ["t1"],
+      taskTargets: [{ taskId: "t1", taskCollection: "tasks" }],
     });
     // Button row is replaced by the «✓ Задачи удалены» status line
     expect(btn.isConnected).toBe(false);

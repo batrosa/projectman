@@ -238,7 +238,13 @@ struct ProjectsView: View {
             return
         }
         guard projectsStore.loaded else { return }
-        projectTasksStore.subscribe(projects: projectsStore.projects)
+        guard let user = appState.user else { return }
+        projectTasksStore.subscribe(
+            projects: projectsStore.projects,
+            organizationId: user.organizationId ?? "",
+            uid: user.uid,
+            isOwner: user.orgRole == "owner"
+        )
     }
 }
 
@@ -440,6 +446,7 @@ private struct ProjectTaskDetailWrapper: View {
     let task: TaskItem
     let project: Project?
     @StateObject private var tasksStore = TasksStore()
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         TaskDetailView(
@@ -447,7 +454,14 @@ private struct ProjectTaskDetailWrapper: View {
             project: project ?? Project(id: task.projectId, name: "Проект", description: "", deadline: nil)
         )
         .environmentObject(tasksStore)
-        .onAppear { tasksStore.subscribe(projectId: task.projectId) }
+        .onAppear {
+            tasksStore.subscribe(
+                projectId: task.projectId,
+                organizationId: appState.user?.organizationId ?? "",
+                uid: appState.user?.uid ?? "",
+                isOwner: appState.user?.orgRole == "owner"
+            )
+        }
         .onDisappear { tasksStore.stop() }
     }
 }
@@ -482,7 +496,14 @@ struct ProjectBoardView: View {
                 NewTaskView(project: project)
                     .environmentObject(tasksStore)
             }
-            .onAppear { tasksStore.subscribe(projectId: project.id) }
+            .onAppear {
+                tasksStore.subscribe(
+                    projectId: project.id,
+                    organizationId: appState.user?.organizationId ?? "",
+                    uid: appState.user?.uid ?? "",
+                    isOwner: appState.user?.orgRole == "owner"
+                )
+            }
             .onDisappear { tasksStore.stop() }
     }
 }

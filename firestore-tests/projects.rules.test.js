@@ -581,3 +581,128 @@ describe("project and task organization permissions", () => {
     await assertFails(mod.collection("projects").doc("p-denied").collection("files").doc("f-d").get());
   });
 });
+
+describe("private task participant boundary", () => {
+  async function seedPrivateTaskFixture() {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await seedOrgUser(ctx, "creator-private", { organizationId: "org-private", orgRole: "moderator" });
+      await seedOrgUser(ctx, "assignee-private", { organizationId: "org-private", orgRole: "employee" });
+      await seedOrgUser(ctx, "cocreator-private", { organizationId: "org-private", orgRole: "employee" });
+      await seedOrgUser(ctx, "owner-private", { organizationId: "org-private", orgRole: "owner" });
+      await seedOrgUser(ctx, "admin-private", { organizationId: "org-private", orgRole: "admin" });
+      await seedOrgUser(ctx, "moderator-private", { organizationId: "org-private", orgRole: "moderator" });
+      await seedOrgUser(ctx, "outsider-private", { organizationId: "org-other", orgRole: "owner" });
+      await ctx.firestore().collection("projects").doc("p-private").set({
+        name: "Private project",
+        organizationId: "org-private",
+      });
+      await ctx.firestore().collection("privateTasks").doc("private-1").set({
+        projectId: "p-private",
+        organizationId: "org-private",
+        title: "Only participants",
+        status: "in-progress",
+        subStatus: "assigned",
+        assigneeCompleted: false,
+        createdByUid: "creator-private",
+        assigneeIds: ["assignee-private"],
+        coCreatorIds: ["cocreator-private"],
+        viewerIds: ["creator-private", "assignee-private", "cocreator-private"],
+        isPrivate: true,
+      });
+    });
+  }
+
+  it("allows the owner and task participants, but not unrelated admins/moderators/employees", async () => {
+    await seedPrivateTaskFixture();
+
+    for (const uid of ["creator-private", "assignee-private", "cocreator-private"]) {
+      const participant = testEnv.authenticatedContext(uid).firestore();
+      await assertSucceeds(participant.collection("privateTasks").doc("private-1").get());
+      await assertSucceeds(
+        participant.collection("privateTasks")
+          .where("organizationId", "==", "org-private")
+          .where("viewerIds", "array-contains", uid)
+          .get()
+      );
+    }
+
+    const sameOrgOwner = testEnv.authenticatedContext("owner-private").firestore();
+    const sameOrgAdmin = testEnv.authenticatedContext("admin-private").firestore();
+    const sameOrgModerator = testEnv.authenticatedContext("moderator-private").firestore();
+    const outsider = testEnv.authenticatedContext("outsider-private").firestore();
+    await assertSucceeds(sameOrgOwner.collection("privateTasks").doc("private-1").get());
+    await assertSucceeds(sameOrgOwner.collection("privateTasks").where("organizationId", "==", "org-private").get());
+    await assertFails(sameOrgAdmin.collection("privateTasks").doc("private-1").get());
+    await assertFails(sameOrgModerator.collection("privateTasks").doc("private-1").get());
+    await assertFails(outsider.collection("privateTasks").doc("private-1").get());
+    await assertFails(sameOrgAdmin.collection("privateTasks").get());
+  });
+
+  it("requires a creator to store the exact participant audience", async () => {
+    await seedPrivateTaskFixture();
+    const creator = testEnv.authenticatedContext("creator-private").firestore();
+    const base = {
+      projectId: "p-private",
+      organizationId: "org-private",
+      title: "New private task",
+      status: "in-progress",
+      subStatus: "assigned",
+      assigneeCompleted: false,
+      createdByUid: "creator-private",
+      assigneeIds: ["assignee-private"],
+      coCreatorIds: ["cocreator-private"],
+      isPrivate: true,
+    };
+
+    await assertSucceeds(creator.collection("privateTasks").add({
+      ...base,
+      viewerIds: ["creator-private", "assignee-private", "cocreator-private"],
+    }));
+    await assertFails(creator.collection("privateTasks").add({
+      ...base,
+      viewerIds: ["creator-private", "assignee-private", "cocreator-private", "owner-private"],
+    }));
+    await assertFails(creator.collection("privateTasks").add({
+      ...base,
+      viewerIds: ["creator-private", "assignee-private"],
+    }));
+    await assertFails(creator.collection("privateTasks").add({
+      ...base,
+      createdByUid: "owner-private",
+      viewerIds: ["owner-private", "assignee-private", "cocreator-private"],
+    }));
+  });
+
+  it("keeps participant changes and the derived viewerIds atomic", async () => {
+    await seedPrivateTaskFixture();
+    const creator = testEnv.authenticatedContext("creator-private").firestore();
+    const owner = testEnv.authenticatedContext("owner-private").firestore();
+
+    await assertSucceeds(owner.collection("privateTasks").doc("private-1").update({ title: "Owner oversight" }));
+    await assertFails(creator.collection("privateTasks").doc("private-1").update({
+      assigneeIds: ["assignee-private", "owner-private"],
+    }));
+    await assertSucceeds(creator.collection("privateTasks").doc("private-1").update({
+      assigneeIds: ["assignee-private", "owner-private"],
+      viewerIds: ["creator-private", "assignee-private", "cocreator-private", "owner-private"],
+    }));
+  });
+
+  it("lets an assigned participant use the normal lifecycle carve-out", async () => {
+    await seedPrivateTaskFixture();
+    const assignee = testEnv.authenticatedContext("assignee-private").firestore();
+    await assertSucceeds(assignee.collection("privateTasks").doc("private-1").update({
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+      takenToWorkAt: "2026-07-22T10:00:00.000Z",
+      takenToWorkBy: "Assignee",
+    }));
+    await assertFails(assignee.collection("privateTasks").doc("private-1").update({
+      title: "Assignee cannot rewrite content",
+      status: "in-progress",
+      subStatus: "in_work",
+      assigneeCompleted: false,
+    }));
+  });
+});
