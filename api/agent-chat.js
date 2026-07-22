@@ -4269,7 +4269,11 @@ export function isContextDependentFollowUp(message) {
   const startsAsContinuation = /^(?:а|и|ну|тогда|теперь|дальше|потом|также|еще|ещё|тоже)(?:$|[^а-яёa-z0-9])/u.test(text);
   const hasReference = /(^|[^а-яёa-z0-9])(?:он|она|оно|они|его|ее|её|ей|ему|им|ими|их|него|нее|неё|ней|нему|них|это|этот|эта|эти|тот|та|те|такой|такая|такие|там|тут|здесь|сюда|туда)(?:$|[^а-яёa-z0-9])/u.test(text)
     || /(?:по|про|о|об|с|для)\s+(?:нему|ней|ним|них|этому|этой|этим|этого)/u.test(text);
-  const shortEllipticalQuestion = words.length <= 6
+  // A genuinely elliptical question is very short (for example «кто
+  // ответственный?» or «а сроки?»). A longer question can already name its
+  // own subject («что с договором аренды?»), so pulling in the previous topic
+  // would pollute grounded-knowledge ranking.
+  const shortEllipticalQuestion = words.length <= 3
     && /^(?:(?:а|и|ну)\s+)?(?:когда|где|кто|сколько|какие|какой|какая|что|почему|зачем|сроки?|дедлайн|статус|ответственн[а-яё]*|исполнител[а-яё]*)(?:$|[^а-яёa-z0-9])/u.test(text);
   return startsAsContinuation || hasReference || shortEllipticalQuestion;
 }

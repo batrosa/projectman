@@ -102,13 +102,13 @@ async function flushMicrotasks(turns = 30) {
 }
 
 describe("truncateAgentChatHistory", () => {
-  it("caps history to the last 8 turns, mirroring the server-side MAX_HISTORY_TURNS", () => {
+  it("caps history to the last 100 turns, mirroring the server-side MAX_HISTORY_TURNS", () => {
     const truncateAgentChatHistory = getFn("truncateAgentChatHistory");
-    const turns = Array.from({ length: 20 }, (_, i) => ({ role: "user", content: `msg ${i}` }));
+    const turns = Array.from({ length: 120 }, (_, i) => ({ role: "user", content: `msg ${i}` }));
     const result = truncateAgentChatHistory(turns);
-    expect(result.length).toBe(8);
-    expect(result[0].content).toBe("msg 12");
-    expect(result[7].content).toBe("msg 19");
+    expect(result.length).toBe(100);
+    expect(result[0].content).toBe("msg 20");
+    expect(result[99].content).toBe("msg 119");
   });
 
   it("leaves a short history untouched", () => {
@@ -1139,7 +1139,7 @@ describe("agent notifications bulk deletion", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0].url).toBe("/api/agent-chat");
     expect(JSON.parse(requests[0].options.body)).toEqual({ action: "delete_notifications", all: true });
-    expect(ctx.document.getElementById("agent-notify-list").textContent).toContain("Пока нет уведомлений");
+    expect(ctx.document.getElementById("agent-notify-list").textContent).toContain("Пока всё спокойно");
     expect(ctx.document.getElementById("agent-notify-count").style.display).toBe("none");
     expect(button.disabled).toBe(true);
   });

@@ -366,7 +366,7 @@ describe("POST /api/agent-monitor", () => {
     // Telegram duplicated to both linked recipients.
     const chats = telegramCalls.map((c) => c.chatId).sort();
     expect(chats).toEqual(["111", "222"]);
-    expect(telegramCalls[0].text).toContain("Ответственный: Тэко Исаев");
+    expect(telegramCalls[0].text).toContain("<b>Ответственный:</b> Тэко Исаев");
   });
 
   it("same-day rerun is a no-op (notifiedOverdueOn == today) — no duplicate spam", async () => {
@@ -539,7 +539,7 @@ describe("POST /api/agent-monitor", () => {
     expect(fake.state.notes[0].text).toContain("Срок был 01.07.2026");
     expect(fake.state.notes[0].text).toContain("Просрочена на 2 дня");
     expect(fake.state.notes[0].text).toContain("Рекомендация: Уточните причину задержки");
-    expect(telegramCalls[0].text).toContain("Просрочена на 2 дня");
+    expect(telegramCalls[0].text).toContain("<b>Просрочка:</b> 2 дня");
   });
 
   it("digest: >3 same-type messages for one recipient collapse into ONE telegram + push; feed stays per-task", async () => {
@@ -567,8 +567,8 @@ describe("POST /api/agent-monitor", () => {
     // Telegram и push — один дайджест вместо пяти сообщений.
     expect(telegramCalls).toHaveLength(1);
     expect(telegramCalls[0].chatId).toBe("222");
-    expect(telegramCalls[0].text).toContain("5 задач просрочены");
-    expect(telegramCalls[0].text).toContain("«Задача 1», «Задача 2», «Задача 3» и ещё 2");
+    expect(telegramCalls[0].text).toContain("<b>5 задач</b> просрочены.");
+    expect(telegramCalls[0].text).toContain("• Задача 1\n• Задача 2\n• Задача 3\n• И ещё 2");
     expect(pushCalls).toHaveLength(1);
     expect(pushCalls[0].uid).toBe("u-creator");
     expect(pushCalls[0].payload.title).toBe("Просрочено задач: 5");

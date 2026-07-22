@@ -853,6 +853,7 @@ describe("immediate multi-turn context", () => {
 
   it("does not mix old dialogue into an independent new question", () => {
     expect(isContextDependentFollowUp("Покажи задачи проекта Лазурный берег")).toBe(false);
+    expect(isContextDependentFollowUp("что с договором аренды?")).toBe(false);
     expect(buildImmediateContextLookup("Покажи задачи проекта Лазурный берег", [
       { role: "user", content: "Что по Абрау-Дюрсо?" },
     ])).toBe("Покажи задачи проекта Лазурный берег");
@@ -1640,6 +1641,15 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
                 return { exists: !!data, data: () => data };
               },
             };
+          },
+        };
+      }
+      if (name === "organizationMemberships") {
+        return {
+          where(field, op, value) {
+            return query(() => orgUsers
+              .map((user) => ({ ...user, userId: user.userId || user.id }))
+              .filter((user) => field !== "organizationId" || op !== "==" || user.organizationId === value), "organizationMemberships");
           },
         };
       }
