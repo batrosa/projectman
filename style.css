@@ -7819,9 +7819,9 @@ body.light-mode .leaderboard-empty {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     grid-template-rows: repeat(var(--calendar-week-count, 6), minmax(0, 1fr));
-    gap: 1px;
-    background: var(--border);
-    border: 1px solid var(--border);
+    gap: 0;
+    background: transparent;
+    border: 0;
     border-radius: 12px;
     overflow: hidden;
     min-height: 0;
@@ -7841,11 +7841,17 @@ body.light-mode .leaderboard-empty {
     overflow: hidden;
 }
 
+.calendar-day:not(.calendar-day-empty) {
+    box-shadow: inset 0 0 0 1px var(--border);
+}
+
 .calendar-day:hover {
     background: rgba(99, 102, 241, 0.05);
 }
 
 .calendar-day.calendar-day-empty {
+    background: rgba(15, 23, 42, 0.035);
+    box-shadow: none;
     cursor: default;
     pointer-events: none;
 }
@@ -7856,15 +7862,16 @@ body:not(.light-mode) .calendar-view-container .calendar-body {
 }
 
 body:not(.light-mode) .calendar-grid {
-    gap: 2px;
-    background: rgba(148, 163, 184, 0.30);
-    border-color: rgba(148, 163, 184, 0.38);
-    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+    background: transparent;
+    box-shadow: none;
 }
 
 body:not(.light-mode) .calendar-day {
     background: #26344a;
-    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18);
+}
+
+body:not(.light-mode) .calendar-day:not(.calendar-day-empty) {
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.30);
 }
 
 body:not(.light-mode) .calendar-day:hover {
@@ -7872,7 +7879,8 @@ body:not(.light-mode) .calendar-day:hover {
 }
 
 body:not(.light-mode) .calendar-day.calendar-day-empty {
-    background: #26344a;
+    background: #202c3f;
+    box-shadow: none;
 }
 
 .calendar-day .day-number {
