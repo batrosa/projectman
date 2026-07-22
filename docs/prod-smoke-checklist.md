@@ -4,23 +4,26 @@
 
 ## Подготовка
 
-- Production URL: `https://projectmanteko.vercel.app`
+- Production URL: `https://projectman.online`
 - Firebase project: `projectman-96d3c`
 - Нужны тестовые аккаунты: owner, admin, moderator, employee.
 - Нужна тестовая организация, отдельная от боевых клиентов.
 
+Перед smoke прочитать [`docs/vercel-protection-incident-runbook.md`](vercel-protection-incident-runbook.md). Выполнять smoke один раз. Не запускать быстрые циклы, параллельные серии или постоянный polling production URL.
+
 ## Быстрый технический smoke
 
 ```bash
-curl -fsSL https://projectmanteko.vercel.app/ | rg "script\\.js\\?v="
+curl -fsSL https://projectman.online/ | rg "script\\.js\\?v="
 
-for endpoint in /api/agent-chat /api/org /api/notify-telegram /api/project-files; do
-  curl -sS -o /tmp/projectman-smoke.txt -w "$endpoint %{http_code}\n" \
-    -X POST "https://projectmanteko.vercel.app$endpoint"
-done
+curl -sS -D /tmp/projectman-smoke-headers.txt \
+  -o /tmp/projectman-smoke-body.txt \
+  -X POST 'https://projectman.online/api/org' \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"list"}'
 ```
 
-Ожидание: HTML отдаётся, API без Firebase token возвращают `401`, не `500`.
+Ожидание: HTML отдаётся, API без Firebase token возвращает JSON `401`, не `500` и не Vercel HTML `403`. Если есть `x-vercel-mitigated: challenge`, немедленно прекратить остальные smoke-запросы и перейти к incident runbook.
 
 ## Роли и UI
 
