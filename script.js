@@ -4752,6 +4752,14 @@ let ganttUiWired = false;
 let ganttLastScrollKey = null; // "projectId:year" of the last render — keeps
 // scroll position across live task-snapshot re-renders
 let ganttEnterAnim = null; // enter-animation class for the NEXT renderGantt (zoom transitions)
+let ganttDeadlineRefreshTimer = null;
+
+const GANTT_DEADLINE_LABELS = {
+    early: 'Начало срока',
+    middle: 'Половина срока',
+    late: 'Срок подходит',
+    overdue: 'Просрочено'
+};
 
 // Year <-> month scale switch with a short zoom transition. nextMonth null =
 // year scale; 0-11 = month scale. The toolbar is the only scale control.
@@ -4784,6 +4792,53 @@ function parseDateOnlyMs(value) {
         if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime();
     }
     return getFirestoreDateMs(value);
+}
+
+function getGanttDeadlineEndMs(deadlineDayMs) {
+    const deadline = new Date(deadlineDayMs);
+    return new Date(
+        deadline.getFullYear(),
+        deadline.getMonth(),
+        deadline.getDate() + 1
+    ).getTime();
+}
+
+// The color describes elapsed deadline time, not the workflow status.
+// Percent is floored so the requested bands are exactly 0-25, 26-50,
+// 51-99 and 100+. The deadline remains valid through the end of its day.
+function getGanttDeadlineState(startMs, deadlineDayMs, nowMs = Date.now()) {
+    const deadlineEndMs = getGanttDeadlineEndMs(deadlineDayMs);
+    const durationMs = Math.max(deadlineEndMs - startMs, 1);
+    const elapsedPercent = Math.floor(Math.max(0, ((nowMs - startMs) / durationMs) * 100));
+
+    if (elapsedPercent >= 100) return { tone: 'overdue', label: GANTT_DEADLINE_LABELS.overdue };
+    if (elapsedPercent >= 51) return { tone: 'late', label: GANTT_DEADLINE_LABELS.late };
+    if (elapsedPercent >= 26) return { tone: 'middle', label: GANTT_DEADLINE_LABELS.middle };
+    return { tone: 'early', label: GANTT_DEADLINE_LABELS.early };
+}
+
+function scheduleGanttDeadlineRefresh(items, nowMs) {
+    clearTimeout(ganttDeadlineRefreshTimer);
+    ganttDeadlineRefreshTimer = null;
+    if (!items.length || !elements.ganttContainer?.classList.contains('active')) return;
+
+    let nextChangeMs = Infinity;
+    items.forEach(({ startMs, endMs }) => {
+        const deadlineEndMs = getGanttDeadlineEndMs(endMs);
+        const durationMs = Math.max(deadlineEndMs - startMs, 1);
+        [0.26, 0.51, 1].forEach(boundary => {
+            const boundaryMs = startMs + durationMs * boundary;
+            if (boundaryMs > nowMs && boundaryMs < nextChangeMs) nextChangeMs = boundaryMs;
+        });
+    });
+
+    if (!Number.isFinite(nextChangeMs)) return;
+    const maxTimeoutMs = 2147483647;
+    const delayMs = Math.min(Math.max(Math.ceil(nextChangeMs - nowMs) + 50, 50), maxTimeoutMs);
+    ganttDeadlineRefreshTimer = setTimeout(() => {
+        ganttDeadlineRefreshTimer = null;
+        if (elements.ganttContainer?.classList.contains('active')) renderGantt();
+    }, delayMs);
 }
 
 function wireGanttControls() {
@@ -4871,7 +4926,9 @@ function renderGantt() {
     const scrollEl = elements.ganttScroll;
 
     // --- collect chart items: bar = createdAt .. deadline ---
-    const projectTasks = state.tasks.filter(t => t.projectId === state.activeProjectId);
+    const projectTasks = state.tasks.filter(t =>
+        t.projectId === state.activeProjectId && boardViewForTask(t) !== 'done'
+    );
     const items = [];
     let noDeadlineCount = 0;
     projectTasks.forEach(task => {
@@ -5043,12 +5100,11 @@ function renderGantt() {
     head.appendChild(headRight);
     table.appendChild(head);
 
-    // --- body: a row per task, bar colored by the task's status ---
+    // --- body: a row per active task, bar colored by elapsed deadline time ---
     const body = document.createElement('div');
     body.className = 'gantt-body';
     const fmtDay = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
     const fmtFull = ms => new Date(ms).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const statusLabels = { assigned: 'Назначена', 'in-progress': 'В работе', review: 'На проверке', done: 'Готово' };
 
     const makeTrack = () => {
         const track = document.createElement('div');
@@ -5080,19 +5136,16 @@ function renderGantt() {
         const left = posX(startMs, 0);
         const right = Math.max(posX(endMs, 1), left + 6); // deadline day inclusive, ≥6px
 
-        // Same status->color mapping as the kanban tabs (boardViewForTask)
-        const status = boardViewForTask(task);
-        const isOverdue = task.status !== 'done' && endMs + GANTT_DAY_MS <= Date.now();
+        const deadlineState = getGanttDeadlineState(startMs, endMs, now.getTime());
 
         const bar = document.createElement('div');
-        bar.className = `gantt-bar status-${status}`
-            + (isOverdue ? ' overdue' : '')
+        bar.className = `gantt-bar deadline-${deadlineState.tone}`
             + (startMs < rangeStart ? ' clip-left' : '')
-            + (endMs + GANTT_DAY_MS > rangeEnd ? ' clip-right' : '');
+            + (getGanttDeadlineEndMs(endMs) > rangeEnd ? ' clip-right' : '');
         bar.style.left = left + 'px';
         bar.style.width = (right - left) + 'px';
-        bar.title = `${task.title || 'Без названия'}\n${statusLabels[status] || status}`
-            + `${isOverdue ? ' • просрочена' : ''}\n${fmtFull(startMs)} – ${fmtFull(endMs)}`;
+        bar.title = `${task.title || 'Без названия'}\n${deadlineState.label}`
+            + `\n${fmtFull(startMs)} – ${fmtFull(endMs)}`;
         if (right - left >= 88) {
             bar.textContent = `${fmtDay(startMs)} – ${fmtDay(endMs)}`;
         }
@@ -5123,6 +5176,7 @@ function renderGantt() {
         line.title = 'Сегодня';
         body.appendChild(line);
     }
+    scheduleGanttDeadlineRefresh(items, now.getTime());
     table.appendChild(body);
 
     scrollEl.textContent = '';
