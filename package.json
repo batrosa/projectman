@@ -12,7 +12,7 @@
     "test:web": "vitest run script",
     "test:rules": "firebase emulators:exec --only firestore \"vitest run firestore-tests\"",
     "test:all": "npm test && npm run test:rules",
-    "build": "node scripts/verify-build.mjs && node scripts/smoke-firebase-admin.mjs"
+    "verify:deploy": "node scripts/verify-build.mjs && node scripts/smoke-firebase-admin.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
