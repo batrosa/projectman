@@ -10109,24 +10109,27 @@ function renderCalendar() {
     if (startDayOffset === -1) startDayOffset = 6;
 
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const prevMonthDays = new Date(year, month, 0).getDate();
-
     calElements.grid.innerHTML = '';
+    const weekCount = Math.ceil((startDayOffset + daysInMonth) / 7);
+    const cellCount = weekCount * 7;
+    calElements.grid.style.setProperty('--calendar-week-count', String(weekCount));
 
-    // Prev month days
-    for (let i = startDayOffset - 1; i >= 0; i--) {
-        addDayToGrid(prevMonthDays - i, true, new Date(year, month - 1, prevMonthDays - i));
+    // Blank leading positions keep day 1 under the correct weekday without
+    // exposing dates or tasks from the previous month.
+    for (let i = 0; i < startDayOffset; i++) {
+        addEmptyCalendarCell();
     }
 
     // Current month days
     for (let d = 1; d <= daysInMonth; d++) {
-        addDayToGrid(d, false, new Date(year, month, d));
+        addDayToGrid(d, new Date(year, month, d));
     }
 
-    // Next month days (fill grid to 42 cells)
-    const extra = 42 - calElements.grid.children.length;
+    // Complete only the current month's last week. There is no fixed sixth
+    // row and the empty positions contain no neighbouring-month content.
+    const extra = cellCount - calElements.grid.children.length;
     for (let i = 1; i <= extra; i++) {
-        addDayToGrid(i, true, new Date(year, month + 1, i));
+        addEmptyCalendarCell();
     }
 }
 
@@ -10169,9 +10172,16 @@ function calendarTasksForDate(dateStr) {
     return calendarState.tasks.filter(t => t.deadline && String(t.deadline).slice(0, 10) === dateStr);
 }
 
-function addDayToGrid(num, otherMonth, fullDate) {
+function addEmptyCalendarCell() {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'calendar-day calendar-day-empty';
+    emptyEl.setAttribute('aria-hidden', 'true');
+    calElements.grid.appendChild(emptyEl);
+}
+
+function addDayToGrid(num, fullDate) {
     const dayEl = document.createElement('div');
-    dayEl.className = `calendar-day ${otherMonth ? 'other-month' : ''}`;
+    dayEl.className = 'calendar-day';
 
     const today = new Date();
     if (fullDate.toDateString() === today.toDateString()) {
@@ -10200,9 +10210,8 @@ function addDayToGrid(num, otherMonth, fullDate) {
         dot.className = 'pill-dot';
         pill.appendChild(dot);
         const label = document.createElement('span');
+        label.className = 'calendar-task-title';
         label.textContent = task.title || 'Задача';
-        label.style.overflow = 'hidden';
-        label.style.textOverflow = 'ellipsis';
         pill.appendChild(label);
         pill.addEventListener('click', (e) => {
             e.stopPropagation();
