@@ -2,9 +2,6 @@
   "name": "projectman",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": "22.x"
-  },
   "scripts": {
     "test": "vitest run --exclude 'firestore-tests/**'",
     "test:unit": "vitest run lib",
@@ -24,7 +21,7 @@
     "@vercel/functions": "^3.7.5",
     "cloudinary": "2.10.0",
     "fflate": "^0.8.3",
-    "firebase-admin": "14.2.0",
+    "firebase-admin": "13.5.0",
     "unpdf": "^1.6.2"
   }
 }
