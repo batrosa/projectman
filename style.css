@@ -8836,20 +8836,20 @@ body.light-mode .gantt-container {
     flex-shrink: 0;
 }
 
-.gantt-legend-dot.assigned {
-    background: #6366f1;
+.gantt-legend-dot.early {
+    background: #22c55e;
 }
 
-.gantt-legend-dot.in-progress {
-    background: #f97316;
-}
-
-.gantt-legend-dot.review {
+.gantt-legend-dot.middle {
     background: #eab308;
 }
 
-.gantt-legend-dot.done {
-    background: #22c55e;
+.gantt-legend-dot.late {
+    background: #f97316;
+}
+
+.gantt-legend-dot.overdue {
+    background: #ef4444;
 }
 
 .gantt-legend-note {
@@ -9123,24 +9123,22 @@ body.light-mode .gantt-container {
     height: 22px;
 }
 
-.gantt-bar.status-assigned {
-    background: #6366f1;
+.gantt-bar.deadline-early {
+    background: #22c55e;
 }
 
-.gantt-bar.status-in-progress {
-    background: #f97316;
-}
-
-.gantt-bar.status-review {
+.gantt-bar.deadline-middle {
     background: #eab308;
     color: #1e293b;
 }
 
-.gantt-bar.status-done {
-    background: #22c55e;
+.gantt-bar.deadline-late {
+    background: #f97316;
+    color: #1e293b;
 }
 
-.gantt-bar.overdue {
+.gantt-bar.deadline-overdue {
+    background: #ef4444;
     box-shadow: 0 0 0 2px var(--danger), 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 

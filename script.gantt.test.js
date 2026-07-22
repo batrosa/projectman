@@ -101,3 +101,45 @@ describe("Gantt period controls", () => {
     expect(vm.runInContext("state.ganttMonth", ctx)).toBeNull();
   });
 });
+
+describe("Gantt deadline colors", () => {
+  it("maps elapsed task time to the four deadline bands", () => {
+    const states = vm.runInContext(`(() => {
+      const start = new Date(2026, 0, 1).getTime();
+      const deadline = new Date(2026, 0, 4).getTime();
+      const end = getGanttDeadlineEndMs(deadline);
+      const at = fraction => start + (end - start) * fraction;
+      return [
+        getGanttDeadlineState(start, deadline, at(0.25)).tone,
+        getGanttDeadlineState(start, deadline, at(0.26)).tone,
+        getGanttDeadlineState(start, deadline, at(0.50)).tone,
+        getGanttDeadlineState(start, deadline, at(0.51)).tone,
+        getGanttDeadlineState(start, deadline, at(0.99)).tone,
+        getGanttDeadlineState(start, deadline, at(1)).tone
+      ];
+    })()`, ctx);
+
+    expect(Array.from(states)).toEqual([
+      "early", "middle", "middle", "late", "late", "overdue"
+    ]);
+  });
+
+  it("shows active tasks but excludes completed archive tasks", () => {
+    vm.runInContext(`
+      state.ganttYear = 2026;
+      state.ganttMonth = null;
+      state.tasks = [
+        { id: 'active', projectId: 'p1', title: 'Активная', status: 'in-progress', subStatus: 'in_work', createdAt: '2026-01-01T12:00:00', deadline: '2026-01-10' },
+        { id: 'done', projectId: 'p1', title: 'Завершённая', status: 'done', subStatus: 'completed', createdAt: '2026-01-01T12:00:00', deadline: '2026-01-10' }
+      ];
+      renderGantt();
+    `, ctx);
+
+    const rows = Array.from(window.document.querySelectorAll("[data-gantt-task]"));
+    expect(rows.map(row => row.dataset.ganttTask)).toEqual(["active"]);
+    const bar = window.document.querySelector("[data-gantt-task='active'] .gantt-bar");
+    expect(bar).not.toBeNull();
+    expect(bar.className).toMatch(/deadline-(early|middle|late|overdue)/);
+    expect(bar.className).not.toMatch(/status-(assigned|in-progress|review|done)/);
+  });
+});
