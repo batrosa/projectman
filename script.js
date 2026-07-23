@@ -7405,7 +7405,12 @@ function renderUsersList() {
             <div class="user-actions" style="display: flex; align-items: center; gap: 0.75rem;">
                 ${roleSelector}
                 ${canDelete ? `
-                    <button class="delete-user-btn" data-user-id="${user.id}" title="Удалить из организации">
+                    <button
+                        class="delete-user-btn"
+                        data-user-id="${user.id}"
+                        title="Исключить пользователя из организации"
+                        aria-label="Исключить ${escapeHtml(fullName)} из организации"
+                    >
                         <i class="fa-solid fa-user-xmark"></i>
                     </button>
                 ` : ''}
@@ -7641,7 +7646,20 @@ async function removeUserFromOrganization(userId, userName, targetRole = 'employ
         return;
     }
 
-    if (!confirm(`Удалить ${userName} из организации?`)) return;
+    // Excluding a member immediately revokes their organization role, project
+    // access and notification context. A plain browser confirm is too easy to
+    // accept accidentally because this button sits next to the role selector.
+    const confirmation = prompt(
+        `Исключить «${userName}» из организации?\n\n` +
+        'Пользователь потеряет роль, доступ к проектам и новым уведомлениям.\n' +
+        'Чтобы подтвердить, введите ИСКЛЮЧИТЬ'
+    );
+    if (String(confirmation || '').trim().toUpperCase() !== 'ИСКЛЮЧИТЬ') {
+        if (confirmation !== null && String(confirmation).trim()) {
+            alert('Исключение отменено: контрольное слово введено неверно.');
+        }
+        return;
+    }
 
     try {
         // Done SERVER-SIDE (api/org 'removeMember', Admin SDK): re-checks the
