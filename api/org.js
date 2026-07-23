@@ -6,13 +6,18 @@
 // join an arbitrary org. Joining itself lives in api/join-org.
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
-import { buildAuthProfilePatch, selectedProviderId } from "../lib/auth-profile.js";
+import { buildAuthProfilePatch } from "../lib/auth-profile.js";
 import {
   activeOrganizationStatsPatch,
   emptyOrganizationStats,
   ensureScopedOrganizationStats,
   organizationStatsPatch,
 } from "../lib/organization-stats.js";
+import { unlinkTelegramForUid } from "../lib/telegram-account.js";
+import {
+  accountDeletionPreview,
+  deleteAccountCascade,
+} from "../lib/account-deletion.js";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing 0/O, 1/I
 const MAX_ORG_NAME = 80;
@@ -78,6 +83,7 @@ function publicIdentityFields(userData = {}) {
     telegramUsername: userData.telegramUsername || null,
     profilePhotoUrl: userData.profilePhotoUrl || null,
     authProvider: userData.authProvider || null,
+    authProviders: Array.isArray(userData.authProviders) ? userData.authProviders : [],
     lastLoginAt: userData.lastLoginAt || null,
     lastSeenAt: userData.lastSeenAt || null,
     lastSeenClientAt: userData.lastSeenClientAt || null,
@@ -285,15 +291,6 @@ export default async function handler(request, response) {
       ]);
       const existing = userSnap.exists ? (userSnap.data() || {}) : {};
       const signInProvider = String(decoded.firebase?.sign_in_provider || "");
-      const incomingProvider = selectedProviderId(authUser, existing, signInProvider);
-      const storedProvider = String(existing.authProvider || "");
-      if (storedProvider && incomingProvider && storedProvider !== incomingProvider) {
-        return response.status(409).json({
-          code: "AUTH_PROVIDER_MISMATCH",
-          authProvider: storedProvider,
-          error: "Этот аккаунт использует другой способ входа. Войдите тем способом, который выбрали при регистрации.",
-        });
-      }
       const patch = buildAuthProfilePatch({ authUser, existing, signInProvider });
       patch.lastLoginAt = FieldValue.serverTimestamp();
       patch.updatedAt = FieldValue.serverTimestamp();
@@ -304,6 +301,7 @@ export default async function handler(request, response) {
         uid: decoded.uid,
         email: patch.email || existing.email || "",
         authProvider: patch.authProvider || existing.authProvider || "",
+        authProviders: patch.authProviders || existing.authProviders || [],
       });
     } catch (error) {
       console.error("auth bootstrap failed", error);
@@ -396,6 +394,76 @@ export default async function handler(request, response) {
     } catch (error) {
       console.error("profile completion failed", error);
       return response.status(500).json({ error: "Не удалось сохранить имя и фамилию" });
+    }
+  }
+
+  if (action === "unlinkTelegram") {
+    try {
+      const result = await unlinkTelegramForUid({
+        db,
+        auth: adminAuth(),
+        uid: decoded.uid,
+        keepDetachedReservation: true,
+      });
+      if (!result.ok) {
+        const status = result.status === "user_not_found" ? 404 : 409;
+        return response.status(status).json(result);
+      }
+      await writeAuditLog(db, {
+        action: "account.telegram_unlink",
+        actorUid: decoded.uid,
+        metadata: { telegramId: result.telegramId || null },
+      });
+      return response.status(200).json(result);
+    } catch (error) {
+      console.error("org unlinkTelegram failed", error);
+      return response.status(500).json({ error: "Не удалось отвязать Telegram" });
+    }
+  }
+
+  if (action === "deleteAccountPreview") {
+    try {
+      const preview = await accountDeletionPreview({ db, uid: decoded.uid });
+      return response.status(200).json({ ok: true, ...preview });
+    } catch (error) {
+      console.error("org deleteAccountPreview failed", error);
+      return response.status(500).json({ error: "Не удалось подготовить удаление аккаунта" });
+    }
+  }
+
+  if (action === "deleteAccount") {
+    const confirmation = String(body.confirmation || "").trim();
+    if (confirmation !== "УДАЛИТЬ АККАУНТ") {
+      return response.status(400).json({ error: "Введите точную фразу «УДАЛИТЬ АККАУНТ»" });
+    }
+    const authAgeSeconds = Math.floor(Date.now() / 1000) - Number(decoded.auth_time || 0);
+    if (!Number.isFinite(authAgeSeconds) || authAgeSeconds < 0 || authAgeSeconds > 10 * 60) {
+      return response.status(401).json({
+        code: "RECENT_LOGIN_REQUIRED",
+        error: "Для удаления аккаунта выйдите, войдите заново и повторите действие в течение 10 минут.",
+      });
+    }
+    try {
+      const preview = await accountDeletionPreview({ db, uid: decoded.uid });
+      if (preview.ownedOrganizations > 0 && body.confirmOwnedOrganizations !== true) {
+        return response.status(409).json({
+          code: "OWNED_ORGANIZATIONS_CONFIRMATION_REQUIRED",
+          error: "Подтвердите удаление всех организаций, которыми вы владеете.",
+          ...preview,
+        });
+      }
+      const result = await deleteAccountCascade({
+        db,
+        auth: adminAuth(),
+        uid: decoded.uid,
+      });
+      return response.status(200).json(result);
+    } catch (error) {
+      console.error("org deleteAccount failed", error);
+      return response.status(500).json({
+        code: "ACCOUNT_DELETION_FAILED",
+        error: "Удаление не завершено. Данные сохранены для безопасного повторения операции.",
+      });
     }
   }
 

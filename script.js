@@ -730,7 +730,12 @@ async function callOrgApi(action, payload = {}) {
         body: JSON.stringify({ action, ...payload }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || 'Ошибка сервера');
+    if (!response.ok) {
+        const error = new Error(result.error || 'Ошибка сервера');
+        error.code = result.code || '';
+        error.details = result;
+        throw error;
+    }
     return result;
 }
 
@@ -2110,7 +2115,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.21'; // Google Identity Services sign-in
+    const CURRENT_VERSION = '6.22'; // Account providers, Telegram unlink, account deletion
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -5631,11 +5636,17 @@ function setupEventListeners() {
 
     if (elements.telegramLinkBtn) {
         elements.telegramLinkBtn.addEventListener('click', () => {
-            if (isTelegramLinked() || telegramLinkBusy) return;
+            if (telegramLinkBusy) return;
             playClickSound();
-            startTelegramLink();
+            if (isTelegramLinked()) unlinkTelegram();
+            else startTelegramLink();
         });
     }
+
+    document.getElementById('profile-delete-account')?.addEventListener('click', () => {
+        playClickSound();
+        deleteCurrentAccount();
+    });
 
     // Forms
     if (elements.projectForm && elements.projectModal) {
@@ -6358,20 +6369,20 @@ function updateTelegramLinkUI() {
     const button = elements.telegramLinkBtn;
     if (!button) return;
     const linked = isTelegramLinked();
-    button.disabled = linked || telegramLinkBusy;
-    button.classList.toggle('disabled', linked || telegramLinkBusy);
+    button.disabled = telegramLinkBusy;
+    button.classList.toggle('disabled', telegramLinkBusy);
     button.classList.toggle('telegram-connected', linked);
     button.classList.toggle('telegram-link-busy', telegramLinkBusy && !linked);
     button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
 
     if (linked) {
-        if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Telegram подключён';
+        if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Отвязать Telegram';
         if (elements.telegramLinkDesc) {
             elements.telegramLinkDesc.textContent = state.currentUser?.telegramUsername
-                ? `@${state.currentUser.telegramUsername} · уведомления включены`
-                : 'Дополнительный канал уведомлений включён';
+                ? `@${state.currentUser.telegramUsername} · подключён к аккаунту`
+                : 'Telegram подключён к этому аккаунту';
         }
-        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-circle-check';
+        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-link-slash';
         return;
     }
 
@@ -6385,6 +6396,56 @@ function updateTelegramLinkUI() {
         elements.telegramLinkStatusIcon.className = telegramLinkBusy
             ? 'fa-solid fa-spinner fa-spin'
             : 'fa-solid fa-chevron-right';
+    }
+}
+
+async function unlinkTelegram() {
+    if (!isTelegramLinked() || telegramLinkBusy) return;
+    if (!confirm('Отвязать Telegram от этого аккаунта? Вход и уведомления через Telegram перестанут работать, пока вы не подключите его снова.')) return;
+    try {
+        setTelegramLinkBusy(true, 'Отвязываем Telegram…');
+        const result = await callOrgApi('unlinkTelegram');
+        state.currentUser.telegramId = null;
+        state.currentUser.telegramChatId = null;
+        state.currentUser.telegramUsername = null;
+        state.currentUser.authProviders = Array.isArray(result.providers) ? result.providers : [];
+        state.currentUser.authProvider = result.providers?.[0] || state.currentUser.authProvider;
+        setTelegramLinkBusy(false);
+        updateTelegramLinkUI();
+        renderAuthProvider();
+        alert('Telegram отвязан. Теперь его можно подключить к другому аккаунту ProjectMan.');
+    } catch (error) {
+        setTelegramLinkBusy(false);
+        alert(error.message || 'Не удалось отвязать Telegram.');
+    }
+}
+
+async function deleteCurrentAccount() {
+    const button = document.getElementById('profile-delete-account');
+    if (!auth?.currentUser || button?.disabled) return;
+    try {
+        if (button) button.disabled = true;
+        const preview = await callOrgApi('deleteAccountPreview');
+        const ownedWarning = preview.ownedOrganizations > 0
+            ? `\n\nВы владелец ${preview.ownedOrganizations} орг. Будут удалены также ${preview.projects} проектов, все задачи, участники и файлы этих организаций.`
+            : '';
+        if (!confirm(`Удалить аккаунт ProjectMan без возможности восстановления?${ownedWarning}`)) return;
+        const phrase = prompt('Второе подтверждение. Введите точно: УДАЛИТЬ АККАУНТ');
+        if (phrase !== 'УДАЛИТЬ АККАУНТ') {
+            if (phrase !== null) alert('Фраза не совпала. Аккаунт не удалён.');
+            return;
+        }
+        await callOrgApi('deleteAccount', {
+            confirmation: phrase,
+            confirmOwnedOrganizations: preview.ownedOrganizations > 0,
+        });
+        try { await firebase.auth().signOut(); } catch {}
+        alert('Аккаунт и связанные с ним данные удалены.');
+        window.location.reload();
+    } catch (error) {
+        alert(error.message || 'Не удалось удалить аккаунт.');
+    } finally {
+        if (button) button.disabled = false;
     }
 }
 
@@ -6895,7 +6956,7 @@ function handleFederatedAuthError(error) {
     console.error('Federated auth failed:', error);
     let message = 'Не удалось войти. Проверьте настройки входа и попробуйте снова.';
     if (error.code === 'auth/account-exists-with-different-credential') {
-        message = 'Аккаунт с этой почтой уже существует. Войдите способом, выбранным при регистрации.';
+        message = 'Этот аккаунт зарегистрирован через email и пароль. Войдите, введя email и пароль. Если вы не помните пароль, нажмите «Забыли пароль?».';
     } else if (error.code === 'auth/unauthorized-domain') {
         message = 'Этот домен не разрешён в настройках Firebase Authentication.';
     } else if (error.code === 'auth/operation-not-allowed') {
@@ -6972,6 +7033,9 @@ async function loadUserRole(user) {
             state.currentUser.telegramId = userData.telegramId || null;
             state.currentUser.telegramUsername = userData.telegramUsername || null;
             state.currentUser.authProvider = userData.authProvider || null;
+            state.currentUser.authProviders = Array.isArray(userData.authProviders)
+                ? userData.authProviders
+                : [userData.authProvider].filter(Boolean);
             state.currentUser.profileCompleted = userData.profileCompleted === true;
 
             // Set state orgRole

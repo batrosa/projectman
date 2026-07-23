@@ -35,9 +35,21 @@ function mockResponse() {
 // simulating a transient Firestore outage.
 function makeFakeDb(initialUsers = {}, { queryError } = {}) {
   const users = new Map(Object.entries(initialUsers));
+  const links = new Map();
   return {
     users,
     collection(name) {
+      if (name === "telegramAccountLinks") {
+        return {
+          doc(id) {
+            return {
+              async get() {
+                return { exists: links.has(id), data: () => links.get(id) };
+              },
+            };
+          },
+        };
+      }
       if (name !== "users") throw new Error(`unexpected collection ${name}`);
       return {
         where(field, op, value) {

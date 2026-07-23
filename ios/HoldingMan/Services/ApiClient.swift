@@ -188,6 +188,57 @@ struct ApiClient {
         throw ApiError.server(json["error"] as? String ?? "Telegram-бот не подтвердил вход.")
     }
 
+    static func startTelegramBotLink() async throws -> TelegramLoginStart {
+        let json = try await post("api/telegram-bot-login-start", body: ["mode": "link"])
+        guard json["ok"] as? Bool == true,
+              let code = json["code"] as? String,
+              let botUrlString = json["botUrl"] as? String,
+              let botUrl = URL(string: botUrlString),
+              botUrl.scheme == "https",
+              botUrl.host == "t.me",
+              let expiresString = json["expiresAt"] as? String,
+              let expires = ISO8601DateFormatter().date(from: expiresString) else {
+            throw ApiError.server(json["error"] as? String ?? "Не удалось начать подключение Telegram.")
+        }
+        return TelegramLoginStart(code: code, botUrl: botUrl, expiresAt: expires)
+    }
+
+    static func pollTelegramBotLink(code: String) async throws -> Bool {
+        let json = try await post("api/telegram-bot-login-status", body: ["code": code])
+        if json["status"] as? String == "pending" { return false }
+        if json["ok"] as? Bool == true,
+           json["status"] as? String == "confirmed",
+           json["linked"] as? Bool == true { return true }
+        throw ApiError.server(json["error"] as? String ?? "Telegram-бот не подтвердил подключение.")
+    }
+
+    static func unlinkTelegram() async throws {
+        _ = try await post("api/org", body: ["action": "unlinkTelegram"])
+    }
+
+    struct AccountDeletionPreview {
+        var ownedOrganizations: Int
+        var projects: Int
+        var members: Int
+    }
+
+    static func accountDeletionPreview() async throws -> AccountDeletionPreview {
+        let json = try await post("api/org", body: ["action": "deleteAccountPreview"])
+        return AccountDeletionPreview(
+            ownedOrganizations: json["ownedOrganizations"] as? Int ?? 0,
+            projects: json["projects"] as? Int ?? 0,
+            members: json["members"] as? Int ?? 0
+        )
+    }
+
+    static func deleteAccount(confirmOwnedOrganizations: Bool) async throws {
+        _ = try await post("api/org", body: [
+            "action": "deleteAccount",
+            "confirmation": "УДАЛИТЬ АККАУНТ",
+            "confirmOwnedOrganizations": confirmOwnedOrganizations,
+        ])
+    }
+
     // ===== ИИ-агент (api/agent-chat — тот же протокол, что в web) =====
 
     struct AgentReply {

@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-const state = { db: null, createCustomToken: null, verifyIdToken: null };
+const state = { db: null, createCustomToken: null, verifyIdToken: null, getUser: null };
 
 vi.mock("../lib/firebase-admin.js", () => ({
   adminDb: () => state.db,
   adminAuth: () => ({
     createCustomToken: state.createCustomToken,
     verifyIdToken: state.verifyIdToken,
+    getUser: state.getUser,
   }),
 }));
 
@@ -59,6 +60,7 @@ function makeFakeDb({ sessions = {}, users = {}, links = {} } = {}) {
       return callback({
         get: ref => ref.get(),
         set: (ref, data, options) => ref.set(data, options),
+        delete: ref => ref.delete(),
       });
     },
   };
@@ -75,6 +77,9 @@ function makeDocCollection(map) {
         },
         async get() {
           return { exists: map.has(id), data: () => map.get(id) };
+        },
+        async delete() {
+          map.delete(id);
         },
       };
     },
@@ -115,6 +120,7 @@ describe("Telegram bot login flow", () => {
       if (token !== "valid-token") throw new Error("invalid token");
       return { uid: "web-user" };
     });
+    state.getUser = vi.fn(async () => ({ providerData: [{ providerId: "password" }] }));
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -241,6 +247,37 @@ describe("Telegram bot login flow", () => {
     expect(res.statusCode).toBe(401);
     expect(state.db.sessions.get(code)).toMatchObject({ status: "pending" });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("lets the verified Telegram owner unlink from the bot when another login remains", async () => {
+    state.db = makeFakeDb({
+      users: {
+        "web-user": {
+          telegramId: "777",
+          telegramChatId: "777",
+          authProvider: "password",
+          authProviders: ["password", "telegram"],
+        },
+      },
+      links: { "777": { uid: "web-user", telegramId: "777", status: "active" } },
+    });
+
+    const res = mockResponse();
+    await webhookHandler({
+      method: "POST",
+      headers: { "x-telegram-bot-api-secret-token": "test-webhook-secret" },
+      body: {
+        message: {
+          text: "/unlink",
+          chat: { id: 777 },
+          from: { id: 777, username: "ivanov" },
+        },
+      },
+    }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(state.db.links.get("777")).toMatchObject({ status: "detached", previousUid: "web-user" });
+    expect(JSON.parse(fetch.mock.calls[0][1].body).text).toContain("Telegram отвязан");
   });
 
   it("confirms /start link_<code> without changing a ProjectMan user yet", async () => {

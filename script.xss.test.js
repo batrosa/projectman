@@ -313,6 +313,36 @@ describe("openTaskDetailsModal (protected completion proofs)", () => {
     expect(ctx.document.querySelector(".completion-proof-file-name").textContent)
       .toBe(NORMAL_NAME);
   });
+
+  it("shows take-to-work action to an assignee inside the information modal", () => {
+    setBody({ id: "task-details-modal" }, { id: "task-details-content" });
+    vm.runInContext(`state.currentUser = { uid: "executor-1", email: "worker@example.com" };`, ctx);
+    getFn("openTaskDetailsModal")({
+      id: "task-assigned",
+      title: "Назначенная задача",
+      status: "in-progress",
+      subStatus: "assigned",
+      assignee: "Исполнитель",
+      assigneeIds: ["executor-1"],
+    });
+    expect(ctx.document.querySelector('[data-lifecycle-action="take"]')?.textContent)
+      .toContain("Взять в работу");
+  });
+
+  it("shows completion action to an assignee inside the information modal", () => {
+    setBody({ id: "task-details-modal" }, { id: "task-details-content" });
+    vm.runInContext(`state.currentUser = { uid: "executor-1", email: "worker@example.com" };`, ctx);
+    getFn("openTaskDetailsModal")({
+      id: "task-work",
+      title: "Задача в работе",
+      status: "in-progress",
+      subStatus: "in_work",
+      assignee: "Исполнитель",
+      assigneeIds: ["executor-1"],
+    });
+    expect(ctx.document.querySelector('[data-lifecycle-action="complete"]')?.textContent)
+      .toContain("Завершить");
+  });
 });
 
 describe("avatar <img src/alt> attribute-injection (profilePhotoUrl / fullName)", () => {
