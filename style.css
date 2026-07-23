@@ -2402,7 +2402,8 @@ body.read-only .pin-key,
 body.read-only .pin-keypad button,
 /* Task details modal */
 body.read-only #task-details-modal,
-body.read-only #task-details-modal .secondary-btn {
+body.read-only #task-details-modal .secondary-btn,
+body.read-only #task-details-modal .task-details-status-btn {
     display: flex !important;
 }
 

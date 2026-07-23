@@ -2115,7 +2115,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.22'; // Account providers, Telegram unlink, account deletion
+    const CURRENT_VERSION = '6.23'; // Task details lifecycle buttons for employee accounts
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
