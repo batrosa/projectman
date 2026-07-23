@@ -4357,7 +4357,10 @@ function openTaskDetailsModal(task) {
     if (task.completionComment || completionProofs.length > 0) {
         let filesHTML = '';
         completionProofs.forEach(proof => {
-            if (proof && proof.url) {
+            // New protected Cloudinary references intentionally have no
+            // permanent public URL. They carry publicId and are opened through
+            // the authenticated short-lived download endpoint.
+            if (attachmentIsReady(proof)) {
                 filesHTML += `
                     <div class="completion-proof-file" data-proof="${escapeHtml(JSON.stringify(proof))}">
                         <i class="fa-solid ${getFileIcon(proof.type || 'other')}"></i>
