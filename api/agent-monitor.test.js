@@ -14,20 +14,21 @@ function mockResponse() {
 // In-memory fake Firestore implementing only what api/agent-monitor.js uses:
 // tasks where(status==in-progress).limit().get(); projects/users doc get;
 // agentNotifications doc() refs; runTransaction set/update.
-function makeFakeDb({ tasks = {}, projects = {}, users = {}, hooks = {} }) {
+function makeFakeDb({ tasks = {}, privateTasks = {}, projects = {}, users = {}, hooks = {} }) {
   const notes = [];            // committed agentNotifications payloads (+__noteId)
   const taskUpdates = {};      // taskId -> merged flag updates
   const noteUpdates = {};      // noteId -> post-send delivery marks
   const state = { notes, taskUpdates, noteUpdates, emailQueries: 0 };
   let noteSeq = 0;
 
-  function taskRef(id) {
-    return { __kind: "task", id };
+  function taskRef(id, collectionName = "tasks") {
+    return { __kind: "task", id, collectionName };
   }
 
   const db = {
     collection(name) {
-      if (name === "tasks") {
+      if (name === "tasks" || name === "privateTasks") {
+        const source = name === "privateTasks" ? privateTasks : tasks;
         return {
           where(field, op, value) {
             if (field !== "status" || op !== "==" || value !== "in-progress") throw new Error("unexpected tasks query");
@@ -42,17 +43,17 @@ function makeFakeDb({ tasks = {}, projects = {}, users = {}, hooks = {} }) {
               async get() {
                 if (this.afterCursor) return { docs: [] };
                 return {
-                  docs: Object.entries(tasks).map(([id, data]) => ({
+                  docs: Object.entries(source).map(([id, data]) => ({
                     id,
                     data: () => data,
-                    ref: taskRef(id),
+                    ref: taskRef(id, name),
                   })),
                 };
               },
             };
             return chain;
           },
-          doc(id) { return taskRef(id); },
+          doc(id) { return taskRef(id, name); },
         };
       }
       if (name === "projects") {
@@ -125,9 +126,10 @@ function makeFakeDb({ tasks = {}, projects = {}, users = {}, hooks = {} }) {
       const tx = {
         async get(ref) {
           if (ref.__kind === "task") {
+            const source = ref.collectionName === "privateTasks" ? privateTasks : tasks;
             return {
-              exists: ref.id in tasks,
-              data: () => tasks[ref.id],
+              exists: ref.id in source,
+              data: () => source[ref.id],
             };
           }
           throw new Error("unexpected transaction get");
@@ -139,8 +141,9 @@ function makeFakeDb({ tasks = {}, projects = {}, users = {}, hooks = {} }) {
       for (const o of ops) {
         if (o.ref.__kind === "note" && o.op === "set") notes.push({ ...o.data, __noteId: o.ref.id });
         if (o.ref.__kind === "task" && o.op === "update") {
+          const source = o.ref.collectionName === "privateTasks" ? privateTasks : tasks;
           taskUpdates[o.ref.id] = { ...(taskUpdates[o.ref.id] || {}), ...o.data };
-          tasks[o.ref.id] = { ...(tasks[o.ref.id] || {}), ...o.data };
+          source[o.ref.id] = { ...(source[o.ref.id] || {}), ...o.data };
         }
       }
       return result;

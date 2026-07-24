@@ -88,12 +88,14 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .hmOpenTask)) { note in
             guard let taskId = note.userInfo?["taskId"] as? String,
                   let projectId = note.userInfo?["projectId"] as? String else { return }
-            pushRoute = TaskRoute(taskId: taskId, projectId: projectId)
+            let taskCollection = note.userInfo?["taskCollection"] as? String ?? "tasks"
+            pushRoute = TaskRoute(taskId: taskId, projectId: projectId, taskCollection: taskCollection)
         }
         .onReceive(NotificationCenter.default.publisher(for: .hmAgentNavigate)) { note in
             guard let target = note.userInfo?["target"] as? String else { return }
             let projectId = note.userInfo?["projectId"] as? String ?? ""
             let taskId = note.userInfo?["taskId"] as? String ?? ""
+            let taskCollection = note.userInfo?["taskCollection"] as? String ?? "tasks"
             switch target {
             case "my_tasks": selectedTab = "mytasks"
             case "notifications": selectedTab = "notifications"
@@ -102,7 +104,7 @@ struct MainTabView: View {
             case "task":
                 selectedTab = "projects"
                 if !projectId.isEmpty, !taskId.isEmpty {
-                    pushRoute = TaskRoute(taskId: taskId, projectId: projectId)
+                    pushRoute = TaskRoute(taskId: taskId, projectId: projectId, taskCollection: taskCollection)
                 }
             case "project":
                 selectedTab = "projects"
@@ -119,7 +121,7 @@ struct MainTabView: View {
             }
         }
         .sheet(item: $pushRoute) { route in
-            TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId)
+            TaskRouteLoaderView(taskId: route.taskId, projectId: route.projectId, taskCollection: route.taskCollection)
                 .environmentObject(appState)
         }
         .sheet(isPresented: $showAgentTeam) {
@@ -151,6 +153,11 @@ struct MainTabView: View {
         if DemoData.isEnabled { return }
         #endif
         guard let user = appState.user else { return }
-        myTasksStore.subscribe(uid: user.uid, projects: projectsStore.projects)
+        myTasksStore.subscribe(
+            uid: user.uid,
+            organizationId: user.organizationId ?? "",
+            projects: projectsStore.projects,
+            isOwner: user.orgRole == "owner"
+        )
     }
 }

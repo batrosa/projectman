@@ -178,6 +178,7 @@ struct TaskDetailView: View {
             DeadlineRequestSheet(task: current) { requestedDeadline, comment in
                 try await ApiClient.requestDeadlineChange(
                     taskId: current.id,
+                    taskCollection: current.taskCollection,
                     requestedDeadline: requestedDeadline,
                     comment: comment
                 )

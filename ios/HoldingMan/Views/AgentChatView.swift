@@ -280,6 +280,7 @@ struct AgentChatView: View {
                 "target": navigation.target,
                 "projectId": navigation.projectId ?? "",
                 "taskId": navigation.taskId ?? "",
+                "taskCollection": navigation.taskCollection,
             ]
         )
     }

@@ -19,8 +19,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=85.0" as="style">
-    <link rel="stylesheet" href="style.css?v=85.0">
+    <link rel="preload" href="style.css?v=90.0" as="style">
+    <link rel="stylesheet" href="style.css?v=90.0">
     <link rel="stylesheet" href="mobile-additions.css?v=18.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=100.0" defer></script>
+    <script src="script.js?v=102.0" defer></script>
 </head>
 
 <body>
@@ -1374,6 +1374,17 @@
                         </div>
                     </div>
                 </div>
+
+                <section class="profile-danger-section" aria-labelledby="profile-danger-title">
+                    <div>
+                        <h3 id="profile-danger-title">Удаление аккаунта</h3>
+                        <p>Действие необратимо. Если вы владелец, будут удалены все ваши организации и их данные.</p>
+                    </div>
+                    <button type="button" id="profile-delete-account" class="profile-delete-account">
+                        <i class="fa-solid fa-user-xmark"></i>
+                        Удалить аккаунт
+                    </button>
+                </section>
             </div>
         </div>
     </div>
@@ -1498,6 +1509,17 @@
                             </div>
                         </div>
                     </div>
+
+                    <label id="t-private-option" class="private-task-option" for="t-private">
+                        <input type="checkbox" id="t-private">
+                        <span class="private-task-check" aria-hidden="true">
+                            <i class="fa-solid fa-check"></i>
+                        </span>
+                        <span class="private-task-copy">
+                            <strong><i class="fa-solid fa-lock"></i> Приватная задача</strong>
+                            <small>Видна владельцу организации, постановщикам и исполнителям этой задачи</small>
+                        </span>
+                    </label>
 
                     <!-- File Attachments Section -->
                     <div class="form-group">
@@ -1755,8 +1777,9 @@
                             переносы сроков. Клик по уведомлению открывает задачу</li>
                         <li><strong>Email:</strong> пользователи Google и сотрудники с подтверждённой почтой
                             получают уведомления на адрес, используемый для входа</li>
-                        <li><strong>Telegram:</strong> войдите через Telegram-бота — уведомления будут приходить
-                            и в Telegram</li>
+                        <li><strong>Telegram:</strong> подключите бота в Панели управления — уведомления будут
+                            приходить и в Telegram. Отвязать его можно там же или командой <code>/unlink</code>
+                            в боте</li>
                         <li><strong>iOS-приложение:</strong> те же уведомления приходят push-сообщениями</li>
                     </ul>
                 </div>
@@ -1788,7 +1811,9 @@
                         <li><strong>Админ панель:</strong> Управление пользователями (для владельцев и админов)</li>
                         <li><strong>Рейтинг сотрудников:</strong> Топ по выполненным задачам и XP</li>
                         <li><strong>Тема:</strong> Переключение между светлой и тёмной темой</li>
-                        <li><strong>Telegram:</strong> Подключение дополнительного канала уведомлений</li>
+                        <li><strong>Telegram:</strong> Подключение и отвязка дополнительного канала уведомлений</li>
+                        <li><strong>Удаление аккаунта:</strong> В Личном кабинете с двойным подтверждением.
+                            У владельца вместе с аккаунтом удаляются все принадлежащие ему организации и их данные</li>
                     </ul>
                 </div>
 

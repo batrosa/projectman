@@ -24,6 +24,14 @@
         { "fieldPath": "assigneeIds", "arrayConfig": "CONTAINS" },
         { "fieldPath": "organizationId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "privateTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewerIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "organizationId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

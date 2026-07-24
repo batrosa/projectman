@@ -129,12 +129,13 @@ extension PushService: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         let taskId = userInfo["taskId"] as? String
         let projectId = userInfo["projectId"] as? String
+        let taskCollection = userInfo["taskCollection"] as? String ?? "tasks"
         Task { @MainActor in
             if let taskId, let projectId, !taskId.isEmpty, !projectId.isEmpty {
                 NotificationCenter.default.post(
                     name: .hmOpenTask,
                     object: nil,
-                    userInfo: ["taskId": taskId, "projectId": projectId]
+                    userInfo: ["taskId": taskId, "projectId": projectId, "taskCollection": taskCollection]
                 )
             }
             completionHandler()

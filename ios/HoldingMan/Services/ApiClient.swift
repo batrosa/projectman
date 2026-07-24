@@ -188,6 +188,57 @@ struct ApiClient {
         throw ApiError.server(json["error"] as? String ?? "Telegram-бот не подтвердил вход.")
     }
 
+    static func startTelegramBotLink() async throws -> TelegramLoginStart {
+        let json = try await post("api/telegram-bot-login-start", body: ["mode": "link"])
+        guard json["ok"] as? Bool == true,
+              let code = json["code"] as? String,
+              let botUrlString = json["botUrl"] as? String,
+              let botUrl = URL(string: botUrlString),
+              botUrl.scheme == "https",
+              botUrl.host == "t.me",
+              let expiresString = json["expiresAt"] as? String,
+              let expires = ISO8601DateFormatter().date(from: expiresString) else {
+            throw ApiError.server(json["error"] as? String ?? "Не удалось начать подключение Telegram.")
+        }
+        return TelegramLoginStart(code: code, botUrl: botUrl, expiresAt: expires)
+    }
+
+    static func pollTelegramBotLink(code: String) async throws -> Bool {
+        let json = try await post("api/telegram-bot-login-status", body: ["code": code])
+        if json["status"] as? String == "pending" { return false }
+        if json["ok"] as? Bool == true,
+           json["status"] as? String == "confirmed",
+           json["linked"] as? Bool == true { return true }
+        throw ApiError.server(json["error"] as? String ?? "Telegram-бот не подтвердил подключение.")
+    }
+
+    static func unlinkTelegram() async throws {
+        _ = try await post("api/org", body: ["action": "unlinkTelegram"])
+    }
+
+    struct AccountDeletionPreview {
+        var ownedOrganizations: Int
+        var projects: Int
+        var members: Int
+    }
+
+    static func accountDeletionPreview() async throws -> AccountDeletionPreview {
+        let json = try await post("api/org", body: ["action": "deleteAccountPreview"])
+        return AccountDeletionPreview(
+            ownedOrganizations: json["ownedOrganizations"] as? Int ?? 0,
+            projects: json["projects"] as? Int ?? 0,
+            members: json["members"] as? Int ?? 0
+        )
+    }
+
+    static func deleteAccount(confirmOwnedOrganizations: Bool) async throws {
+        _ = try await post("api/org", body: [
+            "action": "deleteAccount",
+            "confirmation": "УДАЛИТЬ АККАУНТ",
+            "confirmOwnedOrganizations": confirmOwnedOrganizations,
+        ])
+    }
+
     // ===== ИИ-агент (api/agent-chat — тот же протокол, что в web) =====
 
     struct AgentReply {
@@ -255,12 +306,15 @@ struct ApiClient {
 
     // Фаза 2 удаления: тот же payload, что confirmAgentDeleteProposal в web.
     static func agentDeleteTasks(proposal: AgentDeleteProposal) async throws -> Int {
-        let ids = proposal.tasks.compactMap(\.taskId)
+        let targets = proposal.tasks.compactMap { task -> [String: Any]? in
+            guard let taskId = task.taskId else { return nil }
+            return ["taskId": taskId, "taskCollection": task.taskCollection]
+        }
         let json = try await post("api/agent-chat", body: [
             "action": "delete_tasks",
             "proposalId": proposal.proposalId ?? "",
             "projectId": proposal.projectId,
-            "taskIds": ids,
+            "taskTargets": targets,
         ])
         guard json["ok"] as? Bool == true, let deleted = json["deleted"] as? Int else {
             throw ApiError.server(json["error"] as? String ?? "Не удалось удалить задачи")
@@ -297,15 +351,16 @@ struct ApiClient {
 
     // XP начисляет сервер при принятии задачи в «Готово» (транзакционно,
     // идемпотентно) — тот же вызов, что в web updateTaskSubStatus('done').
-    static func awardXp(taskId: String) async throws {
-        _ = try await post("api/award-xp", body: ["taskId": taskId])
+    static func awardXp(taskId: String, taskCollection: String = "tasks") async throws {
+        _ = try await post("api/award-xp", body: ["taskId": taskId, "taskCollection": taskCollection])
     }
 
-    static func requestDeadlineChange(taskId: String, requestedDeadline: String, comment: String) async throws {
+    static func requestDeadlineChange(taskId: String, taskCollection: String = "tasks", requestedDeadline: String, comment: String) async throws {
         _ = try await post("api/notify-telegram", body: [
             "operation": "deadline",
             "action": "request",
             "taskId": taskId,
+            "taskCollection": taskCollection,
             "requestedDeadline": requestedDeadline,
             "comment": comment,
         ])
@@ -324,12 +379,13 @@ struct ApiClient {
     // Telegram (если чат привязан) + мобильный push + запись в ленту
     // «Уведомления» с типом и deep-link-данными. Fire-and-forget у вызывающих.
     static func sendTaskEvent(recipientUid: String, text: String,
-                              type: String, taskId: String, projectId: String) async throws {
+                              type: String, taskId: String, projectId: String,
+                              taskCollection: String = "tasks") async throws {
         _ = try await post("api/notify-telegram", body: [
             "recipientUid": recipientUid,
             "text": text,
             "parseMode": "HTML",
-            "event": ["type": type, "taskId": taskId, "projectId": projectId],
+            "event": ["type": type, "taskId": taskId, "projectId": projectId, "taskCollection": taskCollection],
         ])
     }
 }

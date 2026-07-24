@@ -18,6 +18,67 @@ const cloudinaryConfig = {
 // Pending attachments for new/edited task
 let pendingAttachments = [];
 
+const PUBLIC_TASKS_COLLECTION = 'tasks';
+const PRIVATE_TASKS_COLLECTION = 'privateTasks';
+
+function normalizeTaskCollection(value) {
+    return value === PRIVATE_TASKS_COLLECTION ? PRIVATE_TASKS_COLLECTION : PUBLIC_TASKS_COLLECTION;
+}
+
+function parseTaskCollectionHint(value) {
+    return value === PRIVATE_TASKS_COLLECTION || value === PUBLIC_TASKS_COLLECTION ? value : null;
+}
+
+function taskCollectionName(task) {
+    return normalizeTaskCollection(task?.taskCollection || (task?.isPrivate ? PRIVATE_TASKS_COLLECTION : null));
+}
+
+function taskFromSnapshot(doc, collectionName) {
+    return {
+        id: doc.id,
+        ...doc.data(),
+        taskCollection: normalizeTaskCollection(collectionName),
+    };
+}
+
+function taskDocumentRef(taskOrId, collectionHint = null) {
+    const task = typeof taskOrId === 'object' && taskOrId ? taskOrId : null;
+    const id = task ? task.id : taskOrId;
+    return db.collection(normalizeTaskCollection(collectionHint || taskCollectionName(task))).doc(id);
+}
+
+function privateTaskViewerIds(creatorUid, assigneeIds, coCreatorIds) {
+    return [...new Set([
+        creatorUid,
+        ...(Array.isArray(assigneeIds) ? assigneeIds : []),
+        ...(Array.isArray(coCreatorIds) ? coCreatorIds : []),
+    ].filter(Boolean))];
+}
+
+async function loadTaskById(taskId, collectionHint = null) {
+    const names = collectionHint
+        ? [normalizeTaskCollection(collectionHint)]
+        : [PUBLIC_TASKS_COLLECTION, PRIVATE_TASKS_COLLECTION];
+    for (const name of names) {
+        try {
+            const doc = await db.collection(name).doc(taskId).get();
+            if (doc.exists) return taskFromSnapshot(doc, name);
+        } catch (error) {
+            if (error?.code !== 'permission-denied' && error?.code !== 'not-found') throw error;
+        }
+    }
+    return null;
+}
+
+function privateTasksQueryForCurrentUser() {
+    const uid = state.currentUser?.uid;
+    const organizationId = getCurrentOrganizationId();
+    if (!uid || !organizationId) return null;
+    const query = db.collection(PRIVATE_TASKS_COLLECTION)
+        .where('organizationId', '==', organizationId);
+    return state.orgRole === 'owner' ? query : query.where('viewerIds', 'array-contains', uid);
+}
+
 // Sound Effect - DISABLED
 function playClickSound() {
     // Sound removed per user request
@@ -669,7 +730,12 @@ async function callOrgApi(action, payload = {}) {
         body: JSON.stringify({ action, ...payload }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || 'Ошибка сервера');
+    if (!response.ok) {
+        const error = new Error(result.error || 'Ошибка сервера');
+        error.code = result.code || '';
+        error.details = result;
+        throw error;
+    }
     return result;
 }
 
@@ -1054,6 +1120,7 @@ function captureInviteCodeFromUrl() {
     const taskId = urlParams.get('task');
     const projectId = urlParams.get('project');
     const organizationId = urlParams.get('org');
+    const taskCollection = urlParams.get('taskCollection');
 
     if (inviteCode) {
         pendingInviteCode = inviteCode.toUpperCase();
@@ -1072,6 +1139,7 @@ function captureInviteCodeFromUrl() {
             taskId: String(taskId),
             projectId: DEEP_LINK_ID_RE.test(String(projectId || '')) ? String(projectId) : null,
             organizationId: DEEP_LINK_ID_RE.test(String(organizationId || '')) ? String(organizationId) : null,
+            taskCollection: parseTaskCollectionHint(taskCollection),
         };
         sessionStorage.setItem('pendingTaskLink', JSON.stringify(pendingTaskLink));
     } else {
@@ -1082,6 +1150,7 @@ function captureInviteCodeFromUrl() {
                     taskId: String(stored.taskId),
                     projectId: DEEP_LINK_ID_RE.test(String(stored.projectId || '')) ? String(stored.projectId) : null,
                     organizationId: DEEP_LINK_ID_RE.test(String(stored.organizationId || '')) ? String(stored.organizationId) : null,
+                    taskCollection: parseTaskCollectionHint(stored.taskCollection),
                 };
             }
         } catch {
@@ -1091,9 +1160,9 @@ function captureInviteCodeFromUrl() {
 
     // Remove only ProjectSfera routing params. Other query parameters may belong
     // to an auth provider and must survive until Firebase consumes them.
-    if (inviteCode || taskId || projectId || organizationId) {
+    if (inviteCode || taskId || projectId || organizationId || taskCollection) {
         const cleanUrl = new URL(window.location.href);
-        ['invite', 'task', 'project', 'org'].forEach(key => cleanUrl.searchParams.delete(key));
+        ['invite', 'task', 'project', 'org', 'taskCollection'].forEach(key => cleanUrl.searchParams.delete(key));
         window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
     }
 }
@@ -1114,12 +1183,11 @@ async function applyPendingTaskLink() {
 
     pendingTaskLinkInFlight = true;
     try {
-        const doc = await db.collection('tasks').doc(link.taskId).get();
-        if (!doc.exists) {
+        const task = await loadTaskById(link.taskId, link.taskCollection);
+        if (!task) {
             clearPendingTaskLink();
             return;
         }
-        const task = { id: doc.id, ...doc.data() };
         const projectId = String(task.projectId || '');
         const accessibleProject = getFilteredProjects().some(project => project.id === projectId);
         if (!DEEP_LINK_ID_RE.test(projectId) || !accessibleProject) return;
@@ -2047,7 +2115,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.22'; // Rebrand to ProjectSfera
+    const CURRENT_VERSION = '6.23'; // Task details lifecycle buttons for employee accounts
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2361,23 +2429,38 @@ function subscribeToProjectTasks(projectId) {
     elements.listInProgress.innerHTML = '<div class="spinner" style="margin: 2rem auto;"></div>';
     if (elements.listReview) elements.listReview.innerHTML = '';
 
-    // Subscribe to new project tasks
-    taskListenerUnsubscribe = db.collection('tasks')
+    let publicTasks = [];
+    let privateTasks = [];
+    const publish = () => {
+        state.tasks = [...publicTasks, ...privateTasks].filter(task => task.projectId === projectId);
+        renderBoard();
+    };
+    const showError = (label, error) => {
+        console.error(`Error fetching ${label} tasks:`, error);
+        const errHtml = '<p style="color: var(--text-secondary); text-align: center;">Ошибка загрузки задач</p>';
+        if (elements.listAssigned) elements.listAssigned.innerHTML = errHtml;
+        elements.listInProgress.innerHTML = errHtml;
+        if (elements.listReview) elements.listReview.innerHTML = '';
+    };
+
+    const unsubs = [];
+    unsubs.push(db.collection(PUBLIC_TASKS_COLLECTION)
         .where('projectId', '==', projectId)
         .onSnapshot(snapshot => {
-            const tasks = [];
-            snapshot.forEach(doc => {
-                tasks.push({ id: doc.id, ...doc.data() });
-            });
-            state.tasks = tasks;
-            renderBoard();
-        }, error => {
-            console.error("Error fetching tasks:", error);
-            const errHtml = '<p style="color: var(--text-secondary); text-align: center;">Ошибка загрузки задач</p>';
-            if (elements.listAssigned) elements.listAssigned.innerHTML = errHtml;
-            elements.listInProgress.innerHTML = errHtml;
-            if (elements.listReview) elements.listReview.innerHTML = '';
-        });
+            publicTasks = snapshot.docs.map(doc => taskFromSnapshot(doc, PUBLIC_TASKS_COLLECTION));
+            publish();
+        }, error => showError('public', error)));
+
+    const privateQuery = privateTasksQueryForCurrentUser();
+    if (privateQuery) {
+        unsubs.push(privateQuery.onSnapshot(snapshot => {
+            privateTasks = snapshot.docs
+                .map(doc => taskFromSnapshot(doc, PRIVATE_TASKS_COLLECTION))
+                .filter(task => task.projectId === projectId);
+            publish();
+        }, error => showError('private', error)));
+    }
+    taskListenerUnsubscribe = () => unsubs.forEach(unsub => unsub());
 }
 
 // ========== PROJECT FILES (distinct from per-task attachments above) ==========
@@ -2619,7 +2702,8 @@ async function deleteTask(id) {
     }
     if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
     try {
-        await callFilesApi('deleteTask', { taskId: id });
+        const task = findLoadedTask(id);
+        await callFilesApi('deleteTask', { taskId: id, taskCollection: taskCollectionName(task) });
         await refreshMyTasksModalIfOpen();
     } catch (error) {
         console.error('Error deleting task:', error);
@@ -2637,14 +2721,7 @@ async function deleteProject(id) {
     if (!confirm('Вы уверены? Все задачи этого проекта будут удалены.')) return;
 
     try {
-        // Delete project tasks first while the project still exists for org-role rule checks.
-        const tasksSnapshot = await db.collection('tasks').where('projectId', '==', id).get();
-        const batch = db.batch();
-        tasksSnapshot.forEach(doc => {
-            batch.delete(doc.ref);
-        });
-        batch.delete(db.collection('projects').doc(id));
-        await batch.commit();
+        await callOrgApi('deleteProject', { projectId: id });
 
         if (state.activeProjectId === id) {
             state.activeProjectId = null;
@@ -2731,7 +2808,14 @@ function updateTask(id, data) {
         elements.taskForm.querySelector('button[type="submit"]');
     if (submitBtn) setButtonLoading(submitBtn, true, 'Сохранить');
 
-    return db.collection('tasks').doc(id).update(data)
+    const task = findLoadedTask(id);
+    if (task?.isPrivate) {
+        const nextAssigneeIds = Array.isArray(data.assigneeIds) ? data.assigneeIds : task.assigneeIds;
+        const nextCoCreatorIds = Array.isArray(data.coCreatorIds) ? data.coCreatorIds : task.coCreatorIds;
+        data.viewerIds = privateTaskViewerIds(task.createdByUid, nextAssigneeIds, nextCoCreatorIds);
+    }
+
+    return taskDocumentRef(task || id).update(data)
         .then(async () => {
             console.log("✅ Задача успешно обновлена!");
             elements.taskModal.classList.remove('active');
@@ -2768,6 +2852,13 @@ function openEditTaskModal(task) {
 
     // Update modal title
     elements.taskModal.querySelector('h2').textContent = 'Редактировать задачу';
+    const privateInput = document.getElementById('t-private');
+    const privateOption = document.getElementById('t-private-option');
+    if (privateInput) {
+        privateInput.checked = !!task.isPrivate;
+        privateInput.disabled = true;
+    }
+    privateOption?.classList.add('is-editing');
 
     // Populate assignees picker and load existing assignees
     populateAssigneeDropdown();
@@ -3761,6 +3852,8 @@ function createTaskCard(task) {
 
 // Update SubStatus Function
 function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisionData = null) {
+    const loadedTask = findLoadedTask(taskId);
+    const collectionName = taskCollectionName(loadedTask);
     const updates = {
         subStatus: newSubStatus
     };
@@ -3833,9 +3926,8 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         // Send notification to task creator about completion (async, don't wait)
         (async () => {
             try {
-                const taskDoc = await db.collection('tasks').doc(taskId).get();
-                if (taskDoc.exists) {
-                    const taskData = taskDoc.data();
+                const taskData = await loadTaskById(taskId, collectionName);
+                if (taskData) {
                     const project = state.projects.find(p => p.id === taskData.projectId);
                     const projectName = project?.name || 'Проект';
                     const message = `📤 <b>Задача на проверке</b>
@@ -3845,7 +3937,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
 <b>Исполнитель:</b> ${escapeHtmlForTelegram(completedByName)}
 
 Пожалуйста, проверьте выполнение задачи.`;
-                    const completionEvent = { type: 'task_completed', taskId, projectId: taskData.projectId || null };
+                    const completionEvent = { type: 'task_completed', taskId, projectId: taskData.projectId || null, taskCollection: collectionName };
                     // Все постановщики: создатель + доп. постановщики (дедуп по uid)
                     const creatorUids = [...new Set([
                         taskData.createdByUid,
@@ -3868,7 +3960,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
         updates.assigneeCompleted = false;
     }
 
-    db.collection('tasks').doc(taskId).update(updates).then(async () => {
+    taskDocumentRef(taskId, collectionName).update(updates).then(async () => {
         playClickSound();
         console.log("Status updated to:", newSubStatus);
 
@@ -3886,7 +3978,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
                     const res = await fetch('/api/award-xp', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-                        body: JSON.stringify({ taskId })
+                        body: JSON.stringify({ taskId, taskCollection: collectionName })
                     });
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
@@ -3909,7 +4001,7 @@ function updateTaskSubStatus(taskId, newSubStatus, completionData = null, revisi
 <b>Задача:</b> ${escapeHtmlForTelegram(doneTask.title)}
 
 Постановщик принял выполнение. Отличная работа!`;
-                    const doneEvent = { type: 'task_done', taskId, projectId: doneTask.projectId || null };
+                    const doneEvent = { type: 'task_done', taskId, projectId: doneTask.projectId || null, taskCollection: collectionName };
                     doneTask.assigneeIds.forEach(uid => sendTaskEventToUid(uid, doneMessage, doneEvent));
                 }
             } catch (error) {
@@ -4099,7 +4191,7 @@ function submitRevisionReason(e) {
     // push + email Google + лента); для легаси-задач без assigneeIds — старый путь по chatId.
     const task = findLoadedTask(taskId);
     if (task) {
-        const revisionEvent = { type: 'task_revision', taskId, projectId: task.projectId || null };
+        const revisionEvent = { type: 'task_revision', taskId, projectId: task.projectId || null, taskCollection: taskCollectionName(task) };
         const revisionMessage = `🔄 <b>Задача возвращена на доработку</b>
 
 <b>Задача:</b> ${escapeHtmlForTelegram(task.title)}
@@ -4270,7 +4362,10 @@ function openTaskDetailsModal(task) {
     if (task.completionComment || completionProofs.length > 0) {
         let filesHTML = '';
         completionProofs.forEach(proof => {
-            if (proof && proof.url) {
+            // New protected Cloudinary references intentionally have no
+            // permanent public URL. They carry publicId and are opened through
+            // the authenticated short-lived download endpoint.
+            if (attachmentIsReady(proof)) {
                 filesHTML += `
                     <div class="completion-proof-file" data-proof="${escapeHtml(JSON.stringify(proof))}">
                         <i class="fa-solid ${getFileIcon(proof.type || 'other')}"></i>
@@ -5345,7 +5440,14 @@ function setupEventListeners() {
             const submit = document.getElementById('deadline-change-submit');
             setButtonLoading(submit, true, 'Отправляем…');
             try {
-                await callDeadlineChangeApi({ action: 'request', taskId, requestedDeadline, comment });
+                const task = findLoadedTask(taskId);
+                await callDeadlineChangeApi({
+                    action: 'request',
+                    taskId,
+                    taskCollection: taskCollectionName(task),
+                    requestedDeadline,
+                    comment,
+                });
                 closeModalElement(document.getElementById('deadline-change-modal'));
                 await refreshMyTasksModalIfOpen();
             } catch (error) {
@@ -5380,6 +5482,13 @@ function setupEventListeners() {
             const taskTitle = elements.taskModal.querySelector('h2');
             if (taskIdInput) taskIdInput.value = ''; // Clear ID for new task
             if (taskTitle) taskTitle.textContent = 'Новая задача'; // Reset title
+            const privateInput = document.getElementById('t-private');
+            const privateOption = document.getElementById('t-private-option');
+            if (privateInput) {
+                privateInput.checked = false;
+                privateInput.disabled = false;
+            }
+            privateOption?.classList.remove('is-editing');
             // Set default date to today
             if (taskDeadlineInput) taskDeadlineInput.valueAsDate = new Date();
             populateAssigneeDropdown();
@@ -5527,11 +5636,17 @@ function setupEventListeners() {
 
     if (elements.telegramLinkBtn) {
         elements.telegramLinkBtn.addEventListener('click', () => {
-            if (isTelegramLinked() || telegramLinkBusy) return;
+            if (telegramLinkBusy) return;
             playClickSound();
-            startTelegramLink();
+            if (isTelegramLinked()) unlinkTelegram();
+            else startTelegramLink();
         });
     }
+
+    document.getElementById('profile-delete-account')?.addEventListener('click', () => {
+        playClickSound();
+        deleteCurrentAccount();
+    });
 
     // Forms
     if (elements.projectForm && elements.projectModal) {
@@ -5602,7 +5717,7 @@ function setupEventListeners() {
         });
     }
 
-    async function createTask(title, assignee, deadline, status, assigneeEmail, description) {
+    async function createTask(title, assignee, deadline, status, assigneeEmail, description, isPrivate = false) {
         // Check permission: owner, admin, or moderator can create tasks
         if (!canManageTasks()) {
             alert('❌ Недостаточно прав для создания задачи');
@@ -5633,14 +5748,17 @@ function setupEventListeners() {
             const createdBy = state.currentUser ?
                 `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || state.currentUser.email : '';
 
-            const newTaskRef = await db.collection('tasks').add({
+            const assigneeIds = selectedAssignees.map(a => a.id).filter(Boolean);
+            const coCreatorIds = selectedCoCreators.map(c => c.id).filter(Boolean);
+            const creatorUid = state.currentUser?.uid || null;
+            const taskData = {
                 projectId: state.activeProjectId,
                 organizationId,
                 title,
                 description: description || '',
                 assignee: assignee || 'Не назначен',
                 assigneeEmail: assigneeEmail || '',
-                assigneeIds: selectedAssignees.map(a => a.id).filter(Boolean),
+                assigneeIds,
                 deadline,
                 status,
                 subStatus: 'assigned', // Default status for new system
@@ -5650,18 +5768,29 @@ function setupEventListeners() {
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 createdBy: createdBy,
                 createdByEmail: state.currentUser?.email || '',
-                createdByUid: state.currentUser?.uid || null,
+                createdByUid: creatorUid,
                 // Доп. постановщики: получают уведомления постановщика и могут
                 // принимать / возвращать задачу (см. canActAsTaskCreator)
-                coCreatorIds: selectedCoCreators.map(c => c.id).filter(Boolean),
+                coCreatorIds,
                 coCreators: selectedCoCreators.map(c => c.name).join(', ')
-            });
+            };
+            const collectionName = isPrivate ? PRIVATE_TASKS_COLLECTION : PUBLIC_TASKS_COLLECTION;
+            if (isPrivate) {
+                taskData.isPrivate = true;
+                taskData.viewerIds = privateTaskViewerIds(creatorUid, assigneeIds, coCreatorIds);
+            }
+            const newTaskRef = await db.collection(collectionName).add(taskData);
 
             // Уведомление каждому исполнителю ПО UID: сервер доставит Telegram
             // (если привязан) + push + email Google + запись в ленту «Уведомления» с
             // deep-link на задачу. Работает и для участников без Telegram.
             const projectName = document.getElementById('project-title')?.textContent || 'Проект';
-            const newTaskEvent = { type: 'task_created', taskId: newTaskRef.id, projectId: state.activeProjectId };
+            const newTaskEvent = {
+                type: 'task_created',
+                taskId: newTaskRef.id,
+                projectId: state.activeProjectId,
+                taskCollection: collectionName,
+            };
             selectedAssignees.forEach(a => {
                 if (!a.id) return;
                 const message = `📋 <b>Новая задача!</b>
@@ -5720,6 +5849,7 @@ function setupEventListeners() {
 
             const deadline = document.getElementById('t-deadline')?.value || '';
             const status = document.getElementById('t-status')?.value || '';
+            const isPrivate = !!document.getElementById('t-private')?.checked;
 
             if (taskId) {
                 // Prepare attachments (filter out any still uploading)
@@ -5750,7 +5880,7 @@ function setupEventListeners() {
                 await updateTask(taskId, taskUpdates);
             } else {
                 // Create new task
-                await createTask(title, assignee, deadline, status, assigneeEmail, description);
+                await createTask(title, assignee, deadline, status, assigneeEmail, description, isPrivate);
             }
         });
     }
@@ -6239,20 +6369,20 @@ function updateTelegramLinkUI() {
     const button = elements.telegramLinkBtn;
     if (!button) return;
     const linked = isTelegramLinked();
-    button.disabled = linked || telegramLinkBusy;
-    button.classList.toggle('disabled', linked || telegramLinkBusy);
+    button.disabled = telegramLinkBusy;
+    button.classList.toggle('disabled', telegramLinkBusy);
     button.classList.toggle('telegram-connected', linked);
     button.classList.toggle('telegram-link-busy', telegramLinkBusy && !linked);
     button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
 
     if (linked) {
-        if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Telegram подключён';
+        if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Отвязать Telegram';
         if (elements.telegramLinkDesc) {
             elements.telegramLinkDesc.textContent = state.currentUser?.telegramUsername
-                ? `@${state.currentUser.telegramUsername} · уведомления включены`
-                : 'Дополнительный канал уведомлений включён';
+                ? `@${state.currentUser.telegramUsername} · подключён к аккаунту`
+                : 'Telegram подключён к этому аккаунту';
         }
-        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-circle-check';
+        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-link-slash';
         return;
     }
 
@@ -6266,6 +6396,56 @@ function updateTelegramLinkUI() {
         elements.telegramLinkStatusIcon.className = telegramLinkBusy
             ? 'fa-solid fa-spinner fa-spin'
             : 'fa-solid fa-chevron-right';
+    }
+}
+
+async function unlinkTelegram() {
+    if (!isTelegramLinked() || telegramLinkBusy) return;
+    if (!confirm('Отвязать Telegram от этого аккаунта? Вход и уведомления через Telegram перестанут работать, пока вы не подключите его снова.')) return;
+    try {
+        setTelegramLinkBusy(true, 'Отвязываем Telegram…');
+        const result = await callOrgApi('unlinkTelegram');
+        state.currentUser.telegramId = null;
+        state.currentUser.telegramChatId = null;
+        state.currentUser.telegramUsername = null;
+        state.currentUser.authProviders = Array.isArray(result.providers) ? result.providers : [];
+        state.currentUser.authProvider = result.providers?.[0] || state.currentUser.authProvider;
+        setTelegramLinkBusy(false);
+        updateTelegramLinkUI();
+        renderAuthProvider();
+        alert('Telegram отвязан. Теперь его можно подключить к другому аккаунту ProjectSfera.');
+    } catch (error) {
+        setTelegramLinkBusy(false);
+        alert(error.message || 'Не удалось отвязать Telegram.');
+    }
+}
+
+async function deleteCurrentAccount() {
+    const button = document.getElementById('profile-delete-account');
+    if (!auth?.currentUser || button?.disabled) return;
+    try {
+        if (button) button.disabled = true;
+        const preview = await callOrgApi('deleteAccountPreview');
+        const ownedWarning = preview.ownedOrganizations > 0
+            ? `\n\nВы владелец ${preview.ownedOrganizations} орг. Будут удалены также ${preview.projects} проектов, все задачи, участники и файлы этих организаций.`
+            : '';
+        if (!confirm(`Удалить аккаунт ProjectSfera без возможности восстановления?${ownedWarning}`)) return;
+        const phrase = prompt('Второе подтверждение. Введите точно: УДАЛИТЬ АККАУНТ');
+        if (phrase !== 'УДАЛИТЬ АККАУНТ') {
+            if (phrase !== null) alert('Фраза не совпала. Аккаунт не удалён.');
+            return;
+        }
+        await callOrgApi('deleteAccount', {
+            confirmation: phrase,
+            confirmOwnedOrganizations: preview.ownedOrganizations > 0,
+        });
+        try { await firebase.auth().signOut(); } catch {}
+        alert('Аккаунт и связанные с ним данные удалены.');
+        window.location.reload();
+    } catch (error) {
+        alert(error.message || 'Не удалось удалить аккаунт.');
+    } finally {
+        if (button) button.disabled = false;
     }
 }
 
@@ -6776,7 +6956,7 @@ function handleFederatedAuthError(error) {
     console.error('Federated auth failed:', error);
     let message = 'Не удалось войти. Проверьте настройки входа и попробуйте снова.';
     if (error.code === 'auth/account-exists-with-different-credential') {
-        message = 'Аккаунт с этой почтой уже существует. Войдите способом, выбранным при регистрации.';
+        message = 'Этот аккаунт зарегистрирован через email и пароль. Войдите, введя email и пароль. Если вы не помните пароль, нажмите «Забыли пароль?».';
     } else if (error.code === 'auth/unauthorized-domain') {
         message = 'Этот домен не разрешён в настройках Firebase Authentication.';
     } else if (error.code === 'auth/operation-not-allowed') {
@@ -6853,6 +7033,9 @@ async function loadUserRole(user) {
             state.currentUser.telegramId = userData.telegramId || null;
             state.currentUser.telegramUsername = userData.telegramUsername || null;
             state.currentUser.authProvider = userData.authProvider || null;
+            state.currentUser.authProviders = Array.isArray(userData.authProviders)
+                ? userData.authProviders
+                : [userData.authProvider].filter(Boolean);
             state.currentUser.profileCompleted = userData.profileCompleted === true;
 
             // Set state orgRole
@@ -7286,7 +7469,12 @@ function renderUsersList() {
             <div class="user-actions" style="display: flex; align-items: center; gap: 0.75rem;">
                 ${roleSelector}
                 ${canDelete ? `
-                    <button class="delete-user-btn" data-user-id="${user.id}" title="Удалить из организации">
+                    <button
+                        class="delete-user-btn"
+                        data-user-id="${user.id}"
+                        title="Исключить пользователя из организации"
+                        aria-label="Исключить ${escapeHtml(fullName)} из организации"
+                    >
                         <i class="fa-solid fa-user-xmark"></i>
                     </button>
                 ` : ''}
@@ -7522,7 +7710,20 @@ async function removeUserFromOrganization(userId, userName, targetRole = 'employ
         return;
     }
 
-    if (!confirm(`Удалить ${userName} из организации?`)) return;
+    // Excluding a member immediately revokes their organization role, project
+    // access and notification context. A plain browser confirm is too easy to
+    // accept accidentally because this button sits next to the role selector.
+    const confirmation = prompt(
+        `Исключить «${userName}» из организации?\n\n` +
+        'Пользователь потеряет роль, доступ к проектам и новым уведомлениям.\n' +
+        'Чтобы подтвердить, введите ИСКЛЮЧИТЬ'
+    );
+    if (String(confirmation || '').trim().toUpperCase() !== 'ИСКЛЮЧИТЬ') {
+        if (confirmation !== null && String(confirmation).trim()) {
+            alert('Исключение отменено: контрольное слово введено неверно.');
+        }
+        return;
+    }
 
     try {
         // Done SERVER-SIDE (api/org 'removeMember', Admin SDK): re-checks the
@@ -8504,12 +8705,16 @@ async function fetchMyTasks() {
                 .then(snapshot => ({ project, snapshot }))
         );
 
-        const results = await Promise.all(projectPromises);
+        const privateQuery = privateTasksQueryForCurrentUser();
+        const [results, privateSnapshot] = await Promise.all([
+            Promise.all(projectPromises),
+            privateQuery ? privateQuery.get() : Promise.resolve(null),
+        ]);
 
         // Process all results
         results.forEach(({ project, snapshot }) => {
             snapshot.forEach(doc => {
-                const task = { id: doc.id, ...doc.data() };
+                const task = taskFromSnapshot(doc, PUBLIC_TASKS_COLLECTION);
                 let isAssignee = false;
 
                 // Match by uid first (Telegram-login users have no email)
@@ -8538,6 +8743,16 @@ async function fetchMyTasks() {
                     });
                 }
             });
+        });
+
+        const projectById = new Map(accessibleProjects.map(project => [project.id, project]));
+        privateSnapshot?.forEach(doc => {
+            const task = taskFromSnapshot(doc, PRIVATE_TASKS_COLLECTION);
+            const project = projectById.get(task.projectId);
+            if (!project || task.status === 'done') return;
+            if (Array.isArray(task.assigneeIds) && task.assigneeIds.includes(userUid)) {
+                myTasks.push({ ...task, projectName: project.name });
+            }
         });
 
         // Sort by deadline (closest first)
@@ -8897,7 +9112,7 @@ function renderAgentNotifyList() {
         item.appendChild(deleteBtn);
         item.addEventListener('click', () => {
             markAgentNotificationRead(n);
-            if (n.taskId) openTaskFromNotification(n.taskId);
+            if (n.taskId) openTaskFromNotification(n.taskId, n.taskCollection);
         });
         list.appendChild(item);
     });
@@ -8992,12 +9207,11 @@ async function deleteAllAgentNotifications(buttonEl) {
 // «Мои задачи». Задача может быть не в state.tasks (открыт другой проект),
 // поэтому читаем документ напрямую и определяем её фактическую колонку.
 // Удалённая/недоступная задача — молча ничего.
-async function openTaskFromNotification(taskId) {
+async function openTaskFromNotification(taskId, collectionHint = null) {
     if (!db || !taskId) return;
     try {
-        const doc = await db.collection('tasks').doc(taskId).get();
-        if (!doc.exists) return;
-        const task = { id: doc.id, ...doc.data() };
+        const task = await loadTaskById(taskId, collectionHint);
+        if (!task) return;
         if (!task.projectId) return;
         document.getElementById('agent-notify-modal')?.classList.remove('active');
         navigateToTask(task.projectId, task.id, boardViewForTask(task));
@@ -9025,12 +9239,26 @@ function subscribeToMyTasks() {
     myTasksByChunk = chunks.map(() => []);
     myTasksChunkUnsubs = chunks.map((chunk, idx) =>
         db.collection('tasks').where('projectId', 'in', chunk).onSnapshot(snapshot => {
-            myTasksByChunk[idx] = snapshot.docs.map(d => d.data());
+            myTasksByChunk[idx] = snapshot.docs.map(d => ({ ...d.data(), taskCollection: PUBLIC_TASKS_COLLECTION }));
             renderMyTasksBadge(myTasksByChunk.flat());
         }, error => {
             console.error("Error listening to my tasks chunk:", error);
         })
     );
+    const privateQuery = privateTasksQueryForCurrentUser();
+    if (privateQuery) {
+        const privateIndex = myTasksByChunk.length;
+        myTasksByChunk.push([]);
+        myTasksChunkUnsubs.push(privateQuery.onSnapshot(snapshot => {
+            myTasksByChunk[privateIndex] = snapshot.docs.map(d => ({
+                ...d.data(),
+                taskCollection: PRIVATE_TASKS_COLLECTION,
+            }));
+            renderMyTasksBadge(myTasksByChunk.flat());
+        }, error => {
+            console.error('Error listening to private tasks:', error);
+        }));
+    }
 }
 
 // Recompute the "My Tasks" badge from the merged task list across chunks.
@@ -9645,6 +9873,21 @@ async function countActiveTasks(user) {
         }
     }
 
+    const privateQuery = privateTasksQueryForCurrentUser();
+    if (privateQuery && uid) {
+        try {
+            const privateSnapshot = await privateQuery.get();
+            privateSnapshot.forEach(taskDoc => {
+                const task = taskDoc.data();
+                if (task.status !== 'done' && Array.isArray(task.assigneeIds) && task.assigneeIds.includes(uid)) {
+                    activeTasks++;
+                }
+            });
+        } catch (e) {
+            console.error('countActiveTasks: failed for private tasks', e);
+        }
+    }
+
     return activeTasks;
 }
 
@@ -10109,24 +10352,27 @@ function renderCalendar() {
     if (startDayOffset === -1) startDayOffset = 6;
 
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const prevMonthDays = new Date(year, month, 0).getDate();
-
     calElements.grid.innerHTML = '';
+    const weekCount = Math.ceil((startDayOffset + daysInMonth) / 7);
+    const cellCount = weekCount * 7;
+    calElements.grid.style.setProperty('--calendar-week-count', String(weekCount));
 
-    // Prev month days
-    for (let i = startDayOffset - 1; i >= 0; i--) {
-        addDayToGrid(prevMonthDays - i, true, new Date(year, month - 1, prevMonthDays - i));
+    // Blank leading positions keep day 1 under the correct weekday without
+    // exposing dates or tasks from the previous month.
+    for (let i = 0; i < startDayOffset; i++) {
+        addEmptyCalendarCell();
     }
 
     // Current month days
     for (let d = 1; d <= daysInMonth; d++) {
-        addDayToGrid(d, false, new Date(year, month, d));
+        addDayToGrid(d, new Date(year, month, d));
     }
 
-    // Next month days (fill grid to 42 cells)
-    const extra = 42 - calElements.grid.children.length;
+    // Complete only the current month's last week. There is no fixed sixth
+    // row and the empty positions contain no neighbouring-month content.
+    const extra = cellCount - calElements.grid.children.length;
     for (let i = 1; i <= extra; i++) {
-        addDayToGrid(i, true, new Date(year, month + 1, i));
+        addEmptyCalendarCell();
     }
 }
 
@@ -10169,9 +10415,16 @@ function calendarTasksForDate(dateStr) {
     return calendarState.tasks.filter(t => t.deadline && String(t.deadline).slice(0, 10) === dateStr);
 }
 
-function addDayToGrid(num, otherMonth, fullDate) {
+function addEmptyCalendarCell() {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'calendar-day calendar-day-empty';
+    emptyEl.setAttribute('aria-hidden', 'true');
+    calElements.grid.appendChild(emptyEl);
+}
+
+function addDayToGrid(num, fullDate) {
     const dayEl = document.createElement('div');
-    dayEl.className = `calendar-day ${otherMonth ? 'other-month' : ''}`;
+    dayEl.className = 'calendar-day';
 
     const today = new Date();
     if (fullDate.toDateString() === today.toDateString()) {
@@ -10200,9 +10453,8 @@ function addDayToGrid(num, otherMonth, fullDate) {
         dot.className = 'pill-dot';
         pill.appendChild(dot);
         const label = document.createElement('span');
+        label.className = 'calendar-task-title';
         label.textContent = task.title || 'Задача';
-        label.style.overflow = 'hidden';
-        label.style.textOverflow = 'ellipsis';
         pill.appendChild(label);
         pill.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -11191,7 +11443,10 @@ async function confirmAgentDeleteProposal(proposal, tasksToDelete, btn, actions)
                 action: 'delete_tasks',
                 proposalId: proposal.proposalId || '',
                 projectId: proposal.projectId,
-                taskIds: tasksToDelete.map(t => t.id)
+                taskTargets: tasksToDelete.map(t => ({
+                    taskId: t.id,
+                    taskCollection: normalizeTaskCollection(t.taskCollection),
+                }))
             })
         });
         const data = await res.json().catch(() => ({}));
@@ -11405,7 +11660,11 @@ async function performAgentNavigation(navigation) {
         case 'task':
             if (!navigation.projectId || !navigation.taskId) return false;
             closeChat();
-            await navigateToTask(navigation.projectId, navigation.taskId);
+            {
+                const task = await loadTaskById(navigation.taskId, parseTaskCollectionHint(navigation.taskCollection));
+                if (!task || task.projectId !== navigation.projectId) return false;
+                await navigateToTask(task.projectId, task.id, boardViewForTask(task));
+            }
             return true;
         default:
             return false;

@@ -45,6 +45,9 @@ struct UserDoc {
     var firstName: String
     var lastName: String
     var authProvider: String
+    var authProviders: [String] = []
+    var telegramId: String? = nil
+    var telegramUsername: String? = nil
     var profileCompleted: Bool
     var organizationId: String?
     var orgRole: String // owner / admin / moderator / employee
@@ -110,6 +113,9 @@ struct UserDoc {
             firstName: data["firstName"] as? String ?? "",
             lastName: data["lastName"] as? String ?? "",
             authProvider: data["authProvider"] as? String ?? "",
+            authProviders: data["authProviders"] as? [String] ?? [data["authProvider"] as? String].compactMap { $0 },
+            telegramId: data["telegramId"] as? String,
+            telegramUsername: data["telegramUsername"] as? String,
             profileCompleted: data["profileCompleted"] as? Bool ?? false,
             organizationId: data["organizationId"] as? String,
             orgRole: data["orgRole"] as? String ?? "employee",
@@ -192,6 +198,8 @@ struct TaskItem: Identifiable, Equatable {
     var attachments: [FileRef]
     var completionProofs: [FileRef]
     var deadlineChangeRequest: DeadlineChangeRequest? = nil
+    var isPrivate: Bool = false
+    var taskCollection: String = "tasks"
 
     // Ровно boardViewForTask из web-клиента
     var boardStatus: BoardStatus {
@@ -212,7 +220,7 @@ struct TaskItem: Identifiable, Equatable {
         return d < Calendar.current.startOfDay(for: Date())
     }
 
-    static func from(id: String, data: [String: Any]) -> TaskItem {
+    static func from(id: String, data: [String: Any], collection: String = "tasks") -> TaskItem {
         TaskItem(
             id: id,
             projectId: data["projectId"] as? String ?? "",
@@ -233,7 +241,9 @@ struct TaskItem: Identifiable, Equatable {
             revisionReason: data["revisionReason"] as? String,
             attachments: (data["attachments"] as? [[String: Any]] ?? []).compactMap(FileRef.from),
             completionProofs: (data["completionProofs"] as? [[String: Any]] ?? []).compactMap(FileRef.from),
-            deadlineChangeRequest: DeadlineChangeRequest.from(data["deadlineChangeRequest"] as? [String: Any])
+            deadlineChangeRequest: DeadlineChangeRequest.from(data["deadlineChangeRequest"] as? [String: Any]),
+            isPrivate: (data["isPrivate"] as? Bool) ?? (collection == "privateTasks"),
+            taskCollection: collection == "privateTasks" ? "privateTasks" : "tasks"
         )
     }
 }
@@ -279,6 +289,7 @@ struct AgentNotification: Identifiable {
     var type: String?
     var taskId: String?
     var projectId: String?
+    var taskCollection: String = "tasks"
     var createdAt: Date?
     var readAt: Date?
 
@@ -293,6 +304,7 @@ struct AgentNotification: Identifiable {
             type: data["type"] as? String,
             taskId: (data["taskId"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             projectId: (data["projectId"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            taskCollection: data["taskCollection"] as? String == "privateTasks" ? "privateTasks" : "tasks",
             createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
             readAt: (data["readAt"] as? Timestamp)?.dateValue()
         )
@@ -321,6 +333,7 @@ enum AgentChatEntry: Identifiable {
 struct AgentProposalTask: Identifiable {
     var id = UUID()
     var taskId: String?      // для карточки удаления
+    var taskCollection: String = "tasks"
     var projectId: String?
     var projectName: String?
     var title: String
@@ -337,6 +350,7 @@ struct AgentProposalTask: Identifiable {
     static func fromCreate(_ dict: [String: Any]) -> AgentProposalTask {
         AgentProposalTask(
             taskId: nil,
+            taskCollection: "tasks",
             projectId: dict["projectId"] as? String,
             projectName: dict["projectName"] as? String,
             title: dict["title"] as? String ?? "",
@@ -356,6 +370,7 @@ struct AgentProposalTask: Identifiable {
     static func fromDelete(_ dict: [String: Any]) -> AgentProposalTask {
         AgentProposalTask(
             taskId: dict["id"] as? String,
+            taskCollection: dict["taskCollection"] as? String == "privateTasks" ? "privateTasks" : "tasks",
             projectId: dict["projectId"] as? String,
             projectName: dict["projectName"] as? String,
             title: dict["title"] as? String ?? "",
@@ -426,13 +441,15 @@ struct AgentNavigation {
     var target: String
     var projectId: String?
     var taskId: String?
+    var taskCollection: String = "tasks"
 
     static func from(_ dict: [String: Any]) -> AgentNavigation? {
         guard let target = dict["target"] as? String, !target.isEmpty else { return nil }
         return AgentNavigation(
             target: target,
             projectId: dict["projectId"] as? String,
-            taskId: dict["taskId"] as? String
+            taskId: dict["taskId"] as? String,
+            taskCollection: dict["taskCollection"] as? String == "privateTasks" ? "privateTasks" : "tasks"
         )
     }
 }

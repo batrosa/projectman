@@ -19,6 +19,8 @@ const SCRIPT_SOURCE = fs.readFileSync(path.join(__dirname, "script.js"), "utf8")
 
 let ctx;
 let writes; // captured server writes: { id, allowedProjects }
+let removals;
+let promptResponse;
 
 beforeAll(() => {
   const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
@@ -38,6 +40,7 @@ beforeAll(() => {
     fetch: () => Promise.reject(new Error("network disabled in test")),
     alert: () => {},
     confirm: () => false,
+    prompt: () => promptResponse,
     URLSearchParams: window.URLSearchParams,
   };
   context.globalThis = context;
@@ -48,14 +51,19 @@ beforeAll(() => {
 
   // Stub the server org API so grant/revoke capture what they'd persist.
   writes = [];
+  removals = [];
   context.__callOrgApi = async (action, payload) => {
     if (action === "updateMemberAccess") {
       writes.push({ id: payload.userId, allowedProjects: payload.allowedProjects });
       return { ok: true };
     }
+    if (action === "removeMember") {
+      removals.push(payload.userId);
+      return { ok: true };
+    }
     throw new Error(`unexpected action ${action}`);
   };
-  vm.runInContext("callOrgApi = __callOrgApi", context);
+  vm.runInContext("callOrgApi = __callOrgApi; playClickSound = () => {}", context);
 
   ctx = context;
 });
@@ -77,6 +85,36 @@ function setState(users) {
 
 beforeEach(() => {
   writes.length = 0;
+  removals.length = 0;
+  promptResponse = null;
+});
+
+describe("removeUserFromOrganization", () => {
+  function setOwnerState() {
+    const state = vm.runInContext("state", ctx);
+    state.currentUser = { uid: "owner" };
+    state.orgRole = "owner";
+  }
+
+  it("does not remove a member after a cancelled or mistyped confirmation", async () => {
+    const remove = getFn("removeUserFromOrganization");
+    setOwnerState();
+
+    promptResponse = "да";
+    await remove("admin-1", "Вячеслав Гурьев", "admin");
+
+    expect(removals).toEqual([]);
+  });
+
+  it("requires the explicit control word before calling the removal API", async () => {
+    const remove = getFn("removeUserFromOrganization");
+    setOwnerState();
+
+    promptResponse = "ИСКЛЮЧИТЬ";
+    await remove("admin-1", "Вячеслав Гурьев", "admin");
+
+    expect(removals).toEqual(["admin-1"]);
+  });
 });
 
 describe("userHasProjectAccess", () => {

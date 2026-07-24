@@ -7,8 +7,8 @@ import CryptoKit
 import Security
 import UIKit
 
-// Взаимоисключающие способы входа. Провайдеры не привязываются друг к
-// другу: выбранный при регистрации способ сохраняется в профиле сервером.
+// Нативные Firebase-провайдеры не объединяются автоматически только по
+// совпадению email. Telegram может быть дополнительным каналом для того же UID.
 @MainActor
 final class AuthService: ObservableObject {
     @Published var isBusy = false
@@ -354,7 +354,7 @@ final class AuthService: ObservableObject {
         case .credentialAlreadyInUse:
             return "Этот вход уже относится к другому аккаунту. Автоматическое объединение запрещено для защиты данных."
         case .accountExistsWithDifferentCredential:
-            return "Аккаунт с этой почтой уже существует. Войдите способом, выбранным при регистрации."
+            return "Этот аккаунт зарегистрирован через email и пароль. Войдите, введя email и пароль. Если вы не помните пароль, восстановите его."
         case .operationNotAllowed:
             return "Этот способ входа ещё не включён в Firebase."
         case .networkError:

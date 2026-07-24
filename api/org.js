@@ -6,13 +6,18 @@
 // join an arbitrary org. Joining itself lives in api/join-org.
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../lib/firebase-admin.js";
-import { buildAuthProfilePatch, selectedProviderId } from "../lib/auth-profile.js";
+import { buildAuthProfilePatch } from "../lib/auth-profile.js";
 import {
   activeOrganizationStatsPatch,
   emptyOrganizationStats,
   ensureScopedOrganizationStats,
   organizationStatsPatch,
 } from "../lib/organization-stats.js";
+import { unlinkTelegramForUid } from "../lib/telegram-account.js";
+import {
+  accountDeletionPreview,
+  deleteAccountCascade,
+} from "../lib/account-deletion.js";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing 0/O, 1/I
 const MAX_ORG_NAME = 80;
@@ -78,6 +83,7 @@ function publicIdentityFields(userData = {}) {
     telegramUsername: userData.telegramUsername || null,
     profilePhotoUrl: userData.profilePhotoUrl || null,
     authProvider: userData.authProvider || null,
+    authProviders: Array.isArray(userData.authProviders) ? userData.authProviders : [],
     lastLoginAt: userData.lastLoginAt || null,
     lastSeenAt: userData.lastSeenAt || null,
     lastSeenClientAt: userData.lastSeenClientAt || null,
@@ -285,15 +291,6 @@ export default async function handler(request, response) {
       ]);
       const existing = userSnap.exists ? (userSnap.data() || {}) : {};
       const signInProvider = String(decoded.firebase?.sign_in_provider || "");
-      const incomingProvider = selectedProviderId(authUser, existing, signInProvider);
-      const storedProvider = String(existing.authProvider || "");
-      if (storedProvider && incomingProvider && storedProvider !== incomingProvider) {
-        return response.status(409).json({
-          code: "AUTH_PROVIDER_MISMATCH",
-          authProvider: storedProvider,
-          error: "Этот аккаунт использует другой способ входа. Войдите тем способом, который выбрали при регистрации.",
-        });
-      }
       const patch = buildAuthProfilePatch({ authUser, existing, signInProvider });
       patch.lastLoginAt = FieldValue.serverTimestamp();
       patch.updatedAt = FieldValue.serverTimestamp();
@@ -304,6 +301,7 @@ export default async function handler(request, response) {
         uid: decoded.uid,
         email: patch.email || existing.email || "",
         authProvider: patch.authProvider || existing.authProvider || "",
+        authProviders: patch.authProviders || existing.authProviders || [],
       });
     } catch (error) {
       console.error("auth bootstrap failed", error);
@@ -319,12 +317,16 @@ export default async function handler(request, response) {
     }
     try {
       const userRef = db.collection("users").doc(decoded.uid);
-      const [userSnap, membershipsSnap, assigneeTasks, coCreatorTasks, createdTasks] = await Promise.all([
+      const [userSnap, membershipsSnap, assigneeTasks, coCreatorTasks, createdTasks,
+        privateAssigneeTasks, privateCoCreatorTasks, privateCreatedTasks] = await Promise.all([
         userRef.get(),
         db.collection(MEMBERSHIP_COLLECTION).where("userId", "==", decoded.uid).get(),
         db.collection("tasks").where("assigneeIds", "array-contains", decoded.uid).get(),
         db.collection("tasks").where("coCreatorIds", "array-contains", decoded.uid).get(),
         db.collection("tasks").where("createdByUid", "==", decoded.uid).get(),
+        db.collection("privateTasks").where("assigneeIds", "array-contains", decoded.uid).get(),
+        db.collection("privateTasks").where("coCreatorIds", "array-contains", decoded.uid).get(),
+        db.collection("privateTasks").where("createdByUid", "==", decoded.uid).get(),
       ]);
       if (!userSnap.exists) return response.status(404).json({ error: "Профиль не найден" });
 
@@ -353,7 +355,8 @@ export default async function handler(request, response) {
       // Tasks keep display-name snapshots for fast web/iOS rendering. Refresh
       // those snapshots by UID so existing cards do not retain the old name.
       const taskDocs = new Map();
-      [assigneeTasks, coCreatorTasks, createdTasks].forEach((snapshot) => {
+      [assigneeTasks, coCreatorTasks, createdTasks,
+        privateAssigneeTasks, privateCoCreatorTasks, privateCreatedTasks].forEach((snapshot) => {
         snapshot.docs.forEach((doc) => taskDocs.set(doc.ref.path, doc));
       });
       taskDocs.forEach((doc) => {
@@ -391,6 +394,76 @@ export default async function handler(request, response) {
     } catch (error) {
       console.error("profile completion failed", error);
       return response.status(500).json({ error: "Не удалось сохранить имя и фамилию" });
+    }
+  }
+
+  if (action === "unlinkTelegram") {
+    try {
+      const result = await unlinkTelegramForUid({
+        db,
+        auth: adminAuth(),
+        uid: decoded.uid,
+        keepDetachedReservation: true,
+      });
+      if (!result.ok) {
+        const status = result.status === "user_not_found" ? 404 : 409;
+        return response.status(status).json(result);
+      }
+      await writeAuditLog(db, {
+        action: "account.telegram_unlink",
+        actorUid: decoded.uid,
+        metadata: { telegramId: result.telegramId || null },
+      });
+      return response.status(200).json(result);
+    } catch (error) {
+      console.error("org unlinkTelegram failed", error);
+      return response.status(500).json({ error: "Не удалось отвязать Telegram" });
+    }
+  }
+
+  if (action === "deleteAccountPreview") {
+    try {
+      const preview = await accountDeletionPreview({ db, uid: decoded.uid });
+      return response.status(200).json({ ok: true, ...preview });
+    } catch (error) {
+      console.error("org deleteAccountPreview failed", error);
+      return response.status(500).json({ error: "Не удалось подготовить удаление аккаунта" });
+    }
+  }
+
+  if (action === "deleteAccount") {
+    const confirmation = String(body.confirmation || "").trim();
+    if (confirmation !== "УДАЛИТЬ АККАУНТ") {
+      return response.status(400).json({ error: "Введите точную фразу «УДАЛИТЬ АККАУНТ»" });
+    }
+    const authAgeSeconds = Math.floor(Date.now() / 1000) - Number(decoded.auth_time || 0);
+    if (!Number.isFinite(authAgeSeconds) || authAgeSeconds < 0 || authAgeSeconds > 10 * 60) {
+      return response.status(401).json({
+        code: "RECENT_LOGIN_REQUIRED",
+        error: "Для удаления аккаунта выйдите, войдите заново и повторите действие в течение 10 минут.",
+      });
+    }
+    try {
+      const preview = await accountDeletionPreview({ db, uid: decoded.uid });
+      if (preview.ownedOrganizations > 0 && body.confirmOwnedOrganizations !== true) {
+        return response.status(409).json({
+          code: "OWNED_ORGANIZATIONS_CONFIRMATION_REQUIRED",
+          error: "Подтвердите удаление всех организаций, которыми вы владеете.",
+          ...preview,
+        });
+      }
+      const result = await deleteAccountCascade({
+        db,
+        auth: adminAuth(),
+        uid: decoded.uid,
+      });
+      return response.status(200).json(result);
+    } catch (error) {
+      console.error("org deleteAccount failed", error);
+      return response.status(500).json({
+        code: "ACCOUNT_DELETION_FAILED",
+        error: "Удаление не завершено. Данные сохранены для безопасного повторения операции.",
+      });
     }
   }
 
@@ -875,6 +948,54 @@ export default async function handler(request, response) {
     }
   }
 
+  if (action === "deleteProject") {
+    const projectId = String(body.projectId || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(projectId)) {
+      return response.status(400).json({ error: "Некорректный проект" });
+    }
+    try {
+      const [userSnap, projectSnap] = await Promise.all([
+        db.collection("users").doc(decoded.uid).get(),
+        db.collection("projects").doc(projectId).get(),
+      ]);
+      if (!userSnap.exists || !projectSnap.exists) return response.status(404).json({ error: "Проект не найден" });
+      const user = userSnap.data() || {};
+      const project = projectSnap.data() || {};
+      if (project.organizationId !== user.organizationId || !["owner", "admin"].includes(user.orgRole)) {
+        return response.status(403).json({ error: "Недостаточно прав для удаления проекта" });
+      }
+
+      const [filesSnap, tasksSnap, privateTasksSnap, notificationsSnap] = await Promise.all([
+        projectSnap.ref.collection("files").get(),
+        db.collection("tasks").where("projectId", "==", projectId).get(),
+        db.collection("privateTasks").where("projectId", "==", projectId).get(),
+        db.collection("agentNotifications").where("projectId", "==", projectId).get(),
+      ]);
+      const refs = [
+        ...filesSnap.docs.map((doc) => doc.ref),
+        ...tasksSnap.docs.map((doc) => doc.ref),
+        ...privateTasksSnap.docs.map((doc) => doc.ref),
+        ...notificationsSnap.docs.map((doc) => doc.ref),
+        projectSnap.ref,
+      ];
+      for (let offset = 0; offset < refs.length; offset += 450) {
+        const batch = db.batch();
+        refs.slice(offset, offset + 450).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+      await writeAuditLog(db, {
+        action: "project.delete",
+        actorUid: decoded.uid,
+        organizationId: user.organizationId,
+        metadata: { projectId, tasks: tasksSnap.size, privateTasks: privateTasksSnap.size },
+      });
+      return response.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("org deleteProject failed", error);
+      return response.status(500).json({ error: "Не удалось удалить проект" });
+    }
+  }
+
   if (action === "deleteOrg") {
     // Owner-only cascade delete. Was client-side (deleteOrganization in
     // script.js) and only cleared users + deleted the org doc, orphaning every
@@ -902,8 +1023,12 @@ export default async function handler(request, response) {
       for (const projDoc of projectsSnap.docs) {
         const filesSnap = await projDoc.ref.collection("files").get();
         filesSnap.docs.forEach((d) => deleteRefs.push(d.ref));
-        const tasksSnap = await db.collection("tasks").where("projectId", "==", projDoc.id).get();
+        const [tasksSnap, privateTasksSnap] = await Promise.all([
+          db.collection("tasks").where("projectId", "==", projDoc.id).get(),
+          db.collection("privateTasks").where("projectId", "==", projDoc.id).get(),
+        ]);
         tasksSnap.docs.forEach((d) => deleteRefs.push(d.ref));
+        privateTasksSnap.docs.forEach((d) => deleteRefs.push(d.ref));
         deleteRefs.push(projDoc.ref);
       }
       deleteRefs.push(db.collection("organizations").doc(orgId));

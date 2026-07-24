@@ -16,6 +16,7 @@ struct NewTaskView: View {
     @State private var deadline = Date()
     @State private var selectedAssignees: [OrgUser] = []
     @State private var selectedCoCreators: [OrgUser] = []
+    @State private var isPrivate = false
     @State private var activePeoplePicker: TaskPeoplePickerKind?
     @State private var isBusy = false
     @State private var errorMessage: String?
@@ -88,6 +89,19 @@ struct NewTaskView: View {
                     }
                 }
 
+                Section {
+                    Toggle(isOn: $isPrivate) {
+                        Label("Приватная задача", systemImage: "lock.fill")
+                    }
+                    .tint(Theme.primary)
+                    .listRowBackground(Theme.surface)
+
+                    Text("Видна владельцу организации, постановщикам и исполнителям этой задачи")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textSecondary)
+                        .listRowBackground(Theme.surface)
+                }
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
@@ -152,7 +166,8 @@ struct NewTaskView: View {
                     deadline: deadlineString,
                     creator: user,
                     assignees: assignees,
-                    coCreators: selectedCoCreators
+                    coCreators: selectedCoCreators,
+                    isPrivate: isPrivate
                 )
                 dismiss()
             } catch {

@@ -106,6 +106,13 @@ export default async function handler(request, response) {
       isNewUser: userResult.isNewUser,
     });
   } catch (error) {
+    if (error?.code === "telegram-account-detached") {
+      return response.status(409).json({
+        ok: false,
+        status: "detached",
+        error: "Telegram отвязан. Войдите в нужный аккаунт ProjectSfera другим способом и подключите Telegram в профиле.",
+      });
+    }
     console.error("Telegram bot login status failed:", error);
     return response.status(500).json({ ok: false, error: "Could not check Telegram bot login" });
   }
@@ -148,11 +155,18 @@ async function linkTelegramToUser(db, uid, session) {
         throw conflict;
       }
       transaction.set(reservationRef, { uid, telegramId, updatedAt: now }, { merge: true });
+      transaction.set(reservationRef, { status: "active", detachedAt: null }, { merge: true });
+      const targetData = targetDoc.data() || {};
       transaction.set(targetRef, {
         telegramId,
         telegramChatId,
         telegramUsername: session.telegramUsername || null,
         telegramLinkedAt: now,
+        authProviders: [...new Set([
+          ...(Array.isArray(targetData.authProviders) ? targetData.authProviders : []),
+          targetData.authProvider,
+          "telegram",
+        ].filter(Boolean))],
       }, { merge: true });
     });
   } catch (error) {

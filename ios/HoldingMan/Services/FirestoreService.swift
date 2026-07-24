@@ -10,6 +10,24 @@ private func telegramHTML(_ value: String) -> String {
         .replacingOccurrences(of: "\"", with: "&quot;")
 }
 
+private let publicTasksCollection = "tasks"
+private let privateTasksCollection = "privateTasks"
+
+private func normalizedTaskCollection(_ value: String) -> String {
+    value == privateTasksCollection ? privateTasksCollection : publicTasksCollection
+}
+
+private func taskDocument(_ task: TaskItem) -> DocumentReference {
+    Firestore.firestore().collection(normalizedTaskCollection(task.taskCollection)).document(task.id)
+}
+
+private func privateViewerIds(creatorUid: String, assignees: [OrgUser], coCreators: [OrgUser]) -> [String] {
+    var seen = Set<String>()
+    return ([creatorUid] + assignees.map(\.id) + coCreators.map(\.id)).filter {
+        !$0.isEmpty && seen.insert($0).inserted
+    }
+}
+
 // Живые подписки на те же коллекции и с теми же фильтрами, что web-клиент:
 // проекты по organizationId, задачи по projectId, уведомления по uid+org.
 // Firestore rules — общие, iOS не получает ничего сверх web-доступа.
@@ -99,9 +117,12 @@ final class ProjectsStore: ObservableObject {
 final class TasksStore: ObservableObject {
     @Published var tasks: [TaskItem] = []
     @Published var loaded = false
-    private var listener: ListenerRegistration?
+    private var listeners: [ListenerRegistration] = []
+    private var publicTasks: [TaskItem] = []
+    private var privateTasks: [TaskItem] = []
+    private var activeProjectId = ""
 
-    func subscribe(projectId: String) {
+    func subscribe(projectId: String, organizationId: String, uid: String, isOwner: Bool = false) {
         #if DEBUG
         if DemoData.isEnabled {
             tasks = DemoData.tasks.filter { $0.projectId == projectId }
@@ -109,23 +130,56 @@ final class TasksStore: ObservableObject {
             return
         }
         #endif
-        listener?.remove()
+        stopListeners()
         loaded = false
         tasks = []
-        listener = Firestore.firestore().collection("tasks")
+        activeProjectId = projectId
+        let publicListener = Firestore.firestore().collection(publicTasksCollection)
             .whereField("projectId", isEqualTo: projectId)
-            .addSnapshotListener { [weak self] snapshot, _ in
+            .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor [weak self] in
-                    guard let self, let snapshot else { return }
-                    self.tasks = snapshot.documents.map { TaskItem.from(id: $0.documentID, data: $0.data()) }
-                    self.loaded = true
+                    guard let self else { return }
+                    if let error { print("public tasks listener error:", error.localizedDescription) }
+                    self.publicTasks = snapshot?.documents.map {
+                        TaskItem.from(id: $0.documentID, data: $0.data(), collection: publicTasksCollection)
+                    } ?? []
+                    self.rebuild()
                 }
             }
+        listeners.append(publicListener)
+
+        guard !organizationId.isEmpty, !uid.isEmpty else { return }
+        var privateQuery: Query = Firestore.firestore().collection(privateTasksCollection)
+            .whereField("organizationId", isEqualTo: organizationId)
+        if !isOwner { privateQuery = privateQuery.whereField("viewerIds", arrayContains: uid) }
+        let privateListener = privateQuery
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if let error { print("private tasks listener error:", error.localizedDescription) }
+                    self.privateTasks = snapshot?.documents.map {
+                        TaskItem.from(id: $0.documentID, data: $0.data(), collection: privateTasksCollection)
+                    }.filter { $0.projectId == self.activeProjectId } ?? []
+                    self.rebuild()
+                }
+            }
+        listeners.append(privateListener)
+    }
+
+    private func rebuild() {
+        tasks = publicTasks + privateTasks
+        loaded = true
+    }
+
+    private func stopListeners() {
+        listeners.forEach { $0.remove() }
+        listeners = []
+        publicTasks = []
+        privateTasks = []
     }
 
     func stop() {
-        listener?.remove()
-        listener = nil
+        stopListeners()
         tasks = []
         loaded = false
     }
@@ -160,7 +214,7 @@ final class TasksStore: ObservableObject {
             "archivedAt": NSNull(),
             "archivedBy": NSNull(),
         ]
-        try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
+        try await taskDocument(task).updateData(updates)
     }
 
     // Сервер каскадно удаляет Cloudinary-вложения и только затем задачу.
@@ -168,6 +222,7 @@ final class TasksStore: ObservableObject {
         _ = try await ApiClient.post("api/project-files", body: [
             "action": "deleteTask",
             "taskId": task.id,
+            "taskCollection": task.taskCollection,
         ])
     }
 
@@ -177,11 +232,11 @@ final class TasksStore: ObservableObject {
     // (Telegram при наличии + push + лента «Уведомления»).
     func create(projectId: String, projectName: String, organizationId: String, title: String,
                 descriptionText: String, deadline: String?, creator: UserDoc,
-                assignees: [OrgUser], coCreators: [OrgUser] = []) async throws {
+                assignees: [OrgUser], coCreators: [OrgUser] = [], isPrivate: Bool = false) async throws {
         let assigneeDisplay = assignees.isEmpty
             ? "Не назначен"
             : assignees.map(\.displayName).joined(separator: ", ")
-        let data: [String: Any] = [
+        var data: [String: Any] = [
             "projectId": projectId,
             "organizationId": organizationId,
             "title": title,
@@ -203,7 +258,12 @@ final class TasksStore: ObservableObject {
             "coCreatorIds": coCreators.map(\.id),
             "coCreators": coCreators.map(\.displayName).joined(separator: ", "),
         ]
-        let ref = try await Firestore.firestore().collection("tasks").addDocument(data: data)
+        let collectionName = isPrivate ? privateTasksCollection : publicTasksCollection
+        if isPrivate {
+            data["isPrivate"] = true
+            data["viewerIds"] = privateViewerIds(creatorUid: creator.uid, assignees: assignees, coCreators: coCreators)
+        }
+        let ref = try await Firestore.firestore().collection(collectionName).addDocument(data: data)
 
         let text = """
         📋 <b>Новая задача!</b>
@@ -217,7 +277,8 @@ final class TasksStore: ObservableObject {
             Task {
                 try? await ApiClient.sendTaskEvent(
                     recipientUid: uid, text: text,
-                    type: "task_created", taskId: ref.documentID, projectId: projectId
+                    type: "task_created", taskId: ref.documentID, projectId: projectId,
+                    taskCollection: collectionName
                 )
             }
         }
@@ -235,7 +296,8 @@ final class TasksStore: ObservableObject {
             Task {
                 try? await ApiClient.sendTaskEvent(
                     recipientUid: uid, text: coCreatorText,
-                    type: "task_created", taskId: ref.documentID, projectId: projectId
+                    type: "task_created", taskId: ref.documentID, projectId: projectId,
+                    taskCollection: collectionName
                 )
             }
         }
@@ -260,7 +322,7 @@ final class TasksStore: ObservableObject {
             "revisionReturnedBy": NSNull(),
             "revisionReturnedAt": NSNull(),
         ]
-        try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
+        try await taskDocument(task).updateData(updates)
 
         // Все постановщики: создатель + доп. постановщики (дедуп по uid)
         let creatorUids = Array(Set(([task.createdByUid].compactMap { $0 }) + task.coCreatorIds))
@@ -278,7 +340,8 @@ final class TasksStore: ObservableObject {
                 Task {
                     try? await ApiClient.sendTaskEvent(
                         recipientUid: creatorUid, text: text,
-                        type: "task_completed", taskId: task.id, projectId: task.projectId
+                        type: "task_completed", taskId: task.id, projectId: task.projectId,
+                        taskCollection: task.taskCollection
                     )
                 }
             }
@@ -296,8 +359,8 @@ final class TasksStore: ObservableObject {
             "completedOnTime": false,
             "xpAwarded": true,
         ]
-        try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
-        try await ApiClient.awardXp(taskId: task.id)
+        try await taskDocument(task).updateData(updates)
+        try await ApiClient.awardXp(taskId: task.id, taskCollection: task.taskCollection)
 
         let text = """
         ✅ <b>Задача принята!</b>
@@ -311,7 +374,8 @@ final class TasksStore: ObservableObject {
             Task {
                 try? await ApiClient.sendTaskEvent(
                     recipientUid: uid, text: text,
-                    type: "task_done", taskId: task.id, projectId: task.projectId
+                    type: "task_done", taskId: task.id, projectId: task.projectId,
+                    taskCollection: task.taskCollection
                 )
             }
         }
@@ -338,7 +402,7 @@ final class TasksStore: ObservableObject {
             "revisionReturnedAt": ISO8601DateFormatter().string(from: Date()),
             "wasReturned": true,
         ]
-        try await Firestore.firestore().collection("tasks").document(task.id).updateData(updates)
+        try await taskDocument(task).updateData(updates)
 
         let text = """
         🔄 <b>Задача возвращена на доработку</b>
@@ -354,7 +418,8 @@ final class TasksStore: ObservableObject {
             Task {
                 try? await ApiClient.sendTaskEvent(
                     recipientUid: uid, text: text,
-                    type: "task_revision", taskId: task.id, projectId: task.projectId
+                    type: "task_revision", taskId: task.id, projectId: task.projectId,
+                    taskCollection: task.taskCollection
                 )
             }
         }
@@ -371,7 +436,7 @@ final class ProjectTasksStore: ObservableObject {
     private var chunkResults: [Int: [TaskItem]] = [:]
     private var expectedChunks = 0
 
-    func subscribe(projects: [Project]) {
+    func subscribe(projects: [Project], organizationId: String, uid: String, isOwner: Bool = false) {
         stopListeners()
         let projectIds = projects.map(\.id)
         guard !projectIds.isEmpty else {
@@ -395,10 +460,10 @@ final class ProjectTasksStore: ObservableObject {
         let chunks = stride(from: 0, to: projectIds.count, by: 10).map {
             Array(projectIds[$0..<min($0 + 10, projectIds.count)])
         }
-        expectedChunks = chunks.count
+        expectedChunks = chunks.count + 1
 
         for (index, chunk) in chunks.enumerated() {
-            let listener = Firestore.firestore().collection("tasks")
+            let listener = Firestore.firestore().collection(publicTasksCollection)
                 .whereField("projectId", in: chunk)
                 .addSnapshotListener { [weak self] snapshot, error in
                     Task { @MainActor [weak self] in
@@ -411,13 +476,36 @@ final class ProjectTasksStore: ObservableObject {
                         }
                         guard let snapshot else { return }
                         self.chunkResults[index] = snapshot.documents.map {
-                            TaskItem.from(id: $0.documentID, data: $0.data())
+                            TaskItem.from(id: $0.documentID, data: $0.data(), collection: publicTasksCollection)
                         }
                         self.rebuild()
                     }
                 }
             listeners.append(listener)
         }
+
+        let privateIndex = chunks.count
+        var privateQuery: Query = Firestore.firestore().collection(privateTasksCollection)
+            .whereField("organizationId", isEqualTo: organizationId)
+        if !isOwner { privateQuery = privateQuery.whereField("viewerIds", arrayContains: uid) }
+        let privateListener = privateQuery
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if let error {
+                        print("project-private-tasks listener error:", error.localizedDescription)
+                        self.chunkResults[privateIndex] = []
+                        self.rebuild()
+                        return
+                    }
+                    self.chunkResults[privateIndex] = snapshot?.documents.compactMap {
+                        let task = TaskItem.from(id: $0.documentID, data: $0.data(), collection: privateTasksCollection)
+                        return projectIds.contains(task.projectId) ? task : nil
+                    } ?? []
+                    self.rebuild()
+                }
+            }
+        listeners.append(privateListener)
     }
 
     private func rebuild() {
@@ -500,7 +588,7 @@ final class MyTasksStore: ObservableObject {
     private var chunkResults: [Int: [TaskItem]] = [:]
     private var currentUid = ""
 
-    func subscribe(uid: String, projects: [Project]) {
+    func subscribe(uid: String, organizationId: String, projects: [Project], isOwner: Bool = false) {
         stopListeners()
         currentUid = uid
         guard !uid.isEmpty, !projects.isEmpty else {
@@ -514,7 +602,7 @@ final class MyTasksStore: ObservableObject {
         }
 
         for (index, chunk) in chunks.enumerated() {
-            let listener = Firestore.firestore().collection("tasks")
+            let listener = Firestore.firestore().collection(publicTasksCollection)
                 .whereField("projectId", in: chunk)
                 .addSnapshotListener { [weak self] snapshot, error in
                     Task { @MainActor [weak self] in
@@ -525,13 +613,40 @@ final class MyTasksStore: ObservableObject {
                         }
                         guard let snapshot else { return }
                         self.chunkResults[index] = snapshot.documents.map {
-                            TaskItem.from(id: $0.documentID, data: $0.data())
+                            TaskItem.from(id: $0.documentID, data: $0.data(), collection: publicTasksCollection)
                         }
                         self.rebuild()
                     }
                 }
             listeners.append(listener)
         }
+
+
+        let privateIndex = chunks.count
+        guard !organizationId.isEmpty else {
+            rebuild()
+            return
+        }
+        var privateQuery: Query = Firestore.firestore().collection(privateTasksCollection)
+            .whereField("organizationId", isEqualTo: organizationId)
+        if !isOwner { privateQuery = privateQuery.whereField("viewerIds", arrayContains: uid) }
+        let privateListener = privateQuery
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if let error {
+                        print("my-private-tasks listener error:", error.localizedDescription)
+                        self.chunkResults[privateIndex] = []
+                        self.rebuild()
+                        return
+                    }
+                    self.chunkResults[privateIndex] = snapshot?.documents.map {
+                        TaskItem.from(id: $0.documentID, data: $0.data(), collection: privateTasksCollection)
+                    } ?? []
+                    self.rebuild()
+                }
+            }
+        listeners.append(privateListener)
     }
 
     private func rebuild() {

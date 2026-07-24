@@ -263,6 +263,88 @@ describe("renderCompletionAttachments (Task 13b location #4, completion proof qu
   });
 });
 
+describe("openTaskDetailsModal (protected completion proofs)", () => {
+  it("renders a protected Cloudinary proof that has publicId but no public url", () => {
+    setBody({ id: "task-details-modal" }, { id: "task-details-content" });
+    const openTaskDetailsModal = getFn("openTaskDetailsModal");
+
+    openTaskDetailsModal({
+      id: "task-1",
+      title: "Закрытая задача",
+      status: "in-progress",
+      subStatus: "completed",
+      completionComment: "Работа выполнена",
+      completionProofs: [{
+        name: "подтверждение.png",
+        type: "image",
+        size: 2048,
+        storageProvider: "cloudinary",
+        publicId: "projectman/org/project/proof",
+        resourceType: "image",
+        deliveryType: "authenticated",
+        projectId: "project-1",
+      }],
+    });
+
+    const proof = ctx.document.querySelector(".completion-proof-file");
+    expect(proof).not.toBeNull();
+    expect(proof.querySelector(".completion-proof-file-name").textContent)
+      .toBe("подтверждение.png");
+  });
+
+  it("continues to render a legacy proof with a public url", () => {
+    setBody({ id: "task-details-modal" }, { id: "task-details-content" });
+    const openTaskDetailsModal = getFn("openTaskDetailsModal");
+
+    openTaskDetailsModal({
+      id: "task-2",
+      title: "Старая задача",
+      status: "in-progress",
+      subStatus: "completed",
+      completionComment: "Готово",
+      completionProofs: [{
+        name: NORMAL_NAME,
+        type: "pdf",
+        size: 4096,
+        url: NORMAL_URL,
+      }],
+    });
+
+    expect(ctx.document.querySelector(".completion-proof-file-name").textContent)
+      .toBe(NORMAL_NAME);
+  });
+
+  it("shows take-to-work action to an assignee inside the information modal", () => {
+    setBody({ id: "task-details-modal" }, { id: "task-details-content" });
+    vm.runInContext(`state.currentUser = { uid: "executor-1", email: "worker@example.com" };`, ctx);
+    getFn("openTaskDetailsModal")({
+      id: "task-assigned",
+      title: "Назначенная задача",
+      status: "in-progress",
+      subStatus: "assigned",
+      assignee: "Исполнитель",
+      assigneeIds: ["executor-1"],
+    });
+    expect(ctx.document.querySelector('[data-lifecycle-action="take"]')?.textContent)
+      .toContain("Взять в работу");
+  });
+
+  it("shows completion action to an assignee inside the information modal", () => {
+    setBody({ id: "task-details-modal" }, { id: "task-details-content" });
+    vm.runInContext(`state.currentUser = { uid: "executor-1", email: "worker@example.com" };`, ctx);
+    getFn("openTaskDetailsModal")({
+      id: "task-work",
+      title: "Задача в работе",
+      status: "in-progress",
+      subStatus: "in_work",
+      assignee: "Исполнитель",
+      assigneeIds: ["executor-1"],
+    });
+    expect(ctx.document.querySelector('[data-lifecycle-action="complete"]')?.textContent)
+      .toContain("Завершить");
+  });
+});
+
 describe("avatar <img src/alt> attribute-injection (profilePhotoUrl / fullName)", () => {
   // These reproduce, byte-for-byte, the template used at the real avatar call
   // sites in script.js (e.g. lines ~2819, ~4302, ~4668, ~4785, ~4857, ~5036,

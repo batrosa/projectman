@@ -14,6 +14,7 @@ import { sendTelegramMessage } from "../lib/telegram-send.js";
 import { sendPushToUser } from "../lib/push-send.js";
 import { sendEmailNotification } from "../lib/email-send.js";
 import deadlineChangeHandler from "../lib/deadline-change.js";
+import { canCallerReadPrivateTask, loadTaskDocument, PRIVATE_TASKS_COLLECTION } from "../lib/task-store.js";
 
 // Типы событий задачи → заголовок системного push
 export const TASK_EVENT_TITLES = {
@@ -58,10 +59,12 @@ export default async function handler(request, response) {
     }
 
     let callerOrgId = null;
+    let callerData = null;
     try {
         const userDoc = await adminDb().collection('users').doc(decoded.uid).get();
         if (!userDoc.exists) return response.status(403).json({ error: 'Unknown caller' });
-        callerOrgId = userDoc.data().organizationId || null;
+        callerData = userDoc.data();
+        callerOrgId = callerData.organizationId || null;
     } catch (error) {
         console.error('notify-telegram: failed to load caller user doc', error);
         return response.status(500).json({ ok: false, error: 'Failed to verify caller' });
@@ -124,6 +127,35 @@ export default async function handler(request, response) {
         ? event.taskId : null;
     const projectId = event && typeof event.projectId === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(event.projectId)
         ? event.projectId : null;
+    const taskCollection = event?.taskCollection === 'privateTasks' ? 'privateTasks' : 'tasks';
+
+    // A private-task notification is itself protected task data: its text and
+    // deep link may only be sent by/to the organization owner or an explicit
+    // participant. Re-check on the server because the Admin SDK bypasses
+    // Firestore rules and the client-provided recipient cannot be trusted.
+    if (eventType && taskCollection === PRIVATE_TASKS_COLLECTION) {
+        if (!taskId) return response.status(400).json({ error: 'Private taskId is required' });
+        let loaded;
+        try {
+            loaded = await loadTaskDocument(adminDb(), taskId, PRIVATE_TASKS_COLLECTION);
+        } catch (error) {
+            console.error('notify-telegram: failed to verify private task', error);
+            return response.status(500).json({ error: 'Failed to verify private task' });
+        }
+        if (!loaded) return response.status(404).json({ error: 'Task not found' });
+        const task = loaded.task;
+        const caller = { uid: decoded.uid, organizationId: callerOrgId, orgRole: callerData?.orgRole };
+        const recipient = {
+            uid: recipientDoc.id,
+            organizationId: recipientOrgId,
+            orgRole: recipientDoc.data.orgRole,
+        };
+        if ((projectId && task.projectId !== projectId)
+            || !canCallerReadPrivateTask(task, caller)
+            || !canCallerReadPrivateTask(task, recipient)) {
+            return response.status(403).json({ error: 'Private task notification is forbidden' });
+        }
+    }
 
     let notificationId = null;
     if (eventType) {
@@ -133,6 +165,7 @@ export default async function handler(request, response) {
                 organizationId: callerOrgId,
                 taskId,
                 projectId,
+                taskCollection,
                 type: eventType,
                 text: plainText,
                 createdAt: FieldValue.serverTimestamp(),
@@ -155,6 +188,7 @@ export default async function handler(request, response) {
                 ...(taskId ? { taskId } : {}),
                 ...(projectId ? { projectId } : {}),
                 ...(eventType ? { type: eventType } : {}),
+                ...(taskId ? { taskCollection } : {}),
             },
         }),
         sendEmailNotification(recipientDoc.data, {
@@ -193,6 +227,7 @@ export default async function handler(request, response) {
         taskId,
         projectId,
         organizationId: callerOrgId,
+        taskCollection,
         linkToProjectSfera: true,
     });
 

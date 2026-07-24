@@ -7,6 +7,7 @@ import FirebaseFirestore
 struct TaskRoute: Identifiable {
     let taskId: String
     let projectId: String
+    var taskCollection: String = "tasks"
     var id: String { taskId }
 }
 
@@ -19,6 +20,7 @@ extension Notification.Name {
 struct TaskRouteLoaderView: View {
     let taskId: String
     let projectId: String
+    var taskCollection: String = "tasks"
     @Environment(\.dismiss) private var dismiss
 
     @State private var task: TaskItem?
@@ -55,7 +57,7 @@ struct TaskRouteLoaderView: View {
     private func load() async {
         do {
             let db = Firestore.firestore()
-            async let taskSnap = db.collection("tasks").document(taskId).getDocument()
+            async let taskSnap = db.collection(taskCollection == "privateTasks" ? "privateTasks" : "tasks").document(taskId).getDocument()
             async let projectSnap = db.collection("projects").document(projectId).getDocument()
             let (t, p) = try await (taskSnap, projectSnap)
             guard t.exists, let taskData = t.data(),
@@ -63,7 +65,7 @@ struct TaskRouteLoaderView: View {
                 failed = true
                 return
             }
-            task = TaskItem.from(id: t.documentID, data: taskData)
+            task = TaskItem.from(id: t.documentID, data: taskData, collection: taskCollection)
             project = Project.from(id: p.documentID, data: projectData)
         } catch {
             failed = true
@@ -99,7 +101,12 @@ private struct TaskRouteView: View {
         }
         .environmentObject(tasksStore)
         .onAppear {
-            tasksStore.subscribe(projectId: project.id)
+            tasksStore.subscribe(
+                projectId: project.id,
+                organizationId: appState.user?.organizationId ?? "",
+                uid: appState.user?.uid ?? "",
+                isOwner: appState.user?.orgRole == "owner"
+            )
             // Небольшая пауза, чтобы push внутрь стека выглядел естественно
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showTask = true }
         }

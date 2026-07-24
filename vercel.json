@@ -18,6 +18,9 @@
     },
     "api/project-files.js": {
       "maxDuration": 60
+    },
+    "api/org.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

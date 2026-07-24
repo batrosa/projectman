@@ -113,7 +113,7 @@ struct DemoScreenRouter: View {
                 NavigationStack {
                     TaskDetailView(task: DemoData.tasks[1], project: DemoData.projects[0])
                         .environmentObject(tasksStore)
-                        .onAppear { tasksStore.subscribe(projectId: "p1") }
+                        .onAppear { tasksStore.subscribe(projectId: "p1", organizationId: "org-demo", uid: "demo") }
                 }
             case "team":
                 NavigationStack { TeamView() }

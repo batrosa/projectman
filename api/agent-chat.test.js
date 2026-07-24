@@ -282,7 +282,7 @@ describe("typed agent navigation", () => {
     expect(resolveAgentNavigation({ message: "Открой проект Абрау-Дюрсо", context }).navigation)
       .toEqual({ target: "project", projectId: "p1" });
     expect(resolveAgentNavigation({ message: "Открой задачу «Проверить фасад»", context }).navigation)
-      .toEqual({ target: "task", projectId: "p2", taskId: "t2" });
+      .toEqual({ target: "task", projectId: "p2", taskId: "t2", taskCollection: "tasks" });
   });
 
   it("does not invent routes for missing or ambiguous resources", () => {
@@ -440,7 +440,12 @@ describe("typed agent mutations and permission denials", () => {
     });
     expect(result.actionProposal).toMatchObject({
       action: "take_tasks",
-      payload: { taskIds: ["t1", "t2"] },
+      payload: {
+        taskTargets: [
+          { taskId: "t1", taskCollection: "tasks" },
+          { taskId: "t2", taskCollection: "tasks" },
+        ],
+      },
     });
     expect(result.actionProposal.summary).toContain("2 назначенных");
 
@@ -452,7 +457,12 @@ describe("typed agent mutations and permission denials", () => {
     });
     expect(naturalOrder.actionProposal).toMatchObject({
       action: "take_tasks",
-      payload: { taskIds: ["t1", "t2"] },
+      payload: {
+        taskTargets: [
+          { taskId: "t1", taskCollection: "tasks" },
+          { taskId: "t2", taskCollection: "tasks" },
+        ],
+      },
     });
   });
 
@@ -470,7 +480,7 @@ describe("typed agent mutations and permission denials", () => {
       callerData: { orgRole: "employee" },
       callerUid: "employee-1",
     });
-    expect(result.actionProposal.payload.taskIds).toEqual(["t1"]);
+    expect(result.actionProposal.payload.taskTargets).toEqual([{ taskId: "t1", taskCollection: "tasks" }]);
     expect(result.actionProposal.summary).toContain("Лазурный берег");
   });
 });
@@ -1450,13 +1460,14 @@ function mockResponse() {
 // per-project files subcollection .limit().get().
 // `userGetError` / `queryError` simulate a Firestore-side exception (e.g.
 // permission error, transient outage) at each respective call site.
-function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesByProject = {}, agentNotifications = {}, userGetError, queryError } = {}) {
+function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], privateTasks = [], filesByProject = {}, agentNotifications = {}, userGetError, queryError } = {}) {
   const filesCalls = [];
   const rateLimitDocs = new Map();
   const notifications = new Map(Object.entries(agentNotifications));
   const executionDocs = new Map();
   const projectDocs = new Map(projects.filter((p) => p && p.id).map((p) => [p.id, p]));
   const taskDocs = new Map(tasks.filter((t) => t && t.id).map((t) => [t.id, t]));
+  const privateTaskDocs = new Map(privateTasks.filter((t) => t && t.id).map((t) => [t.id, t]));
   const deletedTasks = [];
   const userDocs = new Map(orgUsers.filter((u) => u && u.id).map((u) => [u.id, u]));
   if (userDoc) userDocs.set("user-1", userDoc);
@@ -1477,6 +1488,14 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
       limit() {
         return q;
       },
+      where(field, op, value) {
+        return query(() => docsFactory().filter((doc) => {
+          if (op === "==") return doc[field] === value;
+          if (op === "in") return Array.isArray(value) && value.includes(doc[field]);
+          if (op === "array-contains") return Array.isArray(doc[field]) && doc[field].includes(value);
+          return true;
+        }), collectionName, projectId);
+      },
       async get() {
         if (queryError) throw queryError;
         return docsSnapshot(docsFactory(), collectionName, projectId);
@@ -1490,6 +1509,7 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
     executionDocs,
     projectDocs,
     taskDocs,
+    privateTaskDocs,
     deletedTasks,
     filesByProject,
     async getAll(...refs) {
@@ -1497,6 +1517,7 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
         if (ref.collectionName === "users" && userGetError) throw userGetError;
         const store = ref.collectionName === "projects" ? projectDocs
           : ref.collectionName === "tasks" ? taskDocs
+          : ref.collectionName === "privateTasks" ? privateTaskDocs
           : ref.collectionName === "users" ? userDocs
           : ref.collectionName === "agentNotifications" ? notifications
           : ref.collectionName === "agentProposalExecutions" ? executionDocs
@@ -1541,8 +1562,14 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
             if ((op.type === "set" || op.type === "create") && op.ref.collectionName === "tasks") {
               taskDocs.set(op.ref.id, { id: op.ref.id, ...op.value });
             }
+            if ((op.type === "set" || op.type === "create") && op.ref.collectionName === "privateTasks") {
+              privateTaskDocs.set(op.ref.id, { id: op.ref.id, ...op.value });
+            }
             if (op.type === "update" && op.ref.collectionName === "tasks") {
               taskDocs.set(op.ref.id, { ...taskDocs.get(op.ref.id), id: op.ref.id, ...op.value });
+            }
+            if (op.type === "update" && op.ref.collectionName === "privateTasks") {
+              privateTaskDocs.set(op.ref.id, { ...privateTaskDocs.get(op.ref.id), id: op.ref.id, ...op.value });
             }
             if ((op.type === "set" || op.type === "create") && op.ref.collectionName === "projects") {
               projectDocs.set(op.ref.id, { id: op.ref.id, ...op.value });
@@ -1558,6 +1585,10 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
             }
             if (op.type === "delete" && op.ref.collectionName === "tasks") {
               taskDocs.delete(op.ref.id);
+              deletedTasks.push(op.ref.id);
+            }
+            if (op.type === "delete" && op.ref.collectionName === "privateTasks") {
+              privateTaskDocs.delete(op.ref.id);
               deletedTasks.push(op.ref.id);
             }
             if (op.type === "delete" && op.ref.collectionName === "projects") {
@@ -1725,24 +1756,25 @@ function makeFakeDb({ userDoc, orgUsers = [], projects = [], tasks = [], filesBy
           },
         };
       }
-      if (name === "tasks") {
+      if (name === "tasks" || name === "privateTasks") {
+        const store = name === "privateTasks" ? privateTaskDocs : taskDocs;
         return {
           where(field, op, value) {
             return query(() => {
-              const currentTasks = [...taskDocs.values()];
+              const currentTasks = [...store.values()];
               if (field === "projectId" && op === "in") return currentTasks.filter((t) => value.includes(t.projectId));
               if (field === "projectId" && op === "==") return currentTasks.filter((t) => t.projectId === value);
               if (field === "organizationId" && op === "==") return currentTasks.filter((t) => t.organizationId === value);
               return currentTasks;
-            }, "tasks");
+            }, name);
           },
           doc(id) {
             const docId = id || `auto-task-${++autoId}`;
             return {
               id: docId,
-              collectionName: "tasks",
+              collectionName: name,
               async get() {
-                const data = taskDocs.get(docId) || null;
+                const data = store.get(docId) || null;
                 return { exists: Boolean(data), data: () => data };
               },
             };
@@ -1849,6 +1881,54 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
 
     expect(res.statusCode).toBe(200);
     expect(res.body.answer).toBe("AI answer");
+  });
+
+  it("scopes private-task AI context to the organization owner or explicit participants", async () => {
+    const privateTask = {
+      id: "private-1",
+      projectId: "p1",
+      organizationId: "org-1",
+      title: "Секретный договор",
+      viewerIds: ["participant-1"],
+      isPrivate: true,
+    };
+    const projects = [{ id: "p1", name: "Project One", organizationId: "org-1" }];
+
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
+      projects,
+      privateTasks: [privateTask],
+    });
+    let res = mockResponse();
+    await handler(makeRequest({ message: "Покажи задачи" }), res);
+    let requestBody = JSON.parse(fetchJsonWithTimeout.mock.calls[0][1].body);
+    expect(requestBody.messages[0].content).toContain("Секретный договор");
+
+    clearOrganizationContextCache();
+    fetchJsonWithTimeout.mockClear();
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "admin" },
+      projects,
+      privateTasks: [privateTask],
+    });
+    res = mockResponse();
+    await handler(makeRequest({ message: "Покажи задачи" }), res);
+    requestBody = JSON.parse(fetchJsonWithTimeout.mock.calls[0][1].body);
+    expect(requestBody.messages[0].content).not.toContain("Секретный договор");
+
+    clearOrganizationContextCache();
+    fetchJsonWithTimeout.mockClear();
+    state.verifyIdToken = vi.fn(async () => ({ uid: "participant-1" }));
+    state.db = makeFakeDb({
+      userDoc: null,
+      orgUsers: [{ id: "participant-1", organizationId: "org-1", orgRole: "moderator" }],
+      projects,
+      privateTasks: [privateTask],
+    });
+    res = mockResponse();
+    await handler(makeRequest({ message: "Покажи задачи" }), res);
+    requestBody = JSON.parse(fetchJsonWithTimeout.mock.calls[0][1].body);
+    expect(requestBody.messages[0].content).toContain("Секретный договор");
   });
 
   it("passes project knowledge availability to the model without exposing source filenames", async () => {
@@ -3640,6 +3720,53 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     await handler(makeRequest(body), second);
     expect(second.statusCode).toBe(200);
     expect(second.body).toEqual(first.body);
+  });
+
+  it("enforces owner oversight and participant-only access for private task actions", async () => {
+    const privateTask = {
+      id: "private-1",
+      projectId: "p1",
+      organizationId: "org-1",
+      title: "Приватная задача",
+      createdByUid: "creator-1",
+      assigneeIds: ["worker-1"],
+      coCreatorIds: [],
+      viewerIds: ["creator-1", "worker-1"],
+      isPrivate: true,
+      status: "in-progress",
+      subStatus: "assigned",
+    };
+    const projects = [{ id: "p1", name: "Проект", organizationId: "org-1" }];
+
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "owner" },
+      projects,
+      privateTasks: [privateTask],
+    });
+    let res = mockResponse();
+    await handler(makeRequest({
+      action: "execute_agent_action",
+      agentAction: "rename_task",
+      proposalId: "private-owner-rename",
+      payload: { projectId: "p1", taskId: "private-1", taskCollection: "privateTasks", title: "Под контролем владельца" },
+    }), res);
+    expect(res.statusCode).toBe(200);
+    expect(state.db.privateTaskDocs.get("private-1").title).toBe("Под контролем владельца");
+
+    state.db = makeFakeDb({
+      userDoc: { organizationId: "org-1", orgRole: "admin" },
+      projects,
+      privateTasks: [privateTask],
+    });
+    res = mockResponse();
+    await handler(makeRequest({
+      action: "execute_agent_action",
+      agentAction: "rename_task",
+      proposalId: "private-admin-rename",
+      payload: { projectId: "p1", taskId: "private-1", taskCollection: "privateTasks", title: "Нельзя" },
+    }), res);
+    expect(res.statusCode).toBe(403);
+    expect(state.db.privateTaskDocs.get("private-1").title).toBe("Приватная задача");
   });
 
   it("rename_project confirmation is idempotent by proposalId: a retry replays the original response", async () => {
