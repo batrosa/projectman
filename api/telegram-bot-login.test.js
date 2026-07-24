@@ -243,7 +243,7 @@ describe("Telegram bot login flow", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("confirms /start link_<code> without changing a ProjectMan user yet", async () => {
+  it("confirms /start link_<code> without changing a ProjectSfera user yet", async () => {
     const code = "abcdefghijklmnop";
     state.db = makeFakeDb({
       sessions: {

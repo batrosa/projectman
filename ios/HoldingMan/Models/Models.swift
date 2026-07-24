@@ -91,7 +91,7 @@ struct UserDoc {
         case "google.com": return "Google"
         case "password": return "Email"
         case "telegram": return "Telegram"
-        default: return "ProjectMan"
+        default: return "ProjectSfera"
         }
     }
 

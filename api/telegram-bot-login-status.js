@@ -132,7 +132,7 @@ async function linkTelegramToUser(db, uid, session) {
     return {
       ok: false,
       status: "conflict",
-      error: "This Telegram account is already linked to another ProjectMan account",
+      error: "This Telegram account is already linked to another ProjectSfera account",
     };
   }
 
@@ -160,7 +160,7 @@ async function linkTelegramToUser(db, uid, session) {
       return {
         ok: false,
         status: "conflict",
-        error: "This Telegram account is already linked to another ProjectMan account",
+        error: "This Telegram account is already linked to another ProjectSfera account",
       };
     }
     throw error;

@@ -6,7 +6,7 @@ This document is mandatory reading before large changes, production deploys, pro
 
 ## Executive summary
 
-ProjectMan is hosted on Vercel Hobby. Vercel has a platform-wide automatic DDoS mitigation layer that runs before the project, CDN, and serverless functions. During unusual traffic it can return a JavaScript Security Checkpoint instead of forwarding the request to ProjectMan.
+ProjectSfera is hosted on Vercel Hobby. Vercel has a platform-wide automatic DDoS mitigation layer that runs before the project, CDN, and serverless functions. During unusual traffic it can return a JavaScript Security Checkpoint instead of forwarding the request to ProjectSfera.
 
 Large changes do **not** directly switch Attack Mode on. They often coincide with CI deploys, browser refreshes, CLI inspection, `curl` probes, and repeated smoke requests. A burst of those requests from the same IP or traffic fingerprint may contribute to Vercel's automated risk signals. The exact scoring algorithm and expiry timer are not exposed by Vercel, so the relationship must be recorded as correlation, not deterministic causation.
 
@@ -31,7 +31,7 @@ x-vercel-challenge-token: ...
 content-type: text/html; charset=utf-8
 ```
 
-The body was the Vercel Security Checkpoint page. These requests never reached ProjectMan code.
+The body was the Vercel Security Checkpoint page. These requests never reached ProjectSfera code.
 
 The browser could eventually execute the challenge and receive a temporary challenge session. Direct clients such as iOS `URLSession`, `curl`, Postman, webhooks, and bots cannot reliably execute that JavaScript checkpoint. This caused:
 
@@ -48,10 +48,10 @@ Two independent failures happened in the same maintenance window:
 
 | Signal | Layer | Meaning | Recovery |
 | --- | --- | --- | --- |
-| `403` and `x-vercel-mitigated: challenge` | Vercel edge firewall | Request did not reach ProjectMan | Stop request bursts, wait and re-probe with backoff; escalate to Vercel if persistent |
-| `500`, `FUNCTION_INVOCATION_FAILED`, “This Serverless Function has crashed” | Vercel serverless runtime | ProjectMan function started and crashed | Inspect runtime/dependency changes, deploy or promote a known-good build |
-| `401` JSON from an API probe without a token | ProjectMan API | Healthy expected response | No incident |
-| `405` JSON from an unsupported method | ProjectMan API | Healthy expected response | No incident |
+| `403` and `x-vercel-mitigated: challenge` | Vercel edge firewall | Request did not reach ProjectSfera | Stop request bursts, wait and re-probe with backoff; escalate to Vercel if persistent |
+| `500`, `FUNCTION_INVOCATION_FAILED`, “This Serverless Function has crashed” | Vercel serverless runtime | ProjectSfera function started and crashed | Inspect runtime/dependency changes, deploy or promote a known-good build |
+| `401` JSON from an API probe without a token | ProjectSfera API | Healthy expected response | No incident |
+| `405` JSON from an unsupported method | ProjectSfera API | Healthy expected response | No incident |
 
 The 500 incident was caused by the Firebase Admin 14.2.0 / forced Node 22 runtime change and was fixed by commit `9d0ff23` by restoring Firebase Admin 13.5.0 and the previous Vercel runtime selection. Do not attribute that 500 to the firewall.
 
@@ -64,7 +64,7 @@ curl -sS -D /tmp/projectman-headers.txt \
   -o /tmp/projectman-body.txt \
   -X POST 'https://projectman.online/api/org' \
   -H 'Content-Type: application/json' \
-  -H 'User-Agent: ProjectMan/1 CFNetwork Darwin' \
+  -H 'User-Agent: ProjectSfera/1 CFNetwork Darwin' \
   --data '{"action":"list"}'
 
 sed -n '1,30p' /tmp/projectman-headers.txt
@@ -77,7 +77,7 @@ Interpretation:
 - `403` with `x-vercel-mitigated: challenge`: automatic Vercel protection is blocking direct clients.
 - `500 FUNCTION_INVOCATION_FAILED`: inspect function logs and the deployed runtime.
 
-Then check Vercel → ProjectMan → Firewall:
+Then check Vercel → ProjectSfera → Firewall:
 
 1. Overview: challenged request count and active events.
 2. Rules: Attack Mode, Bot Protection, Custom Rules, System Bypass Rules.
@@ -91,7 +91,7 @@ Never infer Attack Mode from the existence of a checkpoint page.
 2. Do not redeploy the same code merely to clear the challenge; deployment does not reset the platform firewall.
 3. Wait before rechecking. Use one request, then exponential/backoff-style intervals rather than a tight loop.
 4. Verify both browser access and a cookieless iOS-like API request. A working browser alone is insufficient because it may hold a valid challenge session.
-5. Ask the user to retry iOS only after the cookieless probe returns normal ProjectMan JSON.
+5. Ask the user to retry iOS only after the cookieless probe returns normal ProjectSfera JSON.
 6. If the mitigation remains across ordinary networks after the operational observation window, collect `x-vercel-id`, timestamps, domain, and response headers and contact Vercel support. Any 30–60 minute escalation window used by the team is an internal threshold, not a Vercel SLA.
 
 Do not:

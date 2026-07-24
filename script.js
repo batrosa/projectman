@@ -1089,7 +1089,7 @@ function captureInviteCodeFromUrl() {
         }
     }
 
-    // Remove only ProjectMan routing params. Other query parameters may belong
+    // Remove only ProjectSfera routing params. Other query parameters may belong
     // to an auth provider and must survive until Firebase consumes them.
     if (inviteCode || taskId || projectId || organizationId) {
         const cleanUrl = new URL(window.location.href);
@@ -1378,8 +1378,8 @@ function setupOrgEventListeners() {
             const name = state.organization?.name || 'организации';
             const inviteUrl = `${window.location.origin}?invite=${code}`;
             const shareData = {
-                title: 'Приглашение в ProjectMan',
-                text: `Присоединяйтесь к "${name}" в ProjectMan!\nКод: ${code}`,
+                title: 'Приглашение в ProjectSfera',
+                text: `Присоединяйтесь к "${name}" в ProjectSfera!\nКод: ${code}`,
                 url: inviteUrl
             };
 
@@ -2047,7 +2047,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.21'; // Google Identity Services sign-in
+    const CURRENT_VERSION = '6.22'; // Rebrand to ProjectSfera
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -5670,7 +5670,7 @@ function setupEventListeners() {
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
-Откройте ProjectMan для подробностей.`;
+Откройте ProjectSfera для подробностей.`;
                 sendTaskEventToUid(a.id, message, newTaskEvent);
             });
 
@@ -6314,7 +6314,7 @@ async function startTelegramLink() {
     if (isTelegramLinked()) return;
     const currentUser = auth?.currentUser;
     if (!currentUser) {
-        alert('Сначала войдите в ProjectMan.');
+        alert('Сначала войдите в ProjectSfera.');
         return;
     }
 
@@ -6325,7 +6325,7 @@ async function startTelegramLink() {
         botWindow = window.open('', '_blank');
         if (botWindow) {
             botWindow.opener = null;
-            botWindow.document.title = 'ProjectMan Telegram';
+            botWindow.document.title = 'ProjectSfera Telegram';
         }
 
         const idToken = await currentUser.getIdToken();
@@ -6366,7 +6366,7 @@ async function pollTelegramLink(code, expiresAt, attemptId) {
     while (attemptId === telegramLinkAttempt && Date.now() < deadlineMs) {
         if (delayMs > 0) await wait(delayMs);
         const currentUser = auth?.currentUser;
-        if (!currentUser) throw new Error('Сессия ProjectMan завершена. Войдите снова.');
+        if (!currentUser) throw new Error('Сессия ProjectSfera завершена. Войдите снова.');
         const idToken = await currentUser.getIdToken();
         const res = await fetch('/api/telegram-bot-login-status', {
             method: 'POST',
@@ -6389,7 +6389,7 @@ async function pollTelegramLink(code, expiresAt, attemptId) {
             return;
         }
         throw new Error(data.status === 'conflict'
-            ? 'Этот Telegram уже подключён к другому аккаунту ProjectMan.'
+            ? 'Этот Telegram уже подключён к другому аккаунту ProjectSfera.'
             : data.error || 'Telegram-бот не подтвердил подключение.');
     }
 
@@ -6483,7 +6483,7 @@ window.startTelegramBotLogin = async function startTelegramBotLogin() {
         botWindow = window.open('', '_blank');
         if (botWindow) {
             botWindow.opener = null;
-            botWindow.document.title = 'ProjectMan Telegram';
+            botWindow.document.title = 'ProjectSfera Telegram';
         }
 
         const res = await fetch('/api/telegram-bot-login-start', { method: 'POST' });
@@ -6711,7 +6711,7 @@ async function startGoogleIdentityLogin() {
     try {
         if (!popup) {
             throw googleIdentityError(
-                'Браузер заблокировал окно Google. Разрешите всплывающие окна для ProjectMan.',
+                'Браузер заблокировал окно Google. Разрешите всплывающие окна для ProjectSfera.',
                 'auth/popup-blocked',
             );
         }
@@ -6807,7 +6807,7 @@ function renderAuthProvider() {
     const title = provider === 'apple.com' ? 'Apple'
         : provider === 'google.com' ? 'Google'
             : provider === 'password' ? 'Email'
-            : provider === 'telegram' ? 'Telegram' : 'ProjectMan';
+            : provider === 'telegram' ? 'Telegram' : 'ProjectSfera';
     const icon = document.getElementById('profile-auth-icon');
     const label = document.getElementById('profile-auth-provider');
     if (label) label.textContent = title;
@@ -8182,7 +8182,7 @@ async function sendNewTaskNotificationToAssignee(assignee, taskTitle, projectNam
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
-Откройте ProjectMan для подробностей.`;
+Откройте ProjectSfera для подробностей.`;
 
     await sendTelegramNotification(chatId, message);
 }

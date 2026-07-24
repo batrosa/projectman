@@ -409,8 +409,8 @@ private struct OrganizationInviteCard: View {
                     if let inviteURL {
                         ShareLink(
                             item: inviteURL,
-                            subject: Text("Приглашение в ProjectMan"),
-                            message: Text("Присоединяйтесь в ProjectMan к \(resolvedOrganizationName). Код организации: \(inviteCode)")
+                            subject: Text("Приглашение в ProjectSfera"),
+                            message: Text("Присоединяйтесь в ProjectSfera к \(resolvedOrganizationName). Код организации: \(inviteCode)")
                         ) {
                             Label("Поделиться", systemImage: "square.and.arrow.up")
                         }

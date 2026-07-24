@@ -58,7 +58,7 @@ private struct KeyboardDismissInstaller: UIViewRepresentable {
 }
 
 @main
-struct ProjectManApp: App {
+struct ProjectSferaApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var appState = AppState()
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
@@ -88,7 +88,7 @@ struct RootView: View {
                     Theme.background.ignoresSafeArea()
                     VStack(spacing: 14) {
                         BrandLogoView(size: 76)
-                        Text("ProjectMan")
+                        Text("ProjectSfera")
                             .font(.title2.bold())
                             .foregroundStyle(Theme.textPrimary)
                         ProgressView()

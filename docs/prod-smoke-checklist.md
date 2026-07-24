@@ -53,7 +53,7 @@ curl -sS -D /tmp/projectman-smoke-headers.txt \
 1. Owner загружает `.md` или `.pdf` до 10 МБ в “Файлы проекта”.
 2. Дождаться extraction status.
 3. Спросить агента по содержанию файла.
-4. Спросить агента: “как контролировать этот проект в ProjectMan?”
+4. Спросить агента: “как контролировать этот проект в ProjectSfera?”
    Ожидание: агент не предлагает несуществующие Kanban drag-and-drop, Outlook sync, отчёты, checklists.
 
 ## Telegram

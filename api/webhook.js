@@ -55,20 +55,20 @@ export default async function handler(req, res) {
                     : { ok: false, reason: 'webhook_secret_missing' };
                 if (loginResult.ok) {
                     replyText = sessionMode === 'link'
-                        ? `✅ Подтверждение получено.\n\nВернитесь в ProjectMan — подключение Telegram завершится автоматически.`
-                        : `✅ Вход подтвержден.\n\nВернитесь в ProjectMan — окно входа завершится автоматически.`;
+                        ? `✅ Подтверждение получено.\n\nВернитесь в ProjectSfera — подключение Telegram завершится автоматически.`
+                        : `✅ Вход подтвержден.\n\nВернитесь в ProjectSfera — окно входа завершится автоматически.`;
                 } else {
                     const actionName = sessionMode === 'link' ? 'подключение' : 'вход';
                     replyText = loginResult.reason === 'mode_mismatch'
-                        ? `❌ Эта ссылка предназначена для другого действия. Вернитесь в ProjectMan и создайте новую ссылку.`
+                        ? `❌ Эта ссылка предназначена для другого действия. Вернитесь в ProjectSfera и создайте новую ссылку.`
                         : loginResult.reason === 'server'
                         ? `❌ Не удалось подтвердить ${actionName}: сервер временно недоступен. Попробуйте ещё раз.`
                         : loginResult.reason === 'webhook_secret_missing'
                             ? `❌ Вход через бота ещё не настроен на сервере. Сообщите администратору: нужен Telegram webhook secret.`
-                        : `❌ Ссылка устарела или уже использована.\n\nВернитесь в ProjectMan и повторите действие.`;
+                        : `❌ Ссылка устарела или уже использована.\n\nВернитесь в ProjectSfera и повторите действие.`;
                 }
             } else if (text === '/START') {
-                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectMan. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
+                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectSfera.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectSfera. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
             } else {
                 // NOTE: the old 6-char "connect by code" linking flow was removed —
                 // it linked a Telegram chat to a user by a world-readable/guessable
@@ -76,7 +76,7 @@ export default async function handler(req, res) {
                 // hijack vector). Login + notification linking now happen only via
                 // the bot deep-link flow (botLoginMatch above), which requires the
                 // verified webhook secret.
-                replyText = `📋 Для входа откройте ProjectMan и нажмите «Войти через Telegram».\n\nЕсли вы видите ошибку домена на сайте, напишите администратору.`;
+                replyText = `📋 Для входа откройте ProjectSfera и нажмите «Войти через Telegram».\n\nЕсли вы видите ошибку домена на сайте, напишите администратору.`;
             }
 
             // Send reply
