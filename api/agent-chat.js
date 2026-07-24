@@ -133,6 +133,7 @@ const TEXT_TASK_SYSTEM_PROMPT = [
   "Если срок указан относительным словом, переведи его в дату по указанной текущей дате: сегодня, завтра, послезавтра, до конца недели.",
   "Если срок не указан, deadline=null.",
   "Ответственного сопоставляй только с участниками ProjectMan из списка. Если форма имени в запросе склонена, верни точное имя из списка. Если участник не найден или есть сомнение, верни имя как написал пользователь.",
+  "Участники в списке указаны с email в скобках. Если пользователь уточняет исполнителя по email или началу email (например «guryev» или «guryev.cio@gmail.com»), верни в assigneeName этот email — сервер сопоставит его с участником однозначно.",
   "Если ответственные названы местоимением или косвенно («им», «ему», «этим двум», «обоим», «ей») — определи КОНКРЕТНЫХ людей по разделу «Последние сообщения диалога»: бери тех, кого пользователь обсуждал последними. НИКОГДА не подставляй человека, которого пользователь не называл и который не упоминался в диалоге; автора запроса по умолчанию не назначай. Если однозначно определить людей нельзя — верни \"tasks\": [] (пустой список).",
   "Если пользователь просит «без ответственных» или ответственный не указан — assigneeName=\"\" (пустая строка): задача создастся как «Не назначен». Отсутствие ответственных или сроков — НЕ причина возвращать пустой список задач.",
   "Если пользователь описывает несколько задач для одного ответственного или срока, примени общий ответственный/срок к каждой задаче.",
@@ -2063,7 +2064,17 @@ async function buildTextTaskProposal({
   const assignableUsers = isMultiProject
     ? users
     : users.filter((u) => userHasProjectAccessForAssignment(u, targetProjects[0].id));
-  const membersText = assignableUsers.map((u) => displayName(u)).filter(Boolean).join(", ");
+  // Имя + email: модель обязана уметь сопоставить уточнение «guryev» или
+  // «guryev.cio@gmail.com» с конкретным участником (в организации бывают
+  // полные тёзки, различимые только по email).
+  const membersText = assignableUsers
+    .map((u) => {
+      const name = displayName(u);
+      if (!name) return "";
+      return u.email ? `${name} (${u.email})` : name;
+    })
+    .filter(Boolean)
+    .join(", ");
   const dialogue = formatRecentDialogue(history, { maxTurns: 24, maxChars: 1000 });
   const requestedCount = requestedTaskCount(message);
   const tableFallback = buildTableFallbackProposalFromText(deterministicKnowledgeContext || knowledgeContext, {
@@ -2111,7 +2122,8 @@ async function buildTextTaskProposal({
   if (!llm.ok) {
     // Назначительная форма точнее табличного импорта: «поставь X по задаче Y»
     // при недоступной LLM не должно вываливать весь план из базы знаний.
-    const rescueOnFail = deterministicAssignmentProposal(message, assignableUsers);
+    const rescueOnFail = deterministicAssignmentProposal(message, assignableUsers, today);
+    if (rescueOnFail?.ambiguous) return { answer: ambiguousAssigneeAnswer(rescueOnFail.ambiguous) };
     if (rescueOnFail) return buildFromTasks([rescueOnFail]);
     if (tableFallback) {
       return buildTextTaskProposalFromRaw({
@@ -2135,8 +2147,11 @@ async function buildTextTaskProposal({
   // LLM вернула пустой список, хотя в сообщении однозначно есть участник и
   // название задачи — строим карточку детерминированно (прод-кейс: «поставь
   // тэко исаева ответственным по задаче пнуть» → «Не понял, кому…»).
+  // Если участник неоднозначен (тёзки) — честно перечисляем кандидатов
+  // вместо канонического «Не понял, кому поставить задачу».
   if (built.emptyTasks) {
-    const rescue = deterministicAssignmentProposal(message, assignableUsers);
+    const rescue = deterministicAssignmentProposal(message, assignableUsers, today);
+    if (rescue?.ambiguous) return { answer: ambiguousAssigneeAnswer(rescue.ambiguous), model: llm.model };
     if (rescue) return { ...buildFromTasks([rescue]), model: llm.model };
   }
   return { ...built, model: llm.model };
@@ -2171,41 +2186,94 @@ async function callModelForTextTaskProposal({ openRouterKey, userPrompt }) {
 // LLM иногда возвращает пустой список на простое «поставь Тэко Исаева
 // ответственным по задаче пнуть» (склонённое имя, короткое название).
 // Детерминированная страховка: если в сообщении ОДНОЗНАЧНО находятся участник
-// (matchAssignee умеет падежи) и название задачи после слова «задач…», строим
-// одну задачу без LLM. Карточка всё равно требует подтверждения кнопкой.
-export function deterministicAssignmentProposal(message, users) {
+// (matchAssignee умеет падежи, email и его логин-часть) и название задачи
+// (в кавычках или после слова «задач…»), строим одну задачу без LLM.
+// Понимает «срок сегодня/завтра/послезавтра» и явные даты. Если имя подходит
+// нескольким участникам (тёзки) — возвращает { ambiguous } со списком
+// кандидатов, чтобы честно спросить пользователя, а не отвечать «не понял».
+// Карточка всё равно требует подтверждения кнопкой.
+export function deterministicAssignmentProposal(message, users, today = todayIsoDate()) {
   const text = normalizeLookup(message);
-  const titleMatch = text.match(/(?:по\s+)?задач[аеиу]?\s+[«"]?([^»"\n]{2,80}?)[»"]?\s*(?:$|[.!?\n])/u);
-  if (!titleMatch) return null;
-  let titleWords = titleMatch[1].trim().split(/\s+/);
+  if (!text) return null;
+
+  // Название: приоритет — текст в кавычках («тест», "тест"); иначе — слова
+  // после «задач…» до конца строки/предложения.
+  let titleWords = null;
+  const quoted = String(message || "").match(/[«"]([^«»"\n]{2,80})[»"]/u);
+  if (quoted) {
+    titleWords = normalizeLookup(quoted[1]).split(/\s+/);
+  } else {
+    const titleMatch = text.match(/(?:по\s+)?задач[аеиу]?\s+[«"]?([^»"\n]{2,80}?)[»"]?\s*(?:$|[.!?\n])/u);
+    if (!titleMatch) return null;
+    titleWords = titleMatch[1].trim().split(/\s+/);
+  }
+
+  // Срок: «срок завтра/сегодня/послезавтра», ISO-дата или ДД.ММ.ГГГГ.
+  let deadline = null;
+  const relative = text.match(/срок[а-я]*[^\S\n]+(сегодня|завтра|послезавтра)/u);
+  const isoDate = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+  const dotDate = text.match(/\b(\d{2})\.(\d{2})\.(20\d{2})\b/);
+  if (relative) {
+    deadline = relative[1] === "сегодня" ? today : addDaysIso(today, relative[1] === "завтра" ? 1 : 2);
+  } else if (isoDate) {
+    deadline = isoDate[1];
+  } else if (dotDate) {
+    deadline = `${dotDate[3]}-${dotDate[2]}-${dotDate[1]}`;
+  }
 
   // Ответственный: единственный участник, которого matchAssignee однозначно
   // узнаёт в биграммах сообщения («тэко исаева» → Тэко Исаев) или, если
-  // биграммы не дали ничего, в отдельных словах.
+  // биграммы не дали ничего, в отдельных словах (включая email/логин).
   const words = text.split(/\s+/).filter((word) => word.length >= 3);
   const matchedByUid = new Map();
+  let ambiguous = null;
   const tryMatch = (candidate) => {
     const match = matchAssignee(users, candidate);
     if (!match.error) matchedByUid.set(match.uid, { candidate, displayName: match.displayName });
+    else if (match.error === "ambiguous" && !ambiguous && Array.isArray(match.options) && match.options.length > 0) {
+      ambiguous = { name: candidate, options: match.options };
+    }
   };
   for (let index = 0; index < words.length - 1; index += 1) tryMatch(`${words[index]} ${words[index + 1]}`);
   if (matchedByUid.size === 0) {
     for (const word of words) tryMatch(word);
   }
-  if (matchedByUid.size !== 1) return null;
+  if (matchedByUid.size !== 1) {
+    // Однозначного участника нет. Если нашлись тёзки — вернём их список для
+    // честного встречного вопроса; иначе страховка не срабатывает.
+    return matchedByUid.size === 0 && ambiguous ? { ambiguous } : null;
+  }
   const [{ candidate, displayName }] = matchedByUid.values();
 
-  // Из названия задачи убираем слова имени и служебное «ответственн…»
+  // Из названия задачи убираем слова имени, «ответственн…», срок и даты
   const candidateWords = new Set(candidate.split(" "));
-  titleWords = titleWords.filter((word) => !candidateWords.has(word) && !/^отве[тс]{2,3}венн/u.test(word));
+  const dropWords = new Set([...candidateWords, "срок", "сроком", "сегодня", "завтра", "послезавтра"]);
+  titleWords = titleWords.filter((word) => !dropWords.has(word)
+    && !/^отве[тс]{2,3}венн/u.test(word)
+    && !/^20\d{2}-\d{2}-\d{2}$/.test(word)
+    && !/^\d{2}\.\d{2}\.20\d{2}$/.test(word));
   const title = titleWords.join(" ").trim();
   if (title.length < 2) return null;
   return {
     title: title[0].toUpperCase() + title.slice(1),
     description: "",
-    deadline: null,
+    deadline,
     assigneeName: displayName,
   };
+}
+
+// Честный ответ при тёзках: перечисляем кандидатов с email и просим повторить
+// поручение с уточнением. Состояние не храним — уточнённое поручение снова
+// пройдёт через getTextTaskCreationRequest (continuation) целиком.
+function ambiguousAssigneeAnswer(ambiguous) {
+  const lines = (ambiguous.options || []).map((option) =>
+    `• ${option.displayName}${option.email ? ` — ${option.email}` : ""}`);
+  const example = ambiguous.options?.find((option) => option.email)?.email?.split("@")[0] || "email";
+  return [
+    `В организации несколько участников, подходящих под «${ambiguous.name}»:`,
+    ...lines,
+    `Уточните исполнителя, добавив его email или начало email — например: «${example}».`,
+  ].join("\n");
 }
 
 // Разрешение имён доп. постановщиков предложения в участников с доступом к
@@ -2295,7 +2363,12 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, projects, message = ""
     if (match.error && t.assigneeFromSource) {
       return { ...t, ...projectFields, ...coCreatorFields, deadline, assigneeUid: null, assigneeDisplay: "Не назначен", ok: true };
     }
-    if (match.error) return { ...t, ...projectFields, deadline, ok: false, reason: REASON_TEXT[match.error] || match.error };
+    if (match.error) {
+      return {
+        ...t, ...projectFields, deadline, ok: false, reason: REASON_TEXT[match.error] || match.error,
+        ...(match.error === "ambiguous" && Array.isArray(match.options) ? { ambiguousOptions: match.options } : {}),
+      };
+    }
     const matchedUser = users.find((user) => user.id === match.uid);
     if (!matchedUser || !userHasProjectAccessForAssignment(matchedUser, project.id)) {
       return { ...t, ...projectFields, deadline, ok: false, reason: "ответственный не имеет доступа к этому проекту" };
@@ -2305,6 +2378,20 @@ function buildTextTaskProposalFromRaw({ rawAnswer, users, projects, message = ""
     // «не взял в работу за час» работает как обычно.
     return { ...t, ...projectFields, ...coCreatorFields, deadline, assigneeUid: match.uid, assigneeDisplay: match.displayName, ok: true };
   });
+
+  // Все строки провалились и хотя бы одна — из-за тёзок: мёртвая карточка
+  // «Создавать нечего» бесполезна, честнее сразу спросить, кого из
+  // участников пользователь имел в виду (прод-кейс: два «Вячеслав Гурьев»).
+  const allRowsFailed = tasks.length > 0 && tasks.every((task) => !task.ok);
+  const ambiguousRow = tasks.find((task) => Array.isArray(task.ambiguousOptions) && task.ambiguousOptions.length > 0);
+  if (allRowsFailed && ambiguousRow) {
+    return {
+      answer: ambiguousAssigneeAnswer({
+        name: ambiguousRow.assigneeName || "это имя",
+        options: ambiguousRow.ambiguousOptions,
+      }),
+    };
+  }
 
   return {
     taskProposal: {
