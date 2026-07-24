@@ -2127,7 +2127,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.24'; // Employee task ownership rights
+    const CURRENT_VERSION = '6.25'; // Honest telegram unlink lock
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -6382,12 +6382,23 @@ function isTelegramLinked() {
     return Boolean(user && (user.authProvider === 'telegram' || user.telegramId || user.telegramChatId));
 }
 
+// Есть ли у аккаунта другой способ ВХОДА кроме Telegram (email-пароль /
+// Google / Apple). Почта в профиле без пароля способом входа не является.
+function hasNonTelegramLogin() {
+    const providers = state.currentUser?.authProviders;
+    if (!Array.isArray(providers)) return false;
+    return providers.some(p => ['password', 'google.com', 'apple.com'].includes(p));
+}
+
 function updateTelegramLinkUI() {
     const button = elements.telegramLinkBtn;
     if (!button) return;
     const linked = isTelegramLinked();
-    button.disabled = telegramLinkBusy;
-    button.classList.toggle('disabled', telegramLinkBusy);
+    // Отвязка доступна только когда есть другой способ входа — иначе кнопка
+    // честно неактивна с объяснением (а не «нажми и получи отказ сервера»).
+    const unlinkBlocked = linked && !hasNonTelegramLogin();
+    button.disabled = telegramLinkBusy || unlinkBlocked;
+    button.classList.toggle('disabled', telegramLinkBusy || unlinkBlocked);
     button.classList.toggle('telegram-connected', linked);
     button.classList.toggle('telegram-link-busy', telegramLinkBusy && !linked);
     button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
@@ -6395,11 +6406,15 @@ function updateTelegramLinkUI() {
     if (linked) {
         if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Отвязать Telegram';
         if (elements.telegramLinkDesc) {
-            elements.telegramLinkDesc.textContent = state.currentUser?.telegramUsername
-                ? `@${state.currentUser.telegramUsername} · подключён к аккаунту`
-                : 'Telegram подключён к этому аккаунту';
+            elements.telegramLinkDesc.textContent = unlinkBlocked
+                ? 'Это единственный способ входа — отвязать нельзя. Сначала добавьте вход по почте или Google.'
+                : (state.currentUser?.telegramUsername
+                    ? `@${state.currentUser.telegramUsername} · подключён к аккаунту`
+                    : 'Telegram подключён к этому аккаунту');
         }
-        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-link-slash';
+        if (elements.telegramLinkStatusIcon) {
+            elements.telegramLinkStatusIcon.className = unlinkBlocked ? 'fa-solid fa-lock' : 'fa-solid fa-link-slash';
+        }
         return;
     }
 
@@ -6418,6 +6433,10 @@ function updateTelegramLinkUI() {
 
 async function unlinkTelegram() {
     if (!isTelegramLinked() || telegramLinkBusy) return;
+    if (!hasNonTelegramLogin()) {
+        alert('Telegram — единственный способ входа в этот аккаунт: отвязать нельзя, иначе вы потеряете доступ. Сначала добавьте вход по почте или через Google.');
+        return;
+    }
     if (!confirm('Отвязать Telegram от этого аккаунта? Вход и уведомления через Telegram перестанут работать, пока вы не подключите его снова.')) return;
     try {
         setTelegramLinkBusy(true, 'Отвязываем Telegram…');
