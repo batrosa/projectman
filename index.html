@@ -19,8 +19,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="projectman-icon-180.png?v=2">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="style.css?v=90.0" as="style">
-    <link rel="stylesheet" href="style.css?v=90.0">
+    <link rel="preload" href="style.css?v=91.0" as="style">
+    <link rel="stylesheet" href="style.css?v=91.0">
     <link rel="stylesheet" href="mobile-additions.css?v=18.0">
 
     <!-- Preconnect to external resources for faster loading -->
@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=105.0" defer></script>
+    <script src="script.js?v=106.0" defer></script>
 </head>
 
 <body>
@@ -973,6 +973,17 @@
                     <p id="project-desc">или создайте новый, чтобы начать работу</p>
                 </div>
                 <div class="actions">
+                    <!-- Фильтр задач по сотрудникам: чипы + поиск (как пикер
+                         исполнителей в модалке). Чисто клиентская фильтрация
+                         Канбана/Ганта/Календаря по assigneeIds. -->
+                    <div id="member-filter" class="member-filter" style="display: none;">
+                        <div id="member-filter-chips" class="member-filter-chips"></div>
+                        <div class="assignee-search-wrapper member-filter-search-wrapper">
+                            <input type="text" id="member-filter-search" class="assignee-search-input member-filter-input"
+                                placeholder="Поиск сотрудника…" autocomplete="off">
+                            <div id="member-filter-dropdown" class="assignee-dropdown"></div>
+                        </div>
+                    </div>
                     <button id="task-archive-btn" class="secondary-btn" style="display: none;" title="Архив завершённых задач">
                         <i class="fa-solid fa-box-archive"></i> <span>Архив задач</span>
                         <span id="task-archive-count" class="task-archive-count">0</span>

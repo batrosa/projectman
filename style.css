@@ -9404,3 +9404,57 @@ body.light-mode .gantt-container {
         font-size: 0.8rem;
     }
 }
+
+/* Фильтр задач по сотрудникам (панель в шапке проекта): чипы + поиск,
+   стиль как у пикера исполнителей в модалке задачи */
+.member-filter {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    max-width: 420px;
+}
+
+.member-filter-chips {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.member-filter-chip {
+    font-size: 0.8rem;
+}
+
+.member-filter-search-wrapper {
+    position: relative;
+    width: 180px;
+}
+
+.member-filter-input {
+    width: 100%;
+    /* Той же толщины/высоты, что соседние кнопки .secondary-btn: у кнопок
+       контент (иконка+бейдж) выше текстовой строки, поэтому паддингами 48px
+       не добрать — высота задана явно. */
+    height: 48px;
+    padding: 0 0.9rem;
+    font-size: 0.9rem;
+    border-radius: var(--radius);
+}
+
+.member-filter .assignee-dropdown {
+    min-width: 260px;
+    right: 0;
+    left: auto;
+}
+
+@media (max-width: 900px) {
+    .member-filter {
+        max-width: 100%;
+        order: 10;
+    }
+
+    .member-filter-search-wrapper {
+        width: 150px;
+    }
+}

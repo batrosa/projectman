@@ -2127,7 +2127,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.26'; // Revert unlink lock
+    const CURRENT_VERSION = '6.27'; // Фильтр задач по сотрудникам
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2416,6 +2416,7 @@ function generateId() {
 function selectProject(id) {
     state.activeProjectId = id;
     state.boardView = 'assigned'; // Always open "Assigned" first
+    resetMemberFilter(); // фильтр по сотрудникам — в рамках одного проекта
     state.ganttYear = new Date().getFullYear();
     state.ganttMonth = null; // Gantt always opens on the current year
     renderProjects(); // To update active class
@@ -3054,13 +3055,15 @@ function renderBoard() {
     }
     if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'inline-flex';
     if (elements.taskArchiveBtn) elements.taskArchiveBtn.style.display = 'inline-flex';
+    const memberFilterEl = document.getElementById('member-filter');
+    if (memberFilterEl) memberFilterEl.style.display = 'flex';
 
     // Clear lists
     if (elements.listAssigned) elements.listAssigned.innerHTML = '';
     elements.listInProgress.innerHTML = '';
     if (elements.listReview) elements.listReview.innerHTML = '';
 
-    const projectTasks = state.tasks.filter(t => t.projectId === activeProject.id);
+    const projectTasks = state.tasks.filter(t => t.projectId === activeProject.id && taskMatchesMemberFilter(t));
 
     // Sort: In-progress tasks by deadline (closest first)
     projectTasks.sort((a, b) => {
@@ -5039,6 +5042,7 @@ function renderGantt() {
     // --- collect chart items: bar = createdAt .. deadline ---
     const projectTasks = state.tasks.filter(t =>
         t.projectId === state.activeProjectId && boardViewForTask(t) !== 'done'
+        && taskMatchesMemberFilter(t)
     );
     const items = [];
     let noDeadlineCount = 0;
@@ -5379,6 +5383,9 @@ function closeModalElement(modal) {
 function setupEventListeners() {
     // Organization event listeners
     setupOrgEventListeners();
+
+    // Панель фильтра задач по сотрудникам (над доской)
+    initMemberFilter();
 
     // Name-setup (post-registration) screen
     const nameSetupForm = document.getElementById('name-setup-form');
@@ -8250,6 +8257,148 @@ function setSelectedCoCreators(task) {
     renderSelectedCoCreators();
 }
 
+// ========== ФИЛЬТР ЗАДАЧ ПО СОТРУДНИКАМ (панель над доской) ==========
+// Чисто клиентская фильтрация уже загруженных задач активного проекта:
+// применяется в Канбане, Ганте и Календаре. Пустой фильтр = показать всё.
+let memberFilter = []; // [{ id, name }]
+
+function taskMatchesMemberFilter(task) {
+    if (memberFilter.length === 0) return true;
+    const ids = Array.isArray(task?.assigneeIds) ? task.assigneeIds : [];
+    if (memberFilter.some(member => member.id && ids.includes(member.id))) return true;
+    // Легаси-задачи без assigneeIds: сопоставление по имени исполнителя
+    if (ids.length === 0 && task?.assignee) {
+        const names = String(task.assignee).split(',').map(n => n.trim());
+        return memberFilter.some(member => names.includes(member.name));
+    }
+    return false;
+}
+
+function memberFilterDisplayName(user) {
+    let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!fullName && user.displayName) fullName = user.displayName;
+    if (!fullName) fullName = user.email || 'Без имени';
+    return fullName;
+}
+
+function initMemberFilter() {
+    const input = document.getElementById('member-filter-search');
+    const dropdown = document.getElementById('member-filter-dropdown');
+    if (!input || !dropdown) return;
+    input.addEventListener('input', handleMemberFilterSearch);
+    input.addEventListener('focus', handleMemberFilterSearch);
+    input.addEventListener('blur', () => {
+        setTimeout(() => dropdown.classList.remove('active'), 200);
+    });
+    document.addEventListener('click', (e) => {
+        const wrapper = document.querySelector('.member-filter-search-wrapper');
+        if (dropdown && wrapper && !wrapper.contains(e.target)) {
+            dropdown.classList.remove('active');
+        }
+    });
+}
+
+function handleMemberFilterSearch() {
+    const input = document.getElementById('member-filter-search');
+    const dropdown = document.getElementById('member-filter-dropdown');
+    if (!input || !dropdown) return;
+    const query = input.value.toLowerCase().trim();
+
+    const candidates = state.users.filter(user => {
+        if (state.activeProjectId && !userHasProjectAccess(user, state.activeProjectId)) return false;
+        if (memberFilter.some(member => member.id === user.id)) return false;
+        const fullName = memberFilterDisplayName(user).toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        if (!query) return true;
+        return fullName.includes(query) || email.includes(query);
+    });
+
+    dropdown.innerHTML = '';
+    if (candidates.length === 0) {
+        dropdown.innerHTML = '<div class="assignee-dropdown-empty">Не найдено</div>';
+    } else {
+        candidates.forEach(user => {
+            const fullName = memberFilterDisplayName(user);
+            const initials = fullName.split(' ').map(n => n[0] || '').join('').toUpperCase().substring(0, 2);
+            const avatarHtml = user.profilePhotoUrl
+                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+                : `<div class="assignee-dropdown-avatar">${initials}</div>`;
+            const item = document.createElement('div');
+            item.className = 'assignee-dropdown-item';
+            item.innerHTML = `${avatarHtml}
+                <div class="assignee-dropdown-info">
+                    <div class="assignee-dropdown-name">${escapeHtml(fullName)}</div>
+                    <div class="assignee-dropdown-email">${escapeHtml(user.email || '')}</div>
+                </div>`;
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                memberFilter.push({ id: user.id, name: fullName });
+                input.value = '';
+                dropdown.classList.remove('active');
+                renderMemberFilterChips();
+                renderBoard();
+            });
+            dropdown.appendChild(item);
+        });
+    }
+    dropdown.classList.add('active');
+}
+
+function renderMemberFilterChips() {
+    const container = document.getElementById('member-filter-chips');
+    if (!container) return;
+    container.innerHTML = '';
+    memberFilter.forEach((member, index) => {
+        const user = state.users.find(u => u.id === member.id);
+        const initials = (member.name || '?').split(' ').map(n => n[0] || '').join('').toUpperCase().substring(0, 2);
+
+        const chip = document.createElement('div');
+        chip.className = 'assignee-chip member-filter-chip';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'assignee-chip-avatar';
+        if (user?.profilePhotoUrl) {
+            avatar.style.overflow = 'hidden';
+            const img = document.createElement('img');
+            img.src = sanitizeAttachmentUrl(user.profilePhotoUrl);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
+            avatar.appendChild(img);
+        } else {
+            avatar.textContent = initials;
+        }
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = member.name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'assignee-chip-remove';
+        removeBtn.setAttribute('aria-label', 'Снять фильтр по сотруднику');
+        const xIcon = document.createElement('i');
+        xIcon.className = 'fa-solid fa-xmark';
+        removeBtn.appendChild(xIcon);
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            memberFilter.splice(index, 1);
+            renderMemberFilterChips();
+            renderBoard();
+        });
+
+        chip.appendChild(avatar);
+        chip.appendChild(nameSpan);
+        chip.appendChild(removeBtn);
+        container.appendChild(chip);
+    });
+}
+
+// Сброс фильтра (при смене проекта — чтобы не удивлять «пустой» доской)
+function resetMemberFilter() {
+    if (memberFilter.length === 0) return;
+    memberFilter = [];
+    renderMemberFilterChips();
+}
+
 // Является ли текущий пользователь доп. постановщиком задачи
 function isCurrentUserCoCreator(task) {
     const uid = state.currentUser?.uid;
@@ -10359,7 +10508,7 @@ function renderCalendar() {
     // проекта из того же живого снапшота state.tasks. Собственный слушатель по
     // всем проектам больше не нужен — renderBoard() вызывает renderCalendar()
     // на каждом обновлении задач.
-    calendarState.tasks = Array.isArray(state.tasks) ? state.tasks : [];
+    calendarState.tasks = (Array.isArray(state.tasks) ? state.tasks : []).filter(taskMatchesMemberFilter);
     // Открытая модалка «Задачи дня» обновляется вместе со снапшотом.
     if (calendarState.openDayDate) renderDayTasks(calendarState.openDayDate);
 
