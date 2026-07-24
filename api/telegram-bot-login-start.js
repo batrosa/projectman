@@ -41,7 +41,9 @@ export default async function handler(request, response) {
         return response.status(404).json({ ok: false, error: "User profile was not found" });
       }
       const user = userDoc.data() || {};
-      if (user.telegramId || user.telegramChatId || user.authProvider === "telegram") {
+      if (user.telegramId || user.telegramChatId
+        || user.authProvider === "telegram"
+        || (Array.isArray(user.authProviders) && user.authProviders.includes("telegram"))) {
         return response.status(409).json({
           ok: false,
           status: "already_linked",

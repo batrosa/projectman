@@ -57,6 +57,27 @@ describe("deterministicAssignmentProposal (страховка назначите
     expect(deterministicAssignmentProposal("поставь задачу проверить договор", users)).toBe(null);
     expect(deterministicAssignmentProposal("", users)).toBe(null);
   });
+
+  it("кавычки в названии и «срок завтра» разбираются (прод-кейс «тест»)", () => {
+    const rescue = deterministicAssignmentProposal(
+      'создай задачу тэко исаеву "тест" срок завтра', users, "2026-07-24");
+    expect(rescue).toMatchObject({ title: "Тест", assigneeName: "Тэко Исаев", deadline: "2026-07-25" });
+  });
+
+  it("тёзки → { ambiguous } со списком кандидатов, а уточнение по email решает", () => {
+    const twins = [
+      { id: "u-cio", displayName: "Вячеслав Гурьев", email: "guryev.cio@gmail.com" },
+      { id: "u-star", displayName: "Вячеслав Гурьев", email: "stargyrev@gmail.com" },
+    ];
+    const ambiguous = deterministicAssignmentProposal(
+      'создай задачу вячеславу гурьеву "тест" срок завтра', twins, "2026-07-24");
+    expect(ambiguous.ambiguous.options).toHaveLength(2);
+
+    const resolved = deterministicAssignmentProposal(
+      'Исходное поручение: создай задачу вячеславу гурьеву "тест" срок завтра\n- guryev',
+      twins, "2026-07-24");
+    expect(resolved).toMatchObject({ title: "Тест", assigneeName: "Вячеслав Гурьев", deadline: "2026-07-25" });
+  });
 });
 
 describe("анафора на показанный список («поставь ему все эти задачи»)", () => {
@@ -2106,7 +2127,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(fetchJsonWithTimeout).not.toHaveBeenCalled();
   });
 
-  it("sends the real ProjectMan capability map to the model before answering control-workflow questions", async () => {
+  it("sends the real ProjectSfera capability map to the model before answering control-workflow questions", async () => {
     state.db = makeFakeDb({
       userDoc: { organizationId: "org-1", orgRole: "owner" },
       orgUsers: [
@@ -2117,7 +2138,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
       filesByProject: {},
     });
     const res = mockResponse();
-    await handler(makeRequest({ message: "как контролить Абрау в ProjectMan?" }), res);
+    await handler(makeRequest({ message: "как контролить Абрау в ProjectSfera?" }), res);
 
     expect(res.statusCode).toBe(200);
     expect(fetchJsonWithTimeout).toHaveBeenCalledTimes(1);
@@ -2125,7 +2146,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     const payload = JSON.parse(options.body);
     const systemPrompt = payload.messages[0].content;
 
-    expect(systemPrompt).toContain("Карта реального функционала ProjectMan");
+    expect(systemPrompt).toContain("Карта реального функционала ProjectSfera");
     expect(systemPrompt).toContain("Личный кабинет");
     expect(systemPrompt).toContain("XP");
     expect(systemPrompt).toContain("База 10 XP");
@@ -2137,7 +2158,7 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(systemPrompt).toContain("переключатель «Канбан / Гант»");
     expect(systemPrompt).toContain("Задачи БЕЗ дедлайна на Ганте не отображаются");
     expect(systemPrompt).toContain("Календарь — третий вид рабочей области проекта");
-    expect(systemPrompt).toContain("В ProjectMan НЕТ");
+    expect(systemPrompt).toContain("В ProjectSfera НЕТ");
     expect(systemPrompt).toContain("конструктора отчётов/отчёта");
     expect(systemPrompt).toContain("Outlook или Google Calendar");
     expect(systemPrompt).toContain("Если пользователь просит функцию, которой нет");
@@ -2543,11 +2564,11 @@ describe("POST /api/agent-chat — Firestore error handling and parallelization"
     expect(res.statusCode).toBe(200);
     expect(res.body.taskProposal.tasks[0]).toMatchObject({
       ok: false,
-      reason: "ответственный не найден среди участников ProjectMan",
+      reason: "ответственный не найден среди участников ProjectSfera",
     });
     const [, options] = fetchJsonWithTimeout.mock.calls[0];
     const payload = JSON.parse(options.body);
-    expect(payload.messages[1].content).toContain("Участники ProjectMan для сопоставления ответственных: нет участников");
+    expect(payload.messages[1].content).toContain("Участники ProjectSfera для сопоставления ответственных: нет участников");
   });
 
   it("continues a text task creation flow after the user only clarifies the project", async () => {

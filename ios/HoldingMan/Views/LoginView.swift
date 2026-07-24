@@ -71,7 +71,7 @@ struct LoginView: View {
             BrandLogoView(size: 78)
 
             VStack(spacing: 5) {
-                Text("ProjectMan")
+                Text("ProjectSfera")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
                     .foregroundStyle(Theme.textPrimary)
                 Text(auth.pendingVerificationEmail == nil

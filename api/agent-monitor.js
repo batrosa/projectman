@@ -420,7 +420,7 @@ export default async function handler(request, response) {
       projectId: message.projectId,
       organizationId: message.organizationId,
       taskCollection: message.taskCollection,
-      linkToProjectMan: true,
+      linkToProjectSfera: true,
     })));
     results.forEach((result, index) => {
       const value = result.status === "fulfilled" ? result.value : null;
@@ -444,7 +444,7 @@ export default async function handler(request, response) {
       return {
         uid: first.uid,
         payload: {
-          title: PUSH_TITLES[first.type] || "ProjectMan",
+          title: PUSH_TITLES[first.type] || "ProjectSfera",
           body: first.text,
           data: { taskId: first.taskId, projectId: first.projectId, taskCollection: first.taskCollection },
         },

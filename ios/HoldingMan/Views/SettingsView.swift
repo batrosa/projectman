@@ -7,6 +7,14 @@ struct SettingsView: View {
     @State private var confirmLogout = false
     @State private var showOrgScreen = false
     @State private var showNameEditor = false
+    @State private var telegramBusy = false
+    @State private var confirmTelegramUnlink = false
+    @State private var accountDeletePreview: ApiClient.AccountDeletionPreview?
+    @State private var showDeleteWarning = false
+    @State private var showDeletePhrase = false
+    @State private var deletePhrase = ""
+    @State private var destructiveBusy = false
+    @State private var settingsError: String?
 
     private var appearance: Appearance {
         get { Appearance(rawValue: appearanceRaw) ?? .system }
@@ -36,6 +44,7 @@ struct SettingsView: View {
 
                     if let user = appState.user {
                         loginMethodCard(user)
+                        telegramAccountRow(user)
                     }
 
                     if appState.user?.orgRole == "owner" || appState.user?.orgRole == "admin" {
@@ -61,6 +70,35 @@ struct SettingsView: View {
                         )
                     }
                     .buttonStyle(PressableStyle())
+
+                    if let settingsError {
+                        Text(settingsError)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.danger)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    Button {
+                        prepareAccountDeletion()
+                    } label: {
+                        HStack(spacing: 10) {
+                            if destructiveBusy {
+                                ProgressView().tint(Theme.danger)
+                            } else {
+                                Image(systemName: "person.crop.circle.badge.xmark")
+                            }
+                            Text("Удалить аккаунт")
+                                .font(.headline.weight(.semibold))
+                        }
+                        .foregroundStyle(Theme.danger)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Theme.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    }
+                    .buttonStyle(PressableStyle())
+                    .disabled(destructiveBusy)
 
                     Button {
                         confirmLogout = true
@@ -93,6 +131,34 @@ struct SettingsView: View {
                 if let user = appState.user {
                     EditProfileNameView(user: user)
                 }
+            }
+            .confirmationDialog("Отвязать Telegram?", isPresented: $confirmTelegramUnlink, titleVisibility: .visible) {
+                Button("Отвязать", role: .destructive) { unlinkTelegram() }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Уведомления и вход через Telegram перестанут работать, пока вы не подключите его снова.")
+            }
+            .alert("Удалить аккаунт?", isPresented: $showDeleteWarning) {
+                Button("Продолжить", role: .destructive) {
+                    deletePhrase = ""
+                    DispatchQueue.main.async { showDeletePhrase = true }
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text(accountDeleteWarning)
+            }
+            .alert("Второе подтверждение", isPresented: $showDeletePhrase) {
+                TextField("УДАЛИТЬ АККАУНТ", text: $deletePhrase)
+                Button("Удалить навсегда", role: .destructive) {
+                    if deletePhrase == "УДАЛИТЬ АККАУНТ" {
+                        deleteAccount()
+                    } else {
+                        settingsError = "Фраза не совпала. Аккаунт не удалён."
+                    }
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Введите точно: УДАЛИТЬ АККАУНТ")
             }
         }
     }
@@ -277,6 +343,110 @@ struct SettingsView: View {
         .card()
     }
 
+    private func telegramAccountRow(_ user: UserDoc) -> some View {
+        let linked = user.telegramId != nil || user.authProviders.contains("telegram") || user.authProvider == "telegram"
+        return Button {
+            if linked {
+                confirmTelegramUnlink = true
+            } else {
+                linkTelegram()
+            }
+        } label: {
+            settingsRow(
+                icon: linked ? "link.badge.minus" : "paperplane.fill",
+                iconColor: Color(hex: 0x229ED9),
+                title: linked ? "Отвязать Telegram" : "Подключить Telegram",
+                subtitle: linked
+                    ? (user.telegramUsername.map { "@\($0) · подключён к аккаунту" } ?? "Telegram подключён к аккаунту")
+                    : "Дополнительный вход и канал уведомлений"
+            )
+            .overlay(alignment: .trailing) {
+                if telegramBusy {
+                    ProgressView().padding(.trailing, 14)
+                }
+            }
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(telegramBusy)
+    }
+
+    private var accountDeleteWarning: String {
+        guard let preview = accountDeletePreview else {
+            return "Аккаунт и персональные данные будут удалены без возможности восстановления."
+        }
+        if preview.ownedOrganizations > 0 {
+            return "Вы владелец \(preview.ownedOrganizations) орг. Вместе с аккаунтом будут удалены \(preview.projects) проектов, все задачи, участники и файлы этих организаций. Действие необратимо."
+        }
+        return "Аккаунт и персональные данные будут удалены без возможности восстановления."
+    }
+
+    private func prepareAccountDeletion() {
+        guard !destructiveBusy else { return }
+        destructiveBusy = true
+        settingsError = nil
+        Task {
+            defer { destructiveBusy = false }
+            do {
+                accountDeletePreview = try await ApiClient.accountDeletionPreview()
+                showDeleteWarning = true
+            } catch {
+                settingsError = error.localizedDescription
+            }
+        }
+    }
+
+    private func deleteAccount() {
+        guard !destructiveBusy else { return }
+        destructiveBusy = true
+        settingsError = nil
+        let ownsOrganizations = (accountDeletePreview?.ownedOrganizations ?? 0) > 0
+        Task {
+            defer { destructiveBusy = false }
+            do {
+                try await ApiClient.deleteAccount(confirmOwnedOrganizations: ownsOrganizations)
+                appState.signOut()
+            } catch {
+                settingsError = error.localizedDescription
+            }
+        }
+    }
+
+    private func unlinkTelegram() {
+        guard !telegramBusy else { return }
+        telegramBusy = true
+        settingsError = nil
+        Task {
+            defer { telegramBusy = false }
+            do {
+                try await ApiClient.unlinkTelegram()
+            } catch {
+                settingsError = error.localizedDescription
+            }
+        }
+    }
+
+    private func linkTelegram() {
+        guard !telegramBusy else { return }
+        telegramBusy = true
+        settingsError = nil
+        Task {
+            defer { telegramBusy = false }
+            do {
+                let start = try await ApiClient.startTelegramBotLink()
+                await UIApplication.shared.open(start.botUrl)
+                var delay: UInt64 = 500_000_000
+                while Date() < start.expiresAt {
+                    try? await Task.sleep(nanoseconds: delay)
+                    if try await ApiClient.pollTelegramBotLink(code: start.code) { return }
+                    delay = min(delay + 500_000_000, 2_000_000_000)
+                }
+                settingsError = "Ссылка Telegram устарела. Повторите подключение."
+            } catch {
+                settingsError = error.localizedDescription
+            }
+        }
+    }
+
     private func settingsRow(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {
         HStack(spacing: 12) {
             ZStack {
@@ -409,8 +579,8 @@ private struct OrganizationInviteCard: View {
                     if let inviteURL {
                         ShareLink(
                             item: inviteURL,
-                            subject: Text("Приглашение в ProjectMan"),
-                            message: Text("Присоединяйтесь в ProjectMan к \(resolvedOrganizationName). Код организации: \(inviteCode)")
+                            subject: Text("Приглашение в ProjectSfera"),
+                            message: Text("Присоединяйтесь в ProjectSfera к \(resolvedOrganizationName). Код организации: \(inviteCode)")
                         ) {
                             Label("Поделиться", systemImage: "square.and.arrow.up")
                         }

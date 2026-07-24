@@ -179,7 +179,7 @@ export default async function handler(request, response) {
     }
 
     // Мобильный push + email для подходящего подтверждённого аккаунта. Оба канала fail-open.
-    const notificationTitle = eventType ? TASK_EVENT_TITLES[eventType] : 'ProjectMan';
+    const notificationTitle = eventType ? TASK_EVENT_TITLES[eventType] : 'ProjectSfera';
     const [pushResult, emailResult] = await Promise.allSettled([
         sendPushToUser(recipientDoc.id, {
             title: notificationTitle,
@@ -228,7 +228,7 @@ export default async function handler(request, response) {
         projectId,
         organizationId: callerOrgId,
         taskCollection,
-        linkToProjectMan: true,
+        linkToProjectSfera: true,
     });
 
     if (result.ok) {

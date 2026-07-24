@@ -45,6 +45,9 @@ struct UserDoc {
     var firstName: String
     var lastName: String
     var authProvider: String
+    var authProviders: [String] = []
+    var telegramId: String? = nil
+    var telegramUsername: String? = nil
     var profileCompleted: Bool
     var organizationId: String?
     var orgRole: String // owner / admin / moderator / employee
@@ -91,7 +94,7 @@ struct UserDoc {
         case "google.com": return "Google"
         case "password": return "Email"
         case "telegram": return "Telegram"
-        default: return "ProjectMan"
+        default: return "ProjectSfera"
         }
     }
 
@@ -110,6 +113,9 @@ struct UserDoc {
             firstName: data["firstName"] as? String ?? "",
             lastName: data["lastName"] as? String ?? "",
             authProvider: data["authProvider"] as? String ?? "",
+            authProviders: data["authProviders"] as? [String] ?? [data["authProvider"] as? String].compactMap { $0 },
+            telegramId: data["telegramId"] as? String,
+            telegramUsername: data["telegramUsername"] as? String,
             profileCompleted: data["profileCompleted"] as? Bool ?? false,
             organizationId: data["organizationId"] as? String,
             orgRole: data["orgRole"] as? String ?? "employee",

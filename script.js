@@ -730,7 +730,12 @@ async function callOrgApi(action, payload = {}) {
         body: JSON.stringify({ action, ...payload }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || 'Ошибка сервера');
+    if (!response.ok) {
+        const error = new Error(result.error || 'Ошибка сервера');
+        error.code = result.code || '';
+        error.details = result;
+        throw error;
+    }
     return result;
 }
 
@@ -1153,7 +1158,7 @@ function captureInviteCodeFromUrl() {
         }
     }
 
-    // Remove only ProjectMan routing params. Other query parameters may belong
+    // Remove only ProjectSfera routing params. Other query parameters may belong
     // to an auth provider and must survive until Firebase consumes them.
     if (inviteCode || taskId || projectId || organizationId || taskCollection) {
         const cleanUrl = new URL(window.location.href);
@@ -1441,8 +1446,8 @@ function setupOrgEventListeners() {
             const name = state.organization?.name || 'организации';
             const inviteUrl = `${window.location.origin}?invite=${code}`;
             const shareData = {
-                title: 'Приглашение в ProjectMan',
-                text: `Присоединяйтесь к "${name}" в ProjectMan!\nКод: ${code}`,
+                title: 'Приглашение в ProjectSfera',
+                text: `Присоединяйтесь к "${name}" в ProjectSfera!\nКод: ${code}`,
                 url: inviteUrl
             };
 
@@ -1675,6 +1680,13 @@ function canManageTasks() {
     return ['owner', 'admin', 'moderator'].includes(state.orgRole);
 }
 
+// Создавать задачи может ЛЮБОЙ участник, включая исполнителя (employee):
+// исполнитель получает права «модератора» в рамках СВОИХ созданных задач —
+// см. canActAsTaskCreator(). Reader остаётся только-чтение.
+function canCreateTasks() {
+    return ['owner', 'admin', 'moderator', 'employee'].includes(state.orgRole);
+}
+
 function canAccessAdmin() {
     return ['owner', 'admin'].includes(state.orgRole);
 }
@@ -1754,8 +1766,12 @@ function applyRoleRestrictions() {
     // Add current role class
     document.body.classList.add(`role-${role}`);
 
-    // read-only for employees (can only view and complete own tasks)
-    if (role === 'employee' || role === 'reader') {
+    // read-only остаётся только для reader. Исполнитель (employee) больше НЕ
+    // read-only: он создаёт задачи и полностью управляет СВОИМИ (создатель/
+    // доп. постановщик — canActAsTaskCreator); чужие задачи для него
+    // по-прежнему только исполнение (кнопки edit/delete на чужих скрыты
+    // точечной проверкой, а сервер и правила Firestore дублируют запрет).
+    if (role === 'reader') {
         document.body.classList.add('read-only');
     }
 
@@ -1789,10 +1805,11 @@ function applyRoleRestrictions() {
         addProjectBtn.style.display = canManageProjects() ? 'flex' : 'none';
     }
 
-    // Show/hide add task button (owner, admin, moderator)
+    // Show/hide add task button — создавать задачи может любой участник,
+    // включая исполнителя (свои задачи), кроме reader
     const addTaskBtn = document.getElementById('add-task-btn');
     if (addTaskBtn) {
-        addTaskBtn.style.display = canManageTasks() ? 'flex' : 'none';
+        addTaskBtn.style.display = canCreateTasks() ? 'flex' : 'none';
     }
 
     // Show/hide delete project button (owner, admin only)
@@ -2110,7 +2127,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.21'; // Google Identity Services sign-in
+    const CURRENT_VERSION = '6.27'; // Фильтр задач по сотрудникам
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2399,6 +2416,7 @@ function generateId() {
 function selectProject(id) {
     state.activeProjectId = id;
     state.boardView = 'assigned'; // Always open "Assigned" first
+    resetMemberFilter(); // фильтр по сотрудникам — в рамках одного проекта
     state.ganttYear = new Date().getFullYear();
     state.ganttMonth = null; // Gantt always opens on the current year
     renderProjects(); // To update active class
@@ -2690,8 +2708,9 @@ async function handleProjectFileSelect(event) {
 }
 
 async function deleteTask(id) {
-    // Check permission - owner, admin, or moderator can delete tasks
-    if (!canManageTasks()) {
+    // Менеджер — любую; исполнитель/доп. постановщик — только СВОЮ задачу
+    const taskForCheck = findLoadedTask(id);
+    if (!canActAsTaskCreator(taskForCheck || {})) {
         alert('Недостаточно прав для удаления задачи');
         return;
     }
@@ -2792,8 +2811,8 @@ function updateProject(id, { name, description, deadline }) {
 }
 
 function updateTask(id, data) {
-    // Check permission - owner, admin, or moderator can update tasks
-    if (!canManageTasks()) {
+    // Менеджер — любую; исполнитель/доп. постановщик — только СВОЮ задачу
+    if (!canActAsTaskCreator(findLoadedTask(id) || {})) {
         alert('Недостаточно прав для редактирования задачи');
         return Promise.resolve();
     }
@@ -3021,7 +3040,7 @@ function renderBoard() {
         elements.projectDesc.textContent = descText;
     }
 
-    elements.addTaskBtn.disabled = !canManageTasks();
+    elements.addTaskBtn.disabled = !canCreateTasks();
     elements.deleteProjectBtn.style.display = canManageProjects() ? 'flex' : 'none';
     elements.deleteProjectBtn.onclick = canManageProjects() ? () => {
         playClickSound();
@@ -3036,13 +3055,15 @@ function renderBoard() {
     }
     if (elements.projectFilesBtn) elements.projectFilesBtn.style.display = 'inline-flex';
     if (elements.taskArchiveBtn) elements.taskArchiveBtn.style.display = 'inline-flex';
+    const memberFilterEl = document.getElementById('member-filter');
+    if (memberFilterEl) memberFilterEl.style.display = 'flex';
 
     // Clear lists
     if (elements.listAssigned) elements.listAssigned.innerHTML = '';
     elements.listInProgress.innerHTML = '';
     if (elements.listReview) elements.listReview.innerHTML = '';
 
-    const projectTasks = state.tasks.filter(t => t.projectId === activeProject.id);
+    const projectTasks = state.tasks.filter(t => t.projectId === activeProject.id && taskMatchesMemberFilter(t));
 
     // Sort: In-progress tasks by deadline (closest first)
     projectTasks.sort((a, b) => {
@@ -3535,7 +3556,7 @@ function createTaskCard(task) {
 
     // Check interactions for badge cursor style
     let canInteract = false;
-    const canManage = canManageTasks(); // owner, admin, moderator
+    const canManage = canActAsTaskCreator(task); // менеджер / создатель / доп. постановщик
 
     // Check assignee logic for interactivity check (uid-first; see helper)
     const isAssignee = isCurrentUserAssignee(task);
@@ -3778,7 +3799,10 @@ function createTaskCard(task) {
         toolbarRight.appendChild(deadlineRequestBtn);
     }
 
-    if (canManageTasks()) {
+    // Редактирование/удаление: менеджер — любую задачу; исполнитель — только
+    // СОЗДАННУЮ ИМ; доп. постановщик — свою задачу. Чужие задачи для
+    // исполнителя — только исполнение (кнопок нет).
+    if (canActAsTaskCreator(task)) {
         toolbarRight.appendChild(editBtn);
         toolbarRight.appendChild(deleteBtn);
     }
@@ -5018,6 +5042,7 @@ function renderGantt() {
     // --- collect chart items: bar = createdAt .. deadline ---
     const projectTasks = state.tasks.filter(t =>
         t.projectId === state.activeProjectId && boardViewForTask(t) !== 'done'
+        && taskMatchesMemberFilter(t)
     );
     const items = [];
     let noDeadlineCount = 0;
@@ -5359,6 +5384,9 @@ function setupEventListeners() {
     // Organization event listeners
     setupOrgEventListeners();
 
+    // Панель фильтра задач по сотрудникам (над доской)
+    initMemberFilter();
+
     // Name-setup (post-registration) screen
     const nameSetupForm = document.getElementById('name-setup-form');
     if (nameSetupForm) nameSetupForm.addEventListener('submit', handleNameSetupSubmit);
@@ -5631,11 +5659,17 @@ function setupEventListeners() {
 
     if (elements.telegramLinkBtn) {
         elements.telegramLinkBtn.addEventListener('click', () => {
-            if (isTelegramLinked() || telegramLinkBusy) return;
+            if (telegramLinkBusy) return;
             playClickSound();
-            startTelegramLink();
+            if (isTelegramLinked()) unlinkTelegram();
+            else startTelegramLink();
         });
     }
+
+    document.getElementById('profile-delete-account')?.addEventListener('click', () => {
+        playClickSound();
+        deleteCurrentAccount();
+    });
 
     // Forms
     if (elements.projectForm && elements.projectModal) {
@@ -5707,8 +5741,9 @@ function setupEventListeners() {
     }
 
     async function createTask(title, assignee, deadline, status, assigneeEmail, description, isPrivate = false) {
-        // Check permission: owner, admin, or moderator can create tasks
-        if (!canManageTasks()) {
+        // Создавать задачи может любой участник (включая исполнителя —
+        // он получает права постановщика в рамках своей задачи); reader — нет.
+        if (!canCreateTasks()) {
             alert('❌ Недостаточно прав для создания задачи');
             return;
         }
@@ -5788,7 +5823,7 @@ function setupEventListeners() {
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
-Откройте ProjectMan для подробностей.`;
+Откройте ProjectSfera для подробностей.`;
                 sendTaskEventToUid(a.id, message, newTaskEvent);
             });
 
@@ -6358,20 +6393,20 @@ function updateTelegramLinkUI() {
     const button = elements.telegramLinkBtn;
     if (!button) return;
     const linked = isTelegramLinked();
-    button.disabled = linked || telegramLinkBusy;
-    button.classList.toggle('disabled', linked || telegramLinkBusy);
+    button.disabled = telegramLinkBusy;
+    button.classList.toggle('disabled', telegramLinkBusy);
     button.classList.toggle('telegram-connected', linked);
     button.classList.toggle('telegram-link-busy', telegramLinkBusy && !linked);
     button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
 
     if (linked) {
-        if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Telegram подключён';
+        if (elements.telegramLinkTitle) elements.telegramLinkTitle.textContent = 'Отвязать Telegram';
         if (elements.telegramLinkDesc) {
             elements.telegramLinkDesc.textContent = state.currentUser?.telegramUsername
-                ? `@${state.currentUser.telegramUsername} · уведомления включены`
-                : 'Дополнительный канал уведомлений включён';
+                ? `@${state.currentUser.telegramUsername} · подключён к аккаунту`
+                : 'Telegram подключён к этому аккаунту';
         }
-        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-circle-check';
+        if (elements.telegramLinkStatusIcon) elements.telegramLinkStatusIcon.className = 'fa-solid fa-link-slash';
         return;
     }
 
@@ -6385,6 +6420,56 @@ function updateTelegramLinkUI() {
         elements.telegramLinkStatusIcon.className = telegramLinkBusy
             ? 'fa-solid fa-spinner fa-spin'
             : 'fa-solid fa-chevron-right';
+    }
+}
+
+async function unlinkTelegram() {
+    if (!isTelegramLinked() || telegramLinkBusy) return;
+    if (!confirm('Отвязать Telegram от этого аккаунта? Вход и уведомления через Telegram перестанут работать, пока вы не подключите его снова.')) return;
+    try {
+        setTelegramLinkBusy(true, 'Отвязываем Telegram…');
+        const result = await callOrgApi('unlinkTelegram');
+        state.currentUser.telegramId = null;
+        state.currentUser.telegramChatId = null;
+        state.currentUser.telegramUsername = null;
+        state.currentUser.authProviders = Array.isArray(result.providers) ? result.providers : [];
+        state.currentUser.authProvider = result.providers?.[0] || state.currentUser.authProvider;
+        setTelegramLinkBusy(false);
+        updateTelegramLinkUI();
+        renderAuthProvider();
+        alert('Telegram отвязан. Теперь его можно подключить к другому аккаунту ProjectSfera.');
+    } catch (error) {
+        setTelegramLinkBusy(false);
+        alert(error.message || 'Не удалось отвязать Telegram.');
+    }
+}
+
+async function deleteCurrentAccount() {
+    const button = document.getElementById('profile-delete-account');
+    if (!auth?.currentUser || button?.disabled) return;
+    try {
+        if (button) button.disabled = true;
+        const preview = await callOrgApi('deleteAccountPreview');
+        const ownedWarning = preview.ownedOrganizations > 0
+            ? `\n\nВы владелец ${preview.ownedOrganizations} орг. Будут удалены также ${preview.projects} проектов, все задачи, участники и файлы этих организаций.`
+            : '';
+        if (!confirm(`Удалить аккаунт ProjectSfera без возможности восстановления?${ownedWarning}`)) return;
+        const phrase = prompt('Второе подтверждение. Введите точно: УДАЛИТЬ АККАУНТ');
+        if (phrase !== 'УДАЛИТЬ АККАУНТ') {
+            if (phrase !== null) alert('Фраза не совпала. Аккаунт не удалён.');
+            return;
+        }
+        await callOrgApi('deleteAccount', {
+            confirmation: phrase,
+            confirmOwnedOrganizations: preview.ownedOrganizations > 0,
+        });
+        try { await firebase.auth().signOut(); } catch {}
+        alert('Аккаунт и связанные с ним данные удалены.');
+        window.location.reload();
+    } catch (error) {
+        alert(error.message || 'Не удалось удалить аккаунт.');
+    } finally {
+        if (button) button.disabled = false;
     }
 }
 
@@ -6433,7 +6518,7 @@ async function startTelegramLink() {
     if (isTelegramLinked()) return;
     const currentUser = auth?.currentUser;
     if (!currentUser) {
-        alert('Сначала войдите в ProjectMan.');
+        alert('Сначала войдите в ProjectSfera.');
         return;
     }
 
@@ -6444,7 +6529,7 @@ async function startTelegramLink() {
         botWindow = window.open('', '_blank');
         if (botWindow) {
             botWindow.opener = null;
-            botWindow.document.title = 'ProjectMan Telegram';
+            botWindow.document.title = 'ProjectSfera Telegram';
         }
 
         const idToken = await currentUser.getIdToken();
@@ -6485,7 +6570,7 @@ async function pollTelegramLink(code, expiresAt, attemptId) {
     while (attemptId === telegramLinkAttempt && Date.now() < deadlineMs) {
         if (delayMs > 0) await wait(delayMs);
         const currentUser = auth?.currentUser;
-        if (!currentUser) throw new Error('Сессия ProjectMan завершена. Войдите снова.');
+        if (!currentUser) throw new Error('Сессия ProjectSfera завершена. Войдите снова.');
         const idToken = await currentUser.getIdToken();
         const res = await fetch('/api/telegram-bot-login-status', {
             method: 'POST',
@@ -6508,7 +6593,7 @@ async function pollTelegramLink(code, expiresAt, attemptId) {
             return;
         }
         throw new Error(data.status === 'conflict'
-            ? 'Этот Telegram уже подключён к другому аккаунту ProjectMan.'
+            ? 'Этот Telegram уже подключён к другому аккаунту ProjectSfera.'
             : data.error || 'Telegram-бот не подтвердил подключение.');
     }
 
@@ -6602,7 +6687,7 @@ window.startTelegramBotLogin = async function startTelegramBotLogin() {
         botWindow = window.open('', '_blank');
         if (botWindow) {
             botWindow.opener = null;
-            botWindow.document.title = 'ProjectMan Telegram';
+            botWindow.document.title = 'ProjectSfera Telegram';
         }
 
         const res = await fetch('/api/telegram-bot-login-start', { method: 'POST' });
@@ -6830,7 +6915,7 @@ async function startGoogleIdentityLogin() {
     try {
         if (!popup) {
             throw googleIdentityError(
-                'Браузер заблокировал окно Google. Разрешите всплывающие окна для ProjectMan.',
+                'Браузер заблокировал окно Google. Разрешите всплывающие окна для ProjectSfera.',
                 'auth/popup-blocked',
             );
         }
@@ -6895,7 +6980,7 @@ function handleFederatedAuthError(error) {
     console.error('Federated auth failed:', error);
     let message = 'Не удалось войти. Проверьте настройки входа и попробуйте снова.';
     if (error.code === 'auth/account-exists-with-different-credential') {
-        message = 'Аккаунт с этой почтой уже существует. Войдите способом, выбранным при регистрации.';
+        message = 'Этот аккаунт зарегистрирован через email и пароль. Войдите, введя email и пароль. Если вы не помните пароль, нажмите «Забыли пароль?».';
     } else if (error.code === 'auth/unauthorized-domain') {
         message = 'Этот домен не разрешён в настройках Firebase Authentication.';
     } else if (error.code === 'auth/operation-not-allowed') {
@@ -6926,7 +7011,7 @@ function renderAuthProvider() {
     const title = provider === 'apple.com' ? 'Apple'
         : provider === 'google.com' ? 'Google'
             : provider === 'password' ? 'Email'
-            : provider === 'telegram' ? 'Telegram' : 'ProjectMan';
+            : provider === 'telegram' ? 'Telegram' : 'ProjectSfera';
     const icon = document.getElementById('profile-auth-icon');
     const label = document.getElementById('profile-auth-provider');
     if (label) label.textContent = title;
@@ -6972,6 +7057,9 @@ async function loadUserRole(user) {
             state.currentUser.telegramId = userData.telegramId || null;
             state.currentUser.telegramUsername = userData.telegramUsername || null;
             state.currentUser.authProvider = userData.authProvider || null;
+            state.currentUser.authProviders = Array.isArray(userData.authProviders)
+                ? userData.authProviders
+                : [userData.authProvider].filter(Boolean);
             state.currentUser.profileCompleted = userData.profileCompleted === true;
 
             // Set state orgRole
@@ -7375,7 +7463,7 @@ function renderUsersList() {
             roleSelector = `
                 <select class="role-select" data-user-id="${user.id}" data-current-role="${userRole}">
                     ${isOwner ? `<option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>` : ''}
-                    <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
+                    ${userRole === 'moderator' ? `<option value="moderator" selected>Модератор</option>` : ''}
                     <option value="employee" ${userRole === 'employee' || userRole === 'reader' ? 'selected' : ''}>Исполнитель</option>
                 </select>
             `;
@@ -8169,6 +8257,148 @@ function setSelectedCoCreators(task) {
     renderSelectedCoCreators();
 }
 
+// ========== ФИЛЬТР ЗАДАЧ ПО СОТРУДНИКАМ (панель над доской) ==========
+// Чисто клиентская фильтрация уже загруженных задач активного проекта:
+// применяется в Канбане, Ганте и Календаре. Пустой фильтр = показать всё.
+let memberFilter = []; // [{ id, name }]
+
+function taskMatchesMemberFilter(task) {
+    if (memberFilter.length === 0) return true;
+    const ids = Array.isArray(task?.assigneeIds) ? task.assigneeIds : [];
+    if (memberFilter.some(member => member.id && ids.includes(member.id))) return true;
+    // Легаси-задачи без assigneeIds: сопоставление по имени исполнителя
+    if (ids.length === 0 && task?.assignee) {
+        const names = String(task.assignee).split(',').map(n => n.trim());
+        return memberFilter.some(member => names.includes(member.name));
+    }
+    return false;
+}
+
+function memberFilterDisplayName(user) {
+    let fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!fullName && user.displayName) fullName = user.displayName;
+    if (!fullName) fullName = user.email || 'Без имени';
+    return fullName;
+}
+
+function initMemberFilter() {
+    const input = document.getElementById('member-filter-search');
+    const dropdown = document.getElementById('member-filter-dropdown');
+    if (!input || !dropdown) return;
+    input.addEventListener('input', handleMemberFilterSearch);
+    input.addEventListener('focus', handleMemberFilterSearch);
+    input.addEventListener('blur', () => {
+        setTimeout(() => dropdown.classList.remove('active'), 200);
+    });
+    document.addEventListener('click', (e) => {
+        const wrapper = document.querySelector('.member-filter-search-wrapper');
+        if (dropdown && wrapper && !wrapper.contains(e.target)) {
+            dropdown.classList.remove('active');
+        }
+    });
+}
+
+function handleMemberFilterSearch() {
+    const input = document.getElementById('member-filter-search');
+    const dropdown = document.getElementById('member-filter-dropdown');
+    if (!input || !dropdown) return;
+    const query = input.value.toLowerCase().trim();
+
+    const candidates = state.users.filter(user => {
+        if (state.activeProjectId && !userHasProjectAccess(user, state.activeProjectId)) return false;
+        if (memberFilter.some(member => member.id === user.id)) return false;
+        const fullName = memberFilterDisplayName(user).toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        if (!query) return true;
+        return fullName.includes(query) || email.includes(query);
+    });
+
+    dropdown.innerHTML = '';
+    if (candidates.length === 0) {
+        dropdown.innerHTML = '<div class="assignee-dropdown-empty">Не найдено</div>';
+    } else {
+        candidates.forEach(user => {
+            const fullName = memberFilterDisplayName(user);
+            const initials = fullName.split(' ').map(n => n[0] || '').join('').toUpperCase().substring(0, 2);
+            const avatarHtml = user.profilePhotoUrl
+                ? `<div class="assignee-dropdown-avatar" style="overflow: hidden;"><img src="${escapeHtml(sanitizeAttachmentUrl(user.profilePhotoUrl))}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"></div>`
+                : `<div class="assignee-dropdown-avatar">${initials}</div>`;
+            const item = document.createElement('div');
+            item.className = 'assignee-dropdown-item';
+            item.innerHTML = `${avatarHtml}
+                <div class="assignee-dropdown-info">
+                    <div class="assignee-dropdown-name">${escapeHtml(fullName)}</div>
+                    <div class="assignee-dropdown-email">${escapeHtml(user.email || '')}</div>
+                </div>`;
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                memberFilter.push({ id: user.id, name: fullName });
+                input.value = '';
+                dropdown.classList.remove('active');
+                renderMemberFilterChips();
+                renderBoard();
+            });
+            dropdown.appendChild(item);
+        });
+    }
+    dropdown.classList.add('active');
+}
+
+function renderMemberFilterChips() {
+    const container = document.getElementById('member-filter-chips');
+    if (!container) return;
+    container.innerHTML = '';
+    memberFilter.forEach((member, index) => {
+        const user = state.users.find(u => u.id === member.id);
+        const initials = (member.name || '?').split(' ').map(n => n[0] || '').join('').toUpperCase().substring(0, 2);
+
+        const chip = document.createElement('div');
+        chip.className = 'assignee-chip member-filter-chip';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'assignee-chip-avatar';
+        if (user?.profilePhotoUrl) {
+            avatar.style.overflow = 'hidden';
+            const img = document.createElement('img');
+            img.src = sanitizeAttachmentUrl(user.profilePhotoUrl);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
+            avatar.appendChild(img);
+        } else {
+            avatar.textContent = initials;
+        }
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = member.name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'assignee-chip-remove';
+        removeBtn.setAttribute('aria-label', 'Снять фильтр по сотруднику');
+        const xIcon = document.createElement('i');
+        xIcon.className = 'fa-solid fa-xmark';
+        removeBtn.appendChild(xIcon);
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            memberFilter.splice(index, 1);
+            renderMemberFilterChips();
+            renderBoard();
+        });
+
+        chip.appendChild(avatar);
+        chip.appendChild(nameSpan);
+        chip.appendChild(removeBtn);
+        container.appendChild(chip);
+    });
+}
+
+// Сброс фильтра (при смене проекта — чтобы не удивлять «пустой» доской)
+function resetMemberFilter() {
+    if (memberFilter.length === 0) return;
+    memberFilter = [];
+    renderMemberFilterChips();
+}
+
 // Является ли текущий пользователь доп. постановщиком задачи
 function isCurrentUserCoCreator(task) {
     const uid = state.currentUser?.uid;
@@ -8177,8 +8407,13 @@ function isCurrentUserCoCreator(task) {
 
 // Право действовать как постановщик задачи: менеджер проекта (owner/admin/
 // moderator) ИЛИ доп. постановщик этой задачи (независимо от орг-роли).
+// Право «постановщика» на КОНКРЕТНУЮ задачу: менеджер (owner/admin/moderator)
+// — на любую; исполнитель — на СОЗДАННУЮ ИМ задачу; доп. постановщик — на
+// свою. Даёт: редактирование, удаление, принятие, возврат на доработку.
 function canActAsTaskCreator(task) {
-    return canManageTasks() || isCurrentUserCoCreator(task);
+    if (canManageTasks() || isCurrentUserCoCreator(task)) return true;
+    const uid = state.currentUser?.uid;
+    return Boolean(uid && task?.createdByUid && task.createdByUid === uid);
 }
 
 // ========== XP AND LEVEL SYSTEM ==========
@@ -8319,7 +8554,7 @@ async function sendNewTaskNotificationToAssignee(assignee, taskTitle, projectNam
 <b>Проект:</b> ${escapeHtmlForTelegram(projectName)}
 <b>Срок:</b> ${deadline ? formatDate(deadline) : 'Не указан'}
 
-Откройте ProjectMan для подробностей.`;
+Откройте ProjectSfera для подробностей.`;
 
     await sendTelegramNotification(chatId, message);
 }
@@ -10273,7 +10508,7 @@ function renderCalendar() {
     // проекта из того же живого снапшота state.tasks. Собственный слушатель по
     // всем проектам больше не нужен — renderBoard() вызывает renderCalendar()
     // на каждом обновлении задач.
-    calendarState.tasks = Array.isArray(state.tasks) ? state.tasks : [];
+    calendarState.tasks = (Array.isArray(state.tasks) ? state.tasks : []).filter(taskMatchesMemberFilter);
     // Открытая модалка «Задачи дня» обновляется вместе со снапшотом.
     if (calendarState.openDayDate) renderDayTasks(calendarState.openDayDate);
 

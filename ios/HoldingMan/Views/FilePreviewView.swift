@@ -124,7 +124,7 @@ private enum RemoteFilePreviewLoader {
         }
 
         let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ProjectManPreview", isDirectory: true)
+            .appendingPathComponent("ProjectSferaPreview", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let destination = folder.appendingPathComponent(safeFilename(file.name, remoteURL: remoteURL))

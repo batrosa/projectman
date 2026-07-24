@@ -288,17 +288,38 @@ service cloud.firestore {
         || (taskBelongsToMyOrgByProjectOrOrphanOrg() && canViewProject(resource.data.projectId));
 
       // Запись:
-      // - Управлять задачей (create/delete/полный update) может тот, кто может
-      //   управлять её проектом: owner/admin (всегда) или moderator, которому
-      //   проект доступен (canManageProject).
-      // - Reader/employee может лишь двигать статус своей задачи (carve-out ниже).
+      // - Менеджер проекта (owner/admin, moderator с доступом) — любые задачи.
+      // - ИСПОЛНИТЕЛЬ (employee) создаёт задачи в доступных проектах и
+      //   получает права постановщика на СОЗДАННЫЕ ИМ задачи: полный update
+      //   и delete (см. ветки createdByUid/coCreatorIds ниже). createdByUid
+      //   при создании обязан равняться auth.uid — владение не подделать.
+      // - Доп. постановщик (coCreatorIds) — те же права на эту задачу.
+      // - Reader — только чтение и движение статуса своей назначенной задачи.
       allow create: if isAdmin()
-        || (canManageProject(request.resource.data.projectId) && requestTaskOrgMatchesCurrentOrg());
-      allow delete: if isAdmin() || canManageProject(resource.data.projectId);
+        || (canManageProject(request.resource.data.projectId) && requestTaskOrgMatchesCurrentOrg())
+        || (request.auth != null
+            && hasOrgRole(request.resource.data.organizationId, ['owner', 'admin', 'moderator', 'employee'])
+            && canViewProject(request.resource.data.projectId)
+            && requestTaskOrgMatchesCurrentOrg()
+            && request.resource.data.createdByUid == request.auth.uid);
+      allow delete: if isAdmin() || canManageProject(resource.data.projectId)
+        || (request.auth != null
+            && taskBelongsToMyOrgByProjectOrOrphanOrg()
+            && (resource.data.createdByUid == request.auth.uid
+                || (resource.data.coCreatorIds is list && request.auth.uid in resource.data.coCreatorIds)));
       allow update: if isAdmin()
         || (canManageProject(resource.data.projectId)
             && request.resource.data.projectId == resource.data.projectId
             && requestTaskOrgPreservedOrCurrent())
+        // Создатель задачи или доп. постановщик: полное редактирование СВОЕЙ
+        // задачи (название, описание, исполнители, сроки, статусы, принятие,
+        // доработка) — но без передачи владения и переноса между проектами.
+        || (request.auth != null
+            && (resource.data.createdByUid == request.auth.uid
+                || (resource.data.coCreatorIds is list && request.auth.uid in resource.data.coCreatorIds))
+            && request.resource.data.projectId == resource.data.projectId
+            && requestTaskOrgPreservedOrCurrent()
+            && request.resource.data.createdByUid == resource.data.createdByUid)
         || (request.auth != null
             && canReaderWorkOnTask()
             && request.resource.data.projectId == resource.data.projectId
@@ -398,14 +419,25 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.createdByUid == request.auth.uid
         && hasValidPrivateTaskAudience(request.resource.data)
-        && canManageProject(request.resource.data.projectId)
+        && (
+          (hasProjectOrgRole(request.resource.data.projectId, ['employee'])
+            && canViewProject(request.resource.data.projectId))
+          || canManageProject(request.resource.data.projectId)
+        )
         && requestTaskOrgMatchesCurrentOrg();
 
       // The organization owner keeps the oversight exception; any other
-      // manager must also be an explicit task participant.
+      // manager must also be an explicit task participant. Employee creators
+      // and co-creators manage only private tasks they own/co-own.
       allow delete: if hasOrgRole(resource.data.organizationId, ['owner'])
         || (isPrivateTaskParticipant(resource.data)
-            && canManageProject(resource.data.projectId));
+            && (
+              resource.data.createdByUid == request.auth.uid
+              || (resource.data.coCreatorIds is list
+                  && request.auth.uid in resource.data.coCreatorIds)
+              || canManageProject(resource.data.projectId)
+            )
+            && isOrgMember(resource.data.organizationId));
 
       allow update: if (hasOrgRole(resource.data.organizationId, ['owner'])
           && request.resource.data.organizationId == resource.data.organizationId
@@ -414,12 +446,18 @@ service cloud.firestore {
           && hasValidPrivateTaskAudience(request.resource.data))
         || (
           isPrivateTaskParticipant(resource.data)
+          && (
+            resource.data.createdByUid == request.auth.uid
+            || (resource.data.coCreatorIds is list
+                && request.auth.uid in resource.data.coCreatorIds)
+            || canManageProject(resource.data.projectId)
+          )
           && isPrivateTaskParticipant(request.resource.data)
           && hasValidPrivateTaskAudience(request.resource.data)
           && request.resource.data.createdByUid == resource.data.createdByUid
           && request.resource.data.projectId == resource.data.projectId
           && requestTaskOrgPreservedOrCurrent()
-          && canManageProject(resource.data.projectId)
+          && isOrgMember(resource.data.organizationId)
         )
         || (request.auth != null
             && isPrivateTaskParticipant(resource.data)

@@ -1,4 +1,4 @@
-# ProjectMan repository instructions
+# ProjectSfera repository instructions
 
 ## Production safety: Vercel
 

@@ -1,4 +1,4 @@
-# ProjectMan SaaS Readiness
+# ProjectSfera SaaS Readiness
 
 Дата ревизии: 2026-07-02.
 
@@ -10,7 +10,7 @@
 | Аутентификация | Firebase Auth + Telegram login/bot login | `api/telegram-*.test.js` |
 | Организации и роли | `owner/admin/moderator/employee`, доступы по организации и проектам | `firestore-tests/*.rules.test.js` |
 | Firestore rules | Закрыты self-escalation, cross-tenant reads, client-side org create/delete, server-only поля | `npm run test:rules` |
-| ИИ-агент | Ограничен реальным функционалом ProjectMan и доступными проектами пользователя | `api/agent-chat.test.js` |
+| ИИ-агент | Ограничен реальным функционалом ProjectSfera и доступными проектами пользователя | `api/agent-chat.test.js` |
 | Файлы проекта | Серверная запись метаданных, лимит 10 МБ, допустимые расширения | `api/project-files.test.js` |
 | Telegram notifications | Требуют Firebase token, получатель должен быть в той же организации | `api/notify-telegram.test.js` |
 | XP/статистика | Начисление server-side, клиент не может сам себе записать XP/счётчики | `api/award-xp.test.js`, rules tests |

@@ -1,8 +1,9 @@
-import { adminDb } from "../lib/firebase-admin.js";
+import { adminAuth, adminDb } from "../lib/firebase-admin.js";
 import {
     TELEGRAM_LOGIN_SESSION_COLLECTION,
     isValidTelegramLoginCode,
 } from "../lib/telegram-bot-login.js";
+import { findTelegramOwnerUid, unlinkTelegramForUid } from "../lib/telegram-account.js";
 
 export default async function handler(req, res) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -55,20 +56,33 @@ export default async function handler(req, res) {
                     : { ok: false, reason: 'webhook_secret_missing' };
                 if (loginResult.ok) {
                     replyText = sessionMode === 'link'
-                        ? `✅ Подтверждение получено.\n\nВернитесь в ProjectMan — подключение Telegram завершится автоматически.`
-                        : `✅ Вход подтвержден.\n\nВернитесь в ProjectMan — окно входа завершится автоматически.`;
+                        ? `✅ Подтверждение получено.\n\nВернитесь в ProjectSfera — подключение Telegram завершится автоматически.`
+                        : `✅ Вход подтвержден.\n\nВернитесь в ProjectSfera — окно входа завершится автоматически.`;
                 } else {
                     const actionName = sessionMode === 'link' ? 'подключение' : 'вход';
                     replyText = loginResult.reason === 'mode_mismatch'
-                        ? `❌ Эта ссылка предназначена для другого действия. Вернитесь в ProjectMan и создайте новую ссылку.`
+                        ? `❌ Эта ссылка предназначена для другого действия. Вернитесь в ProjectSfera и создайте новую ссылку.`
                         : loginResult.reason === 'server'
                         ? `❌ Не удалось подтвердить ${actionName}: сервер временно недоступен. Попробуйте ещё раз.`
                         : loginResult.reason === 'webhook_secret_missing'
                             ? `❌ Вход через бота ещё не настроен на сервере. Сообщите администратору: нужен Telegram webhook secret.`
-                        : `❌ Ссылка устарела или уже использована.\n\nВернитесь в ProjectMan и повторите действие.`;
+                        : `❌ Ссылка устарела или уже использована.\n\nВернитесь в ProjectSfera и повторите действие.`;
+                }
+            } else if (/^\/UNLINK(?:@[A-Z0-9_]+)?$/i.test(rawText)) {
+                const unlinkResult = hasVerifiedWebhookSecret
+                    ? await unlinkTelegramFromBot(message.from?.id)
+                    : { ok: false, reason: 'webhook_secret_missing' };
+                if (unlinkResult.ok) {
+                    replyText = unlinkResult.alreadyUnlinked
+                        ? 'ℹ️ Этот Telegram уже не привязан к аккаунту ProjectSfera.'
+                        : '✅ Telegram отвязан.\n\nВойдите в нужный аккаунт ProjectSfera через email, Google или Apple и подключите Telegram в личном кабинете.';
+                } else if (unlinkResult.reason === 'last_provider') {
+                    replyText = '❌ Нельзя отвязать единственный способ входа. Сначала подключите email, Google или Apple в ProjectSfera.';
+                } else {
+                    replyText = '❌ Не удалось отвязать Telegram. Попробуйте позже или выполните отвязку в личном кабинете ProjectSfera.';
                 }
             } else if (text === '/START') {
-                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectMan.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectMan. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.`;
+                replyText = `👋 Привет, ${firstName}!\n\nЯ бот уведомлений ProjectSfera.\n\nДля входа используйте кнопку «Войти через Telegram» на сайте ProjectSfera. Если подтверждение Telegram не приходит, нажмите «Войти через бота» на экране входа.\n\nЧтобы отвязать Telegram от аккаунта, отправьте /unlink.`;
             } else {
                 // NOTE: the old 6-char "connect by code" linking flow was removed —
                 // it linked a Telegram chat to a user by a world-readable/guessable
@@ -76,7 +90,7 @@ export default async function handler(req, res) {
                 // hijack vector). Login + notification linking now happen only via
                 // the bot deep-link flow (botLoginMatch above), which requires the
                 // verified webhook secret.
-                replyText = `📋 Для входа откройте ProjectMan и нажмите «Войти через Telegram».\n\nЕсли вы видите ошибку домена на сайте, напишите администратору.`;
+                replyText = `📋 Для входа откройте ProjectSfera и нажмите «Войти через Telegram».\n\nЕсли вы видите ошибку домена на сайте, напишите администратору.`;
             }
 
             // Send reply
@@ -102,6 +116,27 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).send('Bot is running');
+}
+
+async function unlinkTelegramFromBot(telegramIdValue) {
+    const telegramId = telegramIdValue ? String(telegramIdValue) : '';
+    if (!telegramId) return { ok: false, reason: 'missing_user' };
+    try {
+        const db = adminDb();
+        const uid = await findTelegramOwnerUid(db, telegramId);
+        if (!uid) return { ok: true, alreadyUnlinked: true };
+        const result = await unlinkTelegramForUid({
+            db,
+            auth: adminAuth(),
+            uid,
+            keepDetachedReservation: true,
+        });
+        if (!result.ok) return { ok: false, reason: result.status };
+        return result;
+    } catch (error) {
+        console.error('webhook: Telegram unlink failed:', error);
+        return { ok: false, reason: 'server' };
+    }
 }
 
 async function confirmBotLoginSession(code, message, requestedMode = 'login') {

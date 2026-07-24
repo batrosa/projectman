@@ -130,7 +130,10 @@ export default async function handler(request, response) {
   // Принять задачу (и тем самым запустить начисление XP) может менеджер
   // проекта ИЛИ доп. постановщик задачи (uid в coCreatorIds) — зеркало
   // carve-out'а в firestore.rules.
-  const callerIsCoCreator = Array.isArray(task.coCreatorIds) && task.coCreatorIds.includes(decoded.uid);
+  // Принять задачу (и начислить XP) может менеджер проекта, доп. постановщик
+  // ИЛИ создатель задачи — исполнитель управляет своими задачами полностью.
+  const callerIsCoCreator = (Array.isArray(task.coCreatorIds) && task.coCreatorIds.includes(decoded.uid))
+    || task.createdByUid === decoded.uid;
   if (!callerCanManageProject(callerOrgRole, callerAllowedProjects, projectId) && !callerIsCoCreator) {
     return response.status(403).json({ error: "Forbidden — not a manager of this project" });
   }
