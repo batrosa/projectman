@@ -480,7 +480,8 @@ struct ProjectBoardView: View {
             .navigationTitle(project.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if appState.user?.canManage(projectId: project.id) == true {
+                // Создавать задачи может любой участник (исполнитель — свои)
+                if appState.user != nil {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             showNewTask = true

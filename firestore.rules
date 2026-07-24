@@ -288,17 +288,38 @@ service cloud.firestore {
         || (taskBelongsToMyOrgByProjectOrOrphanOrg() && canViewProject(resource.data.projectId));
 
       // Запись:
-      // - Управлять задачей (create/delete/полный update) может тот, кто может
-      //   управлять её проектом: owner/admin (всегда) или moderator, которому
-      //   проект доступен (canManageProject).
-      // - Reader/employee может лишь двигать статус своей задачи (carve-out ниже).
+      // - Менеджер проекта (owner/admin, moderator с доступом) — любые задачи.
+      // - ИСПОЛНИТЕЛЬ (employee) создаёт задачи в доступных проектах и
+      //   получает права постановщика на СОЗДАННЫЕ ИМ задачи: полный update
+      //   и delete (см. ветки createdByUid/coCreatorIds ниже). createdByUid
+      //   при создании обязан равняться auth.uid — владение не подделать.
+      // - Доп. постановщик (coCreatorIds) — те же права на эту задачу.
+      // - Reader — только чтение и движение статуса своей назначенной задачи.
       allow create: if isAdmin()
-        || (canManageProject(request.resource.data.projectId) && requestTaskOrgMatchesCurrentOrg());
-      allow delete: if isAdmin() || canManageProject(resource.data.projectId);
+        || (canManageProject(request.resource.data.projectId) && requestTaskOrgMatchesCurrentOrg())
+        || (request.auth != null
+            && hasOrgRole(request.resource.data.organizationId, ['owner', 'admin', 'moderator', 'employee'])
+            && canViewProject(request.resource.data.projectId)
+            && requestTaskOrgMatchesCurrentOrg()
+            && request.resource.data.createdByUid == request.auth.uid);
+      allow delete: if isAdmin() || canManageProject(resource.data.projectId)
+        || (request.auth != null
+            && taskBelongsToMyOrgByProjectOrOrphanOrg()
+            && (resource.data.createdByUid == request.auth.uid
+                || (resource.data.coCreatorIds is list && request.auth.uid in resource.data.coCreatorIds)));
       allow update: if isAdmin()
         || (canManageProject(resource.data.projectId)
             && request.resource.data.projectId == resource.data.projectId
             && requestTaskOrgPreservedOrCurrent())
+        // Создатель задачи или доп. постановщик: полное редактирование СВОЕЙ
+        // задачи (название, описание, исполнители, сроки, статусы, принятие,
+        // доработка) — но без передачи владения и переноса между проектами.
+        || (request.auth != null
+            && (resource.data.createdByUid == request.auth.uid
+                || (resource.data.coCreatorIds is list && request.auth.uid in resource.data.coCreatorIds))
+            && request.resource.data.projectId == resource.data.projectId
+            && requestTaskOrgPreservedOrCurrent()
+            && request.resource.data.createdByUid == resource.data.createdByUid)
         || (request.auth != null
             && canReaderWorkOnTask()
             && request.resource.data.projectId == resource.data.projectId

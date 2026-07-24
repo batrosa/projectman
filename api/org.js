@@ -828,6 +828,12 @@ export default async function handler(request, response) {
     if (newRole === "owner") {
       return response.status(403).json({ error: "Роль владельца нельзя назначить вручную" });
     }
+    // Роль «модератор» скрыта из продукта (код роли сохранён на будущее):
+    // назначить её нельзя ни из UI, ни прямым запросом. Существующие
+    // модераторы продолжают работать, пока их роль не сменят.
+    if (newRole === "moderator") {
+      return response.status(403).json({ error: "Роль «модератор» временно недоступна" });
+    }
 
     let callerData, targetData, memberSnap;
     try {

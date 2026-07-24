@@ -1680,6 +1680,13 @@ function canManageTasks() {
     return ['owner', 'admin', 'moderator'].includes(state.orgRole);
 }
 
+// Создавать задачи может ЛЮБОЙ участник, включая исполнителя (employee):
+// исполнитель получает права «модератора» в рамках СВОИХ созданных задач —
+// см. canActAsTaskCreator(). Reader остаётся только-чтение.
+function canCreateTasks() {
+    return ['owner', 'admin', 'moderator', 'employee'].includes(state.orgRole);
+}
+
 function canAccessAdmin() {
     return ['owner', 'admin'].includes(state.orgRole);
 }
@@ -1759,8 +1766,12 @@ function applyRoleRestrictions() {
     // Add current role class
     document.body.classList.add(`role-${role}`);
 
-    // read-only for employees (can only view and complete own tasks)
-    if (role === 'employee' || role === 'reader') {
+    // read-only остаётся только для reader. Исполнитель (employee) больше НЕ
+    // read-only: он создаёт задачи и полностью управляет СВОИМИ (создатель/
+    // доп. постановщик — canActAsTaskCreator); чужие задачи для него
+    // по-прежнему только исполнение (кнопки edit/delete на чужих скрыты
+    // точечной проверкой, а сервер и правила Firestore дублируют запрет).
+    if (role === 'reader') {
         document.body.classList.add('read-only');
     }
 
@@ -1794,10 +1805,11 @@ function applyRoleRestrictions() {
         addProjectBtn.style.display = canManageProjects() ? 'flex' : 'none';
     }
 
-    // Show/hide add task button (owner, admin, moderator)
+    // Show/hide add task button — создавать задачи может любой участник,
+    // включая исполнителя (свои задачи), кроме reader
     const addTaskBtn = document.getElementById('add-task-btn');
     if (addTaskBtn) {
-        addTaskBtn.style.display = canManageTasks() ? 'flex' : 'none';
+        addTaskBtn.style.display = canCreateTasks() ? 'flex' : 'none';
     }
 
     // Show/hide delete project button (owner, admin only)
@@ -2115,7 +2127,7 @@ function checkForUpdates() {
 // Force clear cache for users with old version
 window.addEventListener('load', () => {
     // Check if we need to force clear cache (version bump)
-    const CURRENT_VERSION = '6.23'; // Task details lifecycle buttons for employee accounts
+    const CURRENT_VERSION = '6.24'; // Employee task ownership rights
     const storedVersion = localStorage.getItem('app_version');
 
     if (storedVersion !== CURRENT_VERSION) {
@@ -2695,8 +2707,9 @@ async function handleProjectFileSelect(event) {
 }
 
 async function deleteTask(id) {
-    // Check permission - owner, admin, or moderator can delete tasks
-    if (!canManageTasks()) {
+    // Менеджер — любую; исполнитель/доп. постановщик — только СВОЮ задачу
+    const taskForCheck = findLoadedTask(id);
+    if (!canActAsTaskCreator(taskForCheck || {})) {
         alert('Недостаточно прав для удаления задачи');
         return;
     }
@@ -2797,8 +2810,8 @@ function updateProject(id, { name, description, deadline }) {
 }
 
 function updateTask(id, data) {
-    // Check permission - owner, admin, or moderator can update tasks
-    if (!canManageTasks()) {
+    // Менеджер — любую; исполнитель/доп. постановщик — только СВОЮ задачу
+    if (!canActAsTaskCreator(findLoadedTask(id) || {})) {
         alert('Недостаточно прав для редактирования задачи');
         return Promise.resolve();
     }
@@ -3026,7 +3039,7 @@ function renderBoard() {
         elements.projectDesc.textContent = descText;
     }
 
-    elements.addTaskBtn.disabled = !canManageTasks();
+    elements.addTaskBtn.disabled = !canCreateTasks();
     elements.deleteProjectBtn.style.display = canManageProjects() ? 'flex' : 'none';
     elements.deleteProjectBtn.onclick = canManageProjects() ? () => {
         playClickSound();
@@ -3540,7 +3553,7 @@ function createTaskCard(task) {
 
     // Check interactions for badge cursor style
     let canInteract = false;
-    const canManage = canManageTasks(); // owner, admin, moderator
+    const canManage = canActAsTaskCreator(task); // менеджер / создатель / доп. постановщик
 
     // Check assignee logic for interactivity check (uid-first; see helper)
     const isAssignee = isCurrentUserAssignee(task);
@@ -3783,7 +3796,10 @@ function createTaskCard(task) {
         toolbarRight.appendChild(deadlineRequestBtn);
     }
 
-    if (canManageTasks()) {
+    // Редактирование/удаление: менеджер — любую задачу; исполнитель — только
+    // СОЗДАННУЮ ИМ; доп. постановщик — свою задачу. Чужие задачи для
+    // исполнителя — только исполнение (кнопок нет).
+    if (canActAsTaskCreator(task)) {
         toolbarRight.appendChild(editBtn);
         toolbarRight.appendChild(deleteBtn);
     }
@@ -5718,8 +5734,9 @@ function setupEventListeners() {
     }
 
     async function createTask(title, assignee, deadline, status, assigneeEmail, description, isPrivate = false) {
-        // Check permission: owner, admin, or moderator can create tasks
-        if (!canManageTasks()) {
+        // Создавать задачи может любой участник (включая исполнителя —
+        // он получает права постановщика в рамках своей задачи); reader — нет.
+        if (!canCreateTasks()) {
             alert('❌ Недостаточно прав для создания задачи');
             return;
         }
@@ -7439,7 +7456,7 @@ function renderUsersList() {
             roleSelector = `
                 <select class="role-select" data-user-id="${user.id}" data-current-role="${userRole}">
                     ${isOwner ? `<option value="admin" ${userRole === 'admin' ? 'selected' : ''}>Админ</option>` : ''}
-                    <option value="moderator" ${userRole === 'moderator' ? 'selected' : ''}>Модератор</option>
+                    ${userRole === 'moderator' ? `<option value="moderator" selected>Модератор</option>` : ''}
                     <option value="employee" ${userRole === 'employee' || userRole === 'reader' ? 'selected' : ''}>Исполнитель</option>
                 </select>
             `;
@@ -8241,8 +8258,13 @@ function isCurrentUserCoCreator(task) {
 
 // Право действовать как постановщик задачи: менеджер проекта (owner/admin/
 // moderator) ИЛИ доп. постановщик этой задачи (независимо от орг-роли).
+// Право «постановщика» на КОНКРЕТНУЮ задачу: менеджер (owner/admin/moderator)
+// — на любую; исполнитель — на СОЗДАННУЮ ИМ задачу; доп. постановщик — на
+// свою. Даёт: редактирование, удаление, принятие, возврат на доработку.
 function canActAsTaskCreator(task) {
-    return canManageTasks() || isCurrentUserCoCreator(task);
+    if (canManageTasks() || isCurrentUserCoCreator(task)) return true;
+    const uid = state.currentUser?.uid;
+    return Boolean(uid && task?.createdByUid && task.createdByUid === uid);
 }
 
 // ========== XP AND LEVEL SYSTEM ==========

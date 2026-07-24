@@ -563,7 +563,7 @@
     <script src="libs/firebase-auth.js" defer></script>
     <!-- EmailJS загружается последним - он не критичен -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js" defer></script>
-    <script src="script.js?v=102.0" defer></script>
+    <script src="script.js?v=103.0" defer></script>
 </head>
 
 <body>
@@ -1601,18 +1601,12 @@
                         <li>Управление пользователями (кроме владельца)</li>
                         <li>Финальное подтверждение выполненных задач</li>
                     </ul>
-                    <p><strong><i class="fa-solid fa-user-pen" style="color: #22c55e;"></i> Модератор:</strong></p>
-                    <ul>
-                        <li>Создание и редактирование задач</li>
-                        <li>Назначение ответственных</li>
-                        <li>Подтверждение выполнения задач</li>
-                    </ul>
                     <p><strong><i class="fa-solid fa-user" style="color: var(--text-secondary);"></i>
                             Исполнитель:</strong></p>
                     <ul>
-                        <li>Просмотр назначенных проектов и задач</li>
-                        <li>Принятие задач в работу</li>
-                        <li>Отметка о выполнении с подтверждением</li>
+                        <li>Создание задач в доступных проектах: любые ответственные (включая себя) и доп. постановщики</li>
+                        <li>Полное управление СВОИМИ созданными задачами: редактирование, удаление, принятие, возврат на доработку</li>
+                        <li>По чужим задачам — только исполнение: взять в работу, завершить с подтверждением</li>
                     </ul>
                     <div class="help-note">
                         <i class="fa-solid fa-user-plus"></i> Доп. постановщик задачи (выбирается при создании) может

@@ -56,14 +56,21 @@ struct TaskDetailView: View {
         return current.coCreatorIds.contains(uid)
     }
 
-    // Право действовать как постановщик: менеджер проекта ИЛИ доп. постановщик
+    // Создатель задачи: исполнитель имеет права постановщика на СВОИ задачи
+    private var isTaskCreator: Bool {
+        guard let uid = appState.user?.uid else { return false }
+        return current.createdByUid == uid
+    }
+
+    // Право действовать как постановщик этой задачи: менеджер проекта,
+    // СОЗДАТЕЛЬ задачи или доп. постановщик (редактировать/удалять/принять/
+    // вернуть). Чужие задачи исполнитель только исполняет.
     private var canActAsCreator: Bool {
-        canManage || isCoCreator
+        canManage || isCoCreator || isTaskCreator
     }
 
     private var hasActions: Bool {
-        canManage
-        || (isCoCreator && current.boardStatus == .review)
+        canActAsCreator
         || (isAssignee && current.boardStatus == .assigned)
         || (isAssignee && current.boardStatus == .inProgress)
     }
@@ -315,7 +322,7 @@ struct TaskDetailView: View {
 
     private var actionPanel: some View {
         HStack(alignment: .bottom) {
-            if canManage {
+            if canActAsCreator {
                 actionCircleButton(
                     "Удалить",
                     icon: "trash.fill",
