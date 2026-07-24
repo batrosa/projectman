@@ -596,6 +596,10 @@ describe("private task participant boundary", () => {
         name: "Private project",
         organizationId: "org-private",
       });
+      await ctx.firestore().collection("projects").doc("p-other-private").set({
+        name: "Other private project",
+        organizationId: "org-other",
+      });
       await ctx.firestore().collection("privateTasks").doc("private-1").set({
         projectId: "p-private",
         organizationId: "org-private",
@@ -671,6 +675,64 @@ describe("private task participant boundary", () => {
       createdByUid: "owner-private",
       viewerIds: ["owner-private", "assignee-private", "cocreator-private"],
     }));
+  });
+
+  it("lets an employee create and manage their own private task", async () => {
+    await seedPrivateTaskFixture();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await seedOrgUser(ctx, "employee-creator-private", {
+        organizationId: "org-private",
+        orgRole: "employee",
+      });
+    });
+
+    const employeeCreator = testEnv.authenticatedContext("employee-creator-private").firestore();
+    const task = employeeCreator.collection("privateTasks").doc("employee-private-1");
+    await assertSucceeds(task.set({
+      projectId: "p-private",
+      organizationId: "org-private",
+      title: "Employee private task",
+      status: "in-progress",
+      subStatus: "assigned",
+      assigneeCompleted: false,
+      createdByUid: "employee-creator-private",
+      assigneeIds: ["assignee-private"],
+      coCreatorIds: ["cocreator-private"],
+      viewerIds: ["employee-creator-private", "assignee-private", "cocreator-private"],
+      isPrivate: true,
+    }));
+    await assertSucceeds(task.update({ title: "Employee edited private task" }));
+    await assertSucceeds(task.delete());
+
+    await assertFails(employeeCreator.collection("privateTasks").doc("cross-org-private").set({
+      projectId: "p-other-private",
+      organizationId: "org-private",
+      title: "Cross-org private task",
+      status: "in-progress",
+      subStatus: "assigned",
+      assigneeCompleted: false,
+      createdByUid: "employee-creator-private",
+      assigneeIds: [],
+      coCreatorIds: [],
+      viewerIds: ["employee-creator-private"],
+      isPrivate: true,
+    }));
+  });
+
+  it("lets an employee co-creator manage a private task but keeps an assignee lifecycle-only", async () => {
+    await seedPrivateTaskFixture();
+    const coCreator = testEnv.authenticatedContext("cocreator-private").firestore();
+    const assignee = testEnv.authenticatedContext("assignee-private").firestore();
+    const task = coCreator.collection("privateTasks").doc("private-1");
+
+    await assertSucceeds(task.update({ title: "Co-creator edited private task" }));
+    await assertFails(
+      assignee.collection("privateTasks").doc("private-1").update({
+        title: "Assignee cannot edit private task",
+      })
+    );
+    await assertFails(assignee.collection("privateTasks").doc("private-1").delete());
+    await assertSucceeds(task.delete());
   });
 
   it("keeps participant changes and the derived viewerIds atomic", async () => {

@@ -419,14 +419,25 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.createdByUid == request.auth.uid
         && hasValidPrivateTaskAudience(request.resource.data)
-        && canManageProject(request.resource.data.projectId)
+        && (
+          (hasProjectOrgRole(request.resource.data.projectId, ['employee'])
+            && canViewProject(request.resource.data.projectId))
+          || canManageProject(request.resource.data.projectId)
+        )
         && requestTaskOrgMatchesCurrentOrg();
 
       // The organization owner keeps the oversight exception; any other
-      // manager must also be an explicit task participant.
+      // manager must also be an explicit task participant. Employee creators
+      // and co-creators manage only private tasks they own/co-own.
       allow delete: if hasOrgRole(resource.data.organizationId, ['owner'])
         || (isPrivateTaskParticipant(resource.data)
-            && canManageProject(resource.data.projectId));
+            && (
+              resource.data.createdByUid == request.auth.uid
+              || (resource.data.coCreatorIds is list
+                  && request.auth.uid in resource.data.coCreatorIds)
+              || canManageProject(resource.data.projectId)
+            )
+            && isOrgMember(resource.data.organizationId));
 
       allow update: if (hasOrgRole(resource.data.organizationId, ['owner'])
           && request.resource.data.organizationId == resource.data.organizationId
@@ -435,12 +446,18 @@ service cloud.firestore {
           && hasValidPrivateTaskAudience(request.resource.data))
         || (
           isPrivateTaskParticipant(resource.data)
+          && (
+            resource.data.createdByUid == request.auth.uid
+            || (resource.data.coCreatorIds is list
+                && request.auth.uid in resource.data.coCreatorIds)
+            || canManageProject(resource.data.projectId)
+          )
           && isPrivateTaskParticipant(request.resource.data)
           && hasValidPrivateTaskAudience(request.resource.data)
           && request.resource.data.createdByUid == resource.data.createdByUid
           && request.resource.data.projectId == resource.data.projectId
           && requestTaskOrgPreservedOrCurrent()
-          && canManageProject(resource.data.projectId)
+          && isOrgMember(resource.data.organizationId)
         )
         || (request.auth != null
             && isPrivateTaskParticipant(resource.data)
